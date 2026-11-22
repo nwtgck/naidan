@@ -1,4 +1,5 @@
 import { createShellHighlighter } from './shell/lexer';
+import { createJavaScriptHighlighter } from './javascript';
 import type { SyntaxHighlighter, SyntaxLanguage } from './types';
 
 export function createSyntaxHighlighter({ language }: { language: SyntaxLanguage }): SyntaxHighlighter {
@@ -18,6 +19,8 @@ export function createSyntaxHighlighter({ language }: { language: SyntaxLanguage
     };
   }
   case 'shell': return createShellHighlighter();
+  case 'javascript': return createJavaScriptHighlighter({ language });
+  case 'typescript': return createJavaScriptHighlighter({ language });
   default: {
     const _ex: never = language;
     throw new Error(`Unsupported syntax language: ${_ex}`);

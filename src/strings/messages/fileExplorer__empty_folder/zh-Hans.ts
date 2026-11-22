@@ -1,1 +1,1 @@
-export const fileExplorer__empty_folder = (): string => '空文件夹';
+export const fileExplorer__empty_folder = (): string => '此文件夹为空';

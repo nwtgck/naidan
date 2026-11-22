@@ -1,1 +1,1 @@
-export const fileExplorer__empty_folder = (): string => 'Pasta vazia';
+export const fileExplorer__empty_folder = (): string => 'Esta pasta está vazia';

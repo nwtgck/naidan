@@ -17,7 +17,14 @@ function mountModal() {
     global: {
       stubs: {
         FileExplorer: {
-          template: '<div tabindex="0" data-testid="file-explorer"><button data-testid="explorer-last-control">Last control</button></div>',
+          template: `\
+<div tabindex="0" data-testid="file-explorer" @keydown.stop>
+  <details>
+    <summary data-testid="explorer-last-control">Editor options</summary>
+    <button>Closed settings option</button>
+  </details>
+  <div style="display: none"><div tabindex="0" role="separator"></div></div>
+</div>`,
         },
         Teleport: true,
       },

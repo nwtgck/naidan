@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { lazyStrings } from '@/strings';
 import { inject, computed } from 'vue';
 import FileExplorerEntryItem from './FileExplorerEntryItem.vue';
+import FileExplorerEmptyState from './FileExplorerEmptyState.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
 import { sortEntries } from '@/features/file-explorer/logic/utils';
 import type { ColumnPaneState, FileExplorerEntry } from '@/features/file-explorer/logic/types';
@@ -31,21 +31,6 @@ function isEntryCut({ entry }: { entry: FileExplorerEntry }): boolean {
     ctx.clipboardState.operation === 'cut' &&
     ctx.clipboardState.entries.some(e => e.name === entry.name)
   );
-}
-
-async function onEntryClick({ entry }: { entry: FileExplorerEntry }): Promise<void> {
-  await ctx.selectColumnEntry({ paneIndex: props.paneIndex, entryName: entry.name });
-  switch (entry.kind) {
-  case 'file':
-    await ctx.loadPreview({ entry });
-    break;
-  case 'directory':
-    break;
-  default: {
-    const _ex: never = entry.kind;
-    throw new Error(`Unhandled kind: ${_ex}`);
-  }
-  }
 }
 
 async function onEntryDblClick({ entry }: { entry: FileExplorerEntry }): Promise<void> {
@@ -86,15 +71,14 @@ defineExpose({
 <template>
   <div
     data-testid="file-explorer-column-pane"
+    :aria-busy="pane.isLoading"
     tw-class="flex flex-col w-52 shrink-0 border-r border-gray-100 dark:border-gray-800 overflow-x-hidden overflow-y-auto overscroll-y-contain"
   >
-    <div v-if="pane.isLoading" tw-class="flex items-center justify-center py-8">
+    <div v-if="pane.isLoading && pane.entries.length === 0" tw-class="flex items-center justify-center py-8">
       <Loader2Icon tw-class="w-4 h-4 text-gray-400 animate-spin" />
     </div>
     <div v-else tw-class="p-1 space-y-0.5">
-      <p v-if="pane.entries.length === 0" tw-class="text-[10px] text-gray-400 text-center py-6 uppercase tracking-widest font-bold">
-        {{ lazyStrings.fileExplorer__empty() }}
-      </p>
+      <FileExplorerEmptyState v-if="pane.entries.length === 0" density="compact" kind="empty-folder" />
       <FileExplorerEntryItem
         v-for="entry in sortedEntries"
         :key="entry.name"
@@ -105,7 +89,7 @@ defineExpose({
         :is-cut="isEntryCut({ entry })"
         :is-drag-target="false"
         display-mode="column"
-        @click="onEntryClick({ entry })"
+        @click="ctx.selectColumnEntry({ paneIndex, entryName: entry.name })"
         @dblclick="onEntryDblClick({ entry })"
         @contextmenu="onContextMenu({ entry, event: $event.event })"
         @rename-confirm="ctx.renameEntry({ entry, newName: $event.newName })"

@@ -1,22 +1,23 @@
 <script setup lang="ts">
-import { inject, ref, watch, nextTick } from 'vue';
+import { inject, useTemplateRef, watch } from 'vue';
 import FileExplorerColumnPane from './FileExplorerColumnPane.vue';
 import FileExplorerPreviewPanel from './FileExplorerPreviewPanel.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
+import { FILE_EXPLORER_FILE_VIEW_KEY } from '@/features/file-explorer/composables/file-explorer-file-view-context';
 
 const ctx = inject(FILE_EXPLORER_INJECTION_KEY)!;
+const fileView = inject(FILE_EXPLORER_FILE_VIEW_KEY, undefined);
+const scrollContainer = useTemplateRef<HTMLElement>('scrollContainer');
 
-const scrollContainerRef = ref<HTMLElement | null>(null);
-
-// Auto-scroll to rightmost pane when panes change
+// The columns can already exist when the scroller mounts or becomes visible again.
 watch(
-  () => ctx.columnPanes.length,
-  async () => {
-    await nextTick();
-    if (scrollContainerRef.value) {
-      scrollContainerRef.value.scrollLeft = scrollContainerRef.value.scrollWidth;
+  [scrollContainer, () => ctx.columnPanes.at(-1)?.path, () => fileView?.isActive.value],
+  ([container, , fileViewActive]) => {
+    if (container && !fileViewActive) {
+      container.scrollLeft = container.scrollWidth;
     }
   },
+  { flush: 'post' },
 );
 
 
@@ -33,13 +34,13 @@ defineExpose({
   <div tw-class="flex flex-1 overflow-hidden">
     <!-- Column panes -->
     <div
-      ref="scrollContainerRef"
+      ref="scrollContainer"
       data-testid="file-explorer-column-scroll"
       tw-class="flex flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
     >
       <FileExplorerColumnPane
         v-for="(pane, i) in ctx.columnPanes"
-        :key="i"
+        :key="pane.path"
         :pane="pane"
         :pane-index="i"
       />

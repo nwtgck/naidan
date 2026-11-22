@@ -817,6 +817,7 @@ describe('Settings Mapping', () => {
         browserImageGeneration: undefined,
         naidanRpc: undefined,
         generationSpeed: undefined,
+        fileExplorer: undefined,
       },
     };
 

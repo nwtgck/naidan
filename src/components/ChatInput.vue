@@ -859,12 +859,13 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Pr
 
   const clickedMount = mounts.find(m => m.volumeId === volumeId);
   const initialPath = clickedMount?.mountPath.split('/').filter(Boolean);
+  const fileSystemName = await ensureStrings.fileExplorer__chat_file_system();
 
   openFileExplorer({
     options: {
       kind: 'wesh-mounts',
-      title: await ensureStrings.fileExplorer__files(),
-      rootName: await ensureStrings.fileExplorer__files(),
+      title: fileSystemName,
+      rootName: fileSystemName,
       mounts: workerMounts,
       initialPath,
     },

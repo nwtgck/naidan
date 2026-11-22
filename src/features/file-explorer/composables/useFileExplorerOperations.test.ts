@@ -99,7 +99,7 @@ describe('useFileExplorerOperations', () => {
 
   it('createFile creates a file handle and refreshes', async () => {
     const ops = makeOps();
-    await ops.createFile({ name: 'hello.txt' });
+    expect(await ops.createFile({ directoryPath: '/workspace', name: 'hello.txt', blob: new Blob() })).toBe(true);
     expect(client.createFile).toHaveBeenCalledWith({ parentPath: '/workspace', name: 'hello.txt' });
     expect(refresh).toHaveBeenCalled();
   });
@@ -107,7 +107,7 @@ describe('useFileExplorerOperations', () => {
   it('createFile shows toast on error', async () => {
     client.createFile = vi.fn().mockRejectedValueOnce(new Error('no permission'));
     const ops = makeOps();
-    await ops.createFile({ name: 'fail.txt' });
+    expect(await ops.createFile({ directoryPath: '/workspace', name: 'fail.txt', blob: new Blob() })).toBe(false);
     expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('no permission') }));
   });
 

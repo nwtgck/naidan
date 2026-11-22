@@ -124,7 +124,9 @@ defineExpose({
     @drop.prevent="onExternalDrop({ event: $event })"
   >
     <FileExplorerEmptyState
-      v-if="ctx.sortedFilteredEntries.length === 0 && !ctx.isLoading"
+      v-if="ctx.sortedFilteredEntries.length === 0 && !ctx.isLoading && ctx.loadError === undefined"
+      :kind="ctx.entries.length === 0 ? 'empty-folder' : 'no-matching-results'"
+      density="comfortable"
     />
 
     <div tw-class="flex flex-wrap gap-2 content-start">

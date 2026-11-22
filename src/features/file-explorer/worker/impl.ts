@@ -1,6 +1,6 @@
 import { serveByteStream, byteStreamPortSchema } from '@/utils/byte-stream-port';
 
-import type { WorkerServerApi } from '@/utils/worker-transport';
+import { createValidatedMessagePort, workerTransfer, type WorkerServerApi } from '@/utils/worker-transport';
 import { createRemoteDirectoryHandle, remoteDirectoryEntrySchema } from '@/utils/remote-directory-handle';
 import type { ManagedVolumeRemoteAccess } from '@/features/wesh/worker/managed-volume-access';
 import { getEffectiveWeshMounts } from '@/features/wesh/mount-policy';
@@ -33,6 +33,18 @@ import {
   type ParsedZipUpload,
 } from './zip-upload';
 import { ZipArchiveView } from './zip-archive-view';
+import { inspectFileFormat } from './file-format';
+import {
+  findExistingFileHandle,
+  matchesFileEditStamp,
+  readBoundedFileStream,
+  readFileEditStamp,
+  withFileViewLock,
+  withFileViewLocks,
+  writeFileViewBlob,
+  type FileEditFingerprint,
+  type FileEditStamp,
+} from './file-view-access';
 import {
   copyFileSystemFileHandle,
   isFileSystemEntryLookupMiss,
@@ -63,6 +75,16 @@ import {
   fileExplorerReadDirectoryResponseSchema,
   fileExplorerReadFileRequestSchema,
   fileExplorerReadFileResponseSchema,
+  fileExplorerReadFileForViewRequestSchema,
+  fileExplorerReadFileForViewResponseSchema,
+  fileExplorerSaveFileForViewRequestSchema,
+  fileExplorerSaveFileForViewResponseSchema,
+  fileExplorerFileViewCancelSchema,
+  fileExplorerFileViewProgressSchema,
+  fileExplorerInspectModelRequestSchema,
+  MODEL_OVERVIEW_LABEL_LIMIT,
+  fileExplorerReadModelValueRequestSchema,
+  fileExplorerRewriteGgufRequestSchema,
   fileExplorerPrepareFileDownloadResponseSchema,
   fileExplorerReadPreviewRequestSchema,
   fileExplorerReadPreviewResponseSchema,
@@ -73,7 +95,12 @@ import {
   fileExplorerUploadFilesRequestSchema,
   type FileExplorerEntryRecord,
   type FileExplorerPathSegment,
+  type FileExplorerReadFileForViewRequest,
+  type FileExplorerReadFileForViewResponse,
+  FILE_VIEW_PROBE_BYTES,
   type FileExplorerRootDescriptor,
+  type FileExplorerSaveFileForViewResponse,
+  type FileExplorerSaveFileTarget,
   type FileExplorerZipUploadPlacement,
   type IFileExplorerWorker,
 } from './types';
@@ -86,17 +113,21 @@ interface CachedArchiveView {
 interface FileExplorerSessionBase {
   readonly rootName: string,
   readonly archiveViews: Map<string, CachedArchiveView>,
+  readonly editRevisions: Map<string, FileEditRevision>,
+  readonly savingPaths: Set<string>,
 }
 
 type FileExplorerSession =
   | (FileExplorerSessionBase & {
     kind: 'native-directory',
+    rootSource: 'opfs-root' | 'native-directory',
     rootHandle: FileSystemDirectoryHandle,
     readOnly: boolean,
   })
   | (FileExplorerSessionBase & {
     kind: 'wesh-mounts',
     vfs: WeshVFS,
+    remoteDirectoryRoots: readonly FileSystemDirectoryHandle[],
   })
   | (FileExplorerSessionBase & {
     kind: 'archive-root',
@@ -154,9 +185,15 @@ type ResolvedFile =
     archiveRelativePath: string,
   };
 
+interface FileEditRevision {
+  id: string,
+  handle: FileSystemFileHandle,
+  stamp: FileEditStamp,
+}
+
 const sessions = new Map<string, FileExplorerSession>();
 const directoryArchiveJobs = new Map<string, AbortController>();
-const fileReadJobs = new Map<string, Set<AbortController>>();
+const fileIoJobs = new Map<string, Set<AbortController>>();
 const NESTED_ARCHIVE_MATERIALIZE_SIZE_LIMIT = 512 * 1024 * 1024;
 const zipUploadJobs = new Map<string, AbortController>();
 const zipUploadAnalyses = new Map<string, {
@@ -261,25 +298,34 @@ async function createSessionFromRoot({
 }): Promise<FileExplorerSession> {
   const directoryHandleResolver = createFileSystemDirectoryHandleReferenceResolver();
   const archiveViews = new Map<string, CachedArchiveView>();
+  const editRevisions = new Map<string, FileEditRevision>();
+  const savingPaths = new Set<string>();
   switch (root.kind) {
   case 'opfs-root':
     return {
       kind: 'native-directory',
+      rootSource: root.kind,
       rootName: root.rootName,
       rootHandle: await navigator.storage.getDirectory(),
       readOnly: false,
       archiveViews,
+      editRevisions,
+      savingPaths,
     };
   case 'native-directory':
     return {
       kind: 'native-directory',
+      rootSource: root.kind,
       rootName: root.rootName,
       rootHandle: await directoryHandleResolver.resolve({ reference: root.handle }),
       readOnly: root.readOnly,
       archiveViews,
+      editRevisions,
+      savingPaths,
     };
   case 'wesh-mounts': {
     const vfs = new WeshVFS({ rootHandle: undefined });
+    const remoteDirectoryRoots: FileSystemDirectoryHandle[] = [];
     for (const mount of getEffectiveWeshMounts({ mounts: root.mounts })) {
       switch (mount.type) {
       case 'directory':
@@ -295,12 +341,14 @@ async function createSessionFromRoot({
         }
         const remoteAccess = managedVolumeRemoteAccess;
         const directoryRoot = remoteDirectoryEntrySchema.parse(await remoteAccess.getRoot({ path: mount.path }));
+        const handle = createRemoteDirectoryHandle({
+          root: directoryRoot,
+          access: { request: ({ request }) => remoteAccess.request({ path: mount.path, request }) },
+        });
+        remoteDirectoryRoots.push(handle);
         await vfs.mount({
           path: mount.path,
-          handle: createRemoteDirectoryHandle({
-            root: directoryRoot,
-            access: { request: ({ request }) => remoteAccess.request({ path: mount.path, request }) },
-          }),
+          handle,
           readOnly: mount.readOnly,
         });
         break;
@@ -349,20 +397,25 @@ async function createSessionFromRoot({
         throw new Error('Remote directory access is required for this mount');
       }
       const remoteAccess = managedVolumeRemoteAccess;
+      const handle = createRemoteDirectoryHandle({
+        root: mount.root,
+        access: { request: ({ request }) => remoteAccess.request({ path: mount.path, request }) },
+      });
+      remoteDirectoryRoots.push(handle);
       await vfs.mount({
         path: mount.path,
         readOnly: mount.readOnly,
-        handle: createRemoteDirectoryHandle({
-          root: mount.root,
-          access: { request: ({ request }) => remoteAccess.request({ path: mount.path, request }) },
-        }),
+        handle,
       });
     }
     return {
       kind: 'wesh-mounts',
       rootName: root.rootName,
       vfs,
+      remoteDirectoryRoots,
       archiveViews,
+      editRevisions,
+      savingPaths,
     };
   }
   case 'archive-root': {
@@ -385,6 +438,8 @@ async function createSessionFromRoot({
         rootName: root.rootName,
         rootArchive,
         archiveViews,
+        editRevisions,
+        savingPaths,
       };
     }
     default: {
@@ -881,11 +936,14 @@ async function readVirtualFileBytes({
   vfs,
   path,
   maximumBytes,
+  signal,
 }: {
   vfs: WeshVFS,
   path: string,
   maximumBytes: number | undefined,
+  signal: AbortSignal | undefined,
 }): Promise<Uint8Array> {
+  signal?.throwIfAborted();
   const handle = await vfs.open({
     path,
     flags: {
@@ -901,8 +959,10 @@ async function readVirtualFileBytes({
     const chunks: Uint8Array[] = [];
     let readBytes = 0;
     while (maximumBytes === undefined || readBytes < maximumBytes) {
+      signal?.throwIfAborted();
       const buffer = new Uint8Array(Math.min(64 * 1024, maximumBytes === undefined ? Infinity : maximumBytes - readBytes));
       const { bytesRead } = await handle.read({ buffer });
+      signal?.throwIfAborted();
       if (bytesRead === 0) {
         break;
       }
@@ -951,7 +1011,7 @@ async function readResolvedFileBlob({ file }: { file: ResolvedFile }): Promise<B
     return file.handle.getFile();
   case 'virtual-file':
     return new Blob([uint8ArrayToBlobPart({
-      bytes: await readVirtualFileBytes({ vfs: file.vfs, path: file.path, maximumBytes: undefined }),
+      bytes: await readVirtualFileBytes({ vfs: file.vfs, path: file.path, maximumBytes: undefined, signal: undefined }),
     })]);
   case 'zip-file':
     return file.archive.readFileBlob({ relativePath: file.archiveRelativePath });
@@ -984,6 +1044,411 @@ function getWritableNativeDirectory({ directory }: {
     const _exhaustiveCheck: never = directory;
     throw new Error(`Unhandled resolved directory: ${String(_exhaustiveCheck)}`);
   }
+  }
+}
+
+function validateFileViewPath({ path }: { path: string }): string {
+  const segments = splitExplorerPath({ path });
+  if (segments.some(segment => segment === '.' || segment === '..' || segment.includes('\0'))) {
+    throw new TypeError('Invalid file view path');
+  }
+  return normalizeExplorerPath({ path });
+}
+
+function isProtectedFileEditTarget({ session, path }: {
+  session: FileExplorerSession,
+  path: string,
+}): boolean {
+  return session.kind === 'native-directory'
+    && session.rootSource === 'opfs-root'
+    && (path === '/naidan-storage/settings.json'
+      || path === '/naidan-storage/hierarchy.json'
+      || path === '/naidan-storage/migration-state.json');
+}
+
+async function isReadOnlyFileViewPath({ session, path }: {
+  session: FileExplorerSession,
+  path: string,
+}): Promise<boolean> {
+  switch (session.kind) {
+  case 'native-directory':
+  case 'archive-root':
+    return false;
+  case 'wesh-mounts': {
+    const { fullPath } = await session.vfs.resolve({ path });
+    // The named entry may be a symlink out of a writable mount.
+    return session.vfs.getReadOnlyForPath({ path: fullPath });
+  }
+  default: {
+    const exhaustive: never = session;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+async function registerFileEditRevision({ session, path, handle, stamp, signal }: {
+  session: FileExplorerSession,
+  path: string,
+  handle: FileSystemFileHandle,
+  stamp: FileEditStamp,
+  signal: AbortSignal,
+}): Promise<string> {
+  const registered = session.editRevisions.get(path);
+  if (registered && matchesFileEditStamp({ current: stamp, expected: registered.stamp })
+    && await handle.isSameEntry(registered.handle)) {
+    return registered.id;
+  }
+  signal.throwIfAborted();
+  const id = createSessionId();
+  session.editRevisions.set(path, { id, handle, stamp });
+  return id;
+}
+
+async function resolveFileForView({ session, request, signal }: {
+  session: FileExplorerSession,
+  request: Exclude<FileExplorerReadFileForViewRequest, { mode: 'inspect' }>,
+  signal: AbortSignal,
+}): Promise<FileExplorerReadFileForViewResponse> {
+  const path = validateFileViewPath({ path: request.path });
+  const file = await resolveFile({ session, path });
+  const { name } = file;
+  signal.throwIfAborted();
+  switch (file.kind) {
+  case 'native-file': {
+    const { handle } = file;
+    const editable = (request.mode === 'bounded' || request.mode === 'snapshot')
+      && !file.readOnly
+      && !isProtectedFileEditTarget({ session, path })
+      && !await isReadOnlyFileViewPath({ session, path });
+    async function readSnapshot(): Promise<FileExplorerReadFileForViewResponse> {
+      const snapshot = await handle.getFile();
+      const { size, lastModified } = snapshot;
+      signal.throwIfAborted();
+      switch (request.mode) {
+      case 'range': {
+        const offset = Math.min(size, request.offset);
+        const length = Math.min(size - offset, request.maxBytes);
+        return {
+          kind: 'file',
+          name,
+          blob: snapshot.slice(offset, offset + length),
+          size,
+          lastModified,
+          partial: offset + length < size,
+          rangeReadable: true,
+        };
+      }
+      case 'bounded': case 'prefix': case 'snapshot': break;
+      default: {
+        const exhaustive: never = request;
+        throw new Error(`Unexpected file read: ${String(exhaustive)}`);
+      }
+      }
+      if (request.mode === 'bounded' && size > request.maxBytes) {
+        return { kind: 'too-large', name, size };
+      }
+      const partial = request.mode === 'prefix' && size > request.maxBytes;
+      const revision = editable
+        ? await registerFileEditRevision({
+          session,
+          path,
+          handle,
+          stamp: await readFileEditStamp({ file: snapshot, signal }),
+          signal,
+        })
+        : undefined;
+      const blob = partial ? snapshot.slice(0, request.maxBytes, snapshot.type) : snapshot;
+      return { kind: 'file', name, blob, size, lastModified, partial, revision, rangeReadable: true };
+    }
+    // The read must take its editable snapshot under the same lock as the
+    // commit. A late hash of the original file cannot replace the new revision.
+    return editable ? withFileViewLock({ name: handle.name, signal, run: readSnapshot }) : readSnapshot();
+  }
+  case 'virtual-file': {
+    switch (request.mode) {
+    case 'snapshot': case 'range':
+      return { kind: 'unsupported', name };
+    case 'bounded':
+    case 'prefix':
+      break;
+    default: {
+      const exhaustive: never = request;
+      throw new Error(String(exhaustive));
+    }
+    }
+    // Read one extra byte to detect truncation without trusting a VFS stat.
+    const bytes = await readVirtualFileBytes({ vfs: file.vfs, path, maximumBytes: request.maxBytes + 1, signal });
+    const partial = bytes.byteLength > request.maxBytes;
+    if (partial && request.mode === 'bounded') {
+      return { kind: 'too-large', name };
+    }
+    const blob = new Blob([uint8ArrayToBlobPart({ bytes: bytes.subarray(0, request.maxBytes) })]);
+    return { kind: 'file', name, blob, size: partial ? undefined : blob.size, partial };
+  }
+  case 'zip-file': {
+    switch (request.mode) {
+    case 'snapshot': case 'range':
+      return { kind: 'unsupported', name };
+    case 'bounded':
+    case 'prefix':
+      break;
+    default: {
+      const exhaustive: never = request;
+      throw new Error(String(exhaustive));
+    }
+    }
+    const size = file.archive.getFileSize({ relativePath: file.archiveRelativePath });
+    if (request.mode === 'bounded' && size > request.maxBytes) {
+      return { kind: 'too-large', name, size };
+    }
+    const stream = await file.archive.openFileStream({ relativePath: file.archiveRelativePath });
+    const { blob, partial } = await readBoundedFileStream({ stream, maxBytes: request.maxBytes, signal });
+    if (partial && request.mode === 'bounded') {
+      return { kind: 'too-large', name };
+    }
+    const lastModified = file.archive.getFileModifiedAt({ relativePath: file.archiveRelativePath });
+    return { kind: 'file', name, blob, size, lastModified, partial };
+  }
+  default: {
+    const exhaustive: never = file;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+async function assertFileEditRevision({ session, path, expected, signal }: {
+  session: FileExplorerSession,
+  path: string,
+  expected: FileEditRevision,
+  signal: AbortSignal,
+}): Promise<FileSystemFileHandle> {
+  signal.throwIfAborted();
+  const changed = new DOMException('The file changed after it was opened', 'InvalidStateError');
+  let file: ResolvedFile;
+  try {
+    file = await resolveFile({ session, path });
+  } catch (error) {
+    if (isResolvedFileLookupMiss({ error }) || (error instanceof Error && error.message.startsWith('Directory not found:'))) {
+      throw changed;
+    }
+    throw error;
+  }
+  if (file.kind !== 'native-file' || file.readOnly || await isReadOnlyFileViewPath({ session, path })) {
+    throw new DOMException('Read-only file system', 'NotAllowedError');
+  }
+  if (!await file.handle.isSameEntry(expected.handle)) {
+    throw changed;
+  }
+  const current = await readFileEditStamp({ file: await file.handle.getFile(), signal });
+  if (!matchesFileEditStamp({ current, expected: expected.stamp })) {
+    throw changed;
+  }
+  return file.handle;
+}
+
+async function saveFileForView({ session, target, blob, signal, onProgress }: {
+  session: FileExplorerSession,
+  target: FileExplorerSaveFileTarget,
+  blob: Blob,
+  signal: AbortSignal,
+  onProgress: ({ writtenBytes, totalBytes }: { writtenBytes: number, totalBytes: number }) => void,
+}): Promise<FileExplorerSaveFileForViewResponse> {
+  const { path, lockName, write } = (() => {
+    switch (target.kind) {
+    case 'replace': {
+      const path = validateFileViewPath({ path: target.path });
+      return {
+        path,
+        lockName: session.editRevisions.get(path)?.handle.name,
+        write: () => replaceFileForView({ session, path, revision: target.revision, blob, signal, onProgress }),
+      };
+    }
+    case 'create':
+      return {
+        path: joinExplorerPath({ parentPath: validateFileViewPath({ path: target.directoryPath }), name: target.name }),
+        lockName: target.name,
+        write: () => createFileForView({ session, directoryPath: target.directoryPath, name: target.name, blob, signal, onProgress }),
+      };
+    default: {
+      const exhaustive: never = target;
+      throw new Error(String(exhaustive));
+    }
+    }
+  })();
+  if (isProtectedFileEditTarget({ session, path })) {
+    throw new DOMException('Naidan manages this file', 'NotAllowedError');
+  }
+  if (session.savingPaths.has(path)) {
+    throw new DOMException('A save is already in progress for this file', 'InvalidStateError');
+  }
+  signal.throwIfAborted();
+  session.savingPaths.add(path);
+
+  try {
+    if (lockName === undefined) {
+      throw new DOMException('The file changed after it was opened', 'InvalidStateError');
+    }
+    return await withFileViewLocks({
+      names: [lockName],
+      mode: 'shared',
+      signal,
+      async run() {
+        const { handle, fingerprint } = await write();
+        session.editRevisions.delete(path);
+        const revision = await registerCommittedFileViewRevision({ session, path, handle, fingerprint, signal });
+        return { path, revision };
+      },
+    });
+  } finally {
+    session.savingPaths.delete(path);
+  }
+}
+
+async function registerCommittedFileViewRevision({ session, path, handle, fingerprint, signal }: {
+  session: FileExplorerSession,
+  path: string,
+  handle: FileSystemFileHandle,
+  fingerprint: FileEditFingerprint,
+  signal: AbortSignal,
+}): Promise<string | undefined> {
+  // Non-cooperating editors can still race the platform commit. If the current
+  // target no longer matches our output, acknowledge the completed save but
+  // withhold its revision. Huge files use bounded prefix/suffix fingerprints:
+  // an intervening same-size edit outside both windows may be undetectable.
+  try {
+    const file = await resolveFile({ session, path });
+    if (file.kind !== 'native-file' || file.readOnly || await isReadOnlyFileViewPath({ session, path })
+      || !await file.handle.isSameEntry(handle)) {
+      return undefined;
+    }
+    const stamp = await readFileEditStamp({ file: await file.handle.getFile(), signal });
+    if (stamp.size !== fingerprint.size || stamp.digest !== fingerprint.digest) {
+      return undefined;
+    }
+    return await registerFileEditRevision({ session, path, handle: file.handle, stamp, signal });
+  } catch {
+    return undefined;
+  }
+}
+
+async function replaceFileForView({ session, path, revision, blob, signal, onProgress }: {
+  session: FileExplorerSession,
+  path: string,
+  revision: string,
+  blob: Blob,
+  signal: AbortSignal,
+  onProgress: ({ writtenBytes, totalBytes }: { writtenBytes: number, totalBytes: number }) => void,
+}): Promise<{ handle: FileSystemFileHandle, fingerprint: FileEditFingerprint }> {
+  const expected = session.editRevisions.get(path);
+  if (!expected || expected.id !== revision) {
+    throw new DOMException('The file changed after it was opened', 'InvalidStateError');
+  }
+  const handle = await assertFileEditRevision({ session, path, expected, signal });
+  const fingerprint = await writeFileViewBlob({
+    blob,
+    handle,
+    signal,
+    onProgress,
+    async beforeCommit() {
+      await assertFileEditRevision({ session, path, expected, signal });
+    },
+  });
+  return { handle, fingerprint };
+}
+
+async function createFileForView({ session, directoryPath, name, blob, signal, onProgress }: {
+  session: FileExplorerSession,
+  directoryPath: string,
+  name: string,
+  blob: Blob,
+  signal: AbortSignal,
+  onProgress: ({ writtenBytes, totalBytes }: { writtenBytes: number, totalBytes: number }) => void,
+}): Promise<{ handle: FileSystemFileHandle, fingerprint: FileEditFingerprint }> {
+  const parentPath = validateFileViewPath({ path: directoryPath });
+  async function resolveTargetDirectory(): Promise<FileSystemDirectoryHandle> {
+    const resolved = await resolveDirectory({ session, path: parentPath });
+    if (await isReadOnlyFileViewPath({ session, path: parentPath })) {
+      throw new DOMException('Read-only file system', 'NotAllowedError');
+    }
+    return getWritableNativeDirectory({ directory: resolved });
+  }
+  const directory = await resolveTargetDirectory();
+  const exists = new DOMException('A file with that name already exists', 'InvalidModificationError');
+  async function reserveName() {
+    if (await findExistingFileHandle({ directory, name })) {
+      throw exists;
+    }
+    signal.throwIfAborted();
+    const handle = await directory.getFileHandle(name, { create: true });
+    const baseline = await handle.getFile();
+    if (baseline.size !== 0) {
+      throw exists;
+    }
+    return { handle, baseline };
+  }
+
+  const { handle, baseline } = await reserveName();
+
+  const isSameEmptyFile = async ({ directory: currentDirectory }: { directory: FileSystemDirectoryHandle }): Promise<boolean> => {
+    const current = await findExistingFileHandle({ directory: currentDirectory, name });
+    if (!current || !await current.isSameEntry(handle)) {
+      return false;
+    }
+    const snapshot = await current.getFile();
+    return snapshot.size === 0 && snapshot.lastModified === baseline.lastModified;
+  };
+  // The File System Access API cannot prove ownership of the empty entry.
+  // Aborting the output must avoid deleting an entry created by another app.
+  const fingerprint = await writeFileViewBlob({
+    blob,
+    handle,
+    signal,
+    onProgress,
+    async beforeCommit() {
+      const currentDirectory = await resolveTargetDirectory();
+      if (!await isSameEmptyFile({ directory: currentDirectory })) {
+        throw exists;
+      }
+    },
+  });
+  return { handle, fingerprint };
+}
+
+async function runFileViewOperation<TResult>({ sessionId, port, run }: {
+  sessionId: string,
+  port: MessagePort,
+  run: ({ signal, onProgress }: {
+    signal: AbortSignal,
+    onProgress: ({ writtenBytes, totalBytes }: { writtenBytes: number, totalBytes: number }) => void,
+  }) => Promise<TResult>,
+}): Promise<TResult> {
+  byteStreamPortSchema.parse(port);
+  const controller = new AbortController();
+  const channel = createValidatedMessagePort({
+    port,
+    incomingSchema: fileExplorerFileViewCancelSchema,
+    outgoingSchema: fileExplorerFileViewProgressSchema,
+    onMessage() {
+      controller.abort(new DOMException('File operation cancelled', 'AbortError'));
+    },
+    onError({ reason }) {
+      controller.abort(reason);
+    },
+  });
+  const jobs = fileIoJobs.get(sessionId) ?? new Set<AbortController>();
+  fileIoJobs.set(sessionId, jobs);
+  jobs.add(controller);
+  try {
+    return await run({
+      signal: controller.signal,
+      onProgress: ({ writtenBytes, totalBytes }) => channel.send({ message: { writtenBytes, totalBytes }, transferables: [] }),
+    });
+  } finally {
+    channel.close();
+    jobs.delete(controller);
+    if (jobs.size === 0) {
+      fileIoJobs.delete(sessionId);
+    }
   }
 }
 
@@ -1537,11 +2002,13 @@ async function copyFileHandleToDirectory({
 async function copyDirectoryHandleToDirectory({
   sourceHandle,
   targetDirectoryHandle,
+  name,
 }: {
   sourceHandle: FileSystemDirectoryHandle,
   targetDirectoryHandle: FileSystemDirectoryHandle,
+  name: string,
 }): Promise<void> {
-  const nextDirectoryHandle = await targetDirectoryHandle.getDirectoryHandle(sourceHandle.name, { create: true });
+  const nextDirectoryHandle = await targetDirectoryHandle.getDirectoryHandle(name, { create: true });
   for await (const childHandle of sourceHandle.values()) {
     switch (childHandle.kind) {
     case 'file':
@@ -1554,6 +2021,7 @@ async function copyDirectoryHandleToDirectory({
       await copyDirectoryHandleToDirectory({
         sourceHandle: childHandle as FileSystemDirectoryHandle,
         targetDirectoryHandle: nextDirectoryHandle,
+        name: childHandle.name,
       });
       break;
     default: {
@@ -1622,6 +2090,259 @@ async function copyZipDirectoryToDirectory({
     }
     }
   }
+}
+
+type TransferSource = Exclude<ResolvedFile | ResolvedDirectory, { kind: 'virtual-file' | 'virtual-directory' }>;
+type MoveSource = { parent: FileSystemDirectoryHandle, name: string, handle: FileSystemFileHandle | FileSystemDirectoryHandle };
+
+async function resolveTransferSource({ session, path }: { session: FileExplorerSession, path: string }): Promise<TransferSource> {
+  let source: ResolvedFile | ResolvedDirectory;
+  try {
+    source = await resolveFile({ session, path });
+  } catch (error) {
+    if (!isResolvedFileLookupMiss({ error })) {
+      throw error;
+    }
+    source = await resolveDirectory({ session, path });
+  }
+  switch (source.kind) {
+  case 'native-file': case 'native-directory': case 'zip-file': case 'zip-directory':
+    return source;
+  case 'virtual-file': case 'virtual-directory':
+    throw new Error(`Cannot copy virtual entry: ${path}`);
+  default: {
+    const exhaustive: never = source;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+async function findTransferEntry({ directory, name, kind }: {
+  directory: FileSystemDirectoryHandle,
+  name: string,
+  kind: 'file' | 'directory',
+}): Promise<FileSystemFileHandle | FileSystemDirectoryHandle | undefined> {
+  try {
+    switch (kind) {
+    case 'file': return await directory.getFileHandle(name);
+    case 'directory': return await directory.getDirectoryHandle(name);
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(String(exhaustive));
+    }
+    }
+  } catch (error) {
+    if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+async function assertMoveSource({ source }: { source: MoveSource }): Promise<void> {
+  const entry = await findTransferEntry({ directory: source.parent, name: source.name, kind: source.handle.kind });
+  if (entry === undefined || !await entry.isSameEntry(source.handle)) {
+    throw new DOMException('The source path no longer identifies the entry being moved', 'InvalidModificationError');
+  }
+}
+
+async function copyFileForRemoval({ source, target, name, signal }: {
+  source: FileSystemFileHandle,
+  target: FileSystemDirectoryHandle,
+  name: string,
+  signal: AbortSignal,
+}): Promise<FileEditStamp> {
+  const snapshot = await source.getFile();
+  const stamp = await readFileEditStamp({ file: snapshot, signal });
+  const destination = await target.getFileHandle(name, { create: true });
+  await writeReadableStreamToFileHandle({ source: snapshot.stream(), targetHandle: destination, signal });
+  return stamp;
+}
+
+async function removeTransferredSource({ source, stamp, signal }: {
+  source: MoveSource,
+  stamp: FileEditStamp | undefined,
+  signal: AbortSignal,
+}): Promise<void> {
+  await assertMoveSource({ source });
+  switch (source.handle.kind) {
+  case 'file': {
+    if (stamp === undefined) {
+      throw new Error('A transferred file must have a source revision');
+    }
+    const current = await readFileEditStamp({ file: await source.handle.getFile(), signal });
+    if (!matchesFileEditStamp({ current, expected: stamp })) {
+      throw new DOMException('The source file changed during transfer', 'InvalidModificationError');
+    }
+    break;
+  }
+  case 'directory':
+    break;
+  default: {
+    const exhaustive: never = source.handle;
+    throw new Error(String(exhaustive));
+  }
+  }
+  await source.parent.removeEntry(source.name, { recursive: true });
+}
+
+async function getTransferRemoteRoot({ session, entry }: {
+  session: FileExplorerSession,
+  entry: FileSystemHandle,
+}): Promise<FileSystemDirectoryHandle | undefined> {
+  switch (session.kind) {
+  case 'wesh-mounts':
+    for (const root of session.remoteDirectoryRoots) {
+      // A remote root returns null for handles issued by another grant.
+      if (root === entry || await root.resolve(entry) !== null) {
+        return root;
+      }
+    }
+    return undefined;
+  case 'native-directory': case 'archive-root':
+    return undefined;
+  default: {
+    const exhaustive: never = session;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+async function copyTransferSource({ source, target, name, move, signal }: {
+  source: TransferSource,
+  target: FileSystemDirectoryHandle,
+  name: string,
+  move: MoveSource | undefined,
+  signal: AbortSignal,
+}): Promise<FileEditStamp | undefined> {
+  switch (source.kind) {
+  case 'native-file': {
+    if (move !== undefined) {
+      return copyFileForRemoval({ source: source.handle, target, name, signal });
+    }
+    await copyFileHandleToDirectory({ sourceHandle: source.handle, targetDirectoryHandle: target });
+    return undefined;
+  }
+  case 'native-directory':
+    await copyDirectoryHandleToDirectory({ sourceHandle: source.handle, targetDirectoryHandle: target, name });
+    return undefined;
+  case 'zip-file':
+    await copyZipFileToDirectory({ archive: source.archive, archiveRelativePath: source.archiveRelativePath, name, targetDirectoryHandle: target });
+    return undefined;
+  case 'zip-directory':
+    await copyZipDirectoryToDirectory({ archive: source.archive, archiveRelativePath: source.archiveRelativePath, name, targetDirectoryHandle: target });
+    return undefined;
+  default: {
+    const exhaustive: never = source;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+async function transferEntries({ session, sourcePaths, targetDirectoryPath, operation }: {
+  session: FileExplorerSession,
+  sourcePaths: readonly string[],
+  targetDirectoryPath: string,
+  operation: 'copy' | 'move',
+}): Promise<void> {
+  const target = getWritableNativeDirectory({ directory: await resolveDirectory({ session, path: targetDirectoryPath }) });
+  if (await isReadOnlyFileViewPath({ session, path: targetDirectoryPath })) {
+    throw new DOMException('Read-only file system', 'NotAllowedError');
+  }
+  const targetRemoteRoot = await getTransferRemoteRoot({ session, entry: target });
+  const transfers: { source: TransferSource, name: string, kind: 'file' | 'directory', removal: MoveSource | undefined }[] = [];
+  const names = new Set<string>();
+  // Resolve all selected entries and their destination conflicts before opening a writer.
+  for (const path of new Set(sourcePaths.map(sourcePath => normalizeExplorerPath({ path: sourcePath })))) {
+    const parent = await (async () => {
+      switch (operation) {
+      case 'copy': return undefined;
+      case 'move': return getWritableNativeDirectory({ directory: await resolveDirectory({ session, path: getParentPath({ path }) }) });
+      default: {
+        const exhaustive: never = operation;
+        throw new Error(String(exhaustive));
+      }
+      }
+    })();
+    const source = await resolveTransferSource({ session, path });
+    const nativeHandle = 'handle' in source ? source.handle : undefined;
+    const name = nativeHandle?.name ?? source.name;
+    let removal: MoveSource | undefined;
+    if (parent !== undefined) {
+      if (nativeHandle === undefined || await isReadOnlyFileViewPath({ session, path })) {
+        throw new DOMException('Read-only file system', 'NotAllowedError');
+      }
+      removal = { parent, name: source.name, handle: nativeHandle };
+    }
+    const sourceRemoteRoot = nativeHandle === undefined ? undefined : await getTransferRemoteRoot({ session, entry: nativeHandle });
+    const kind = await (async () => {
+      switch (source.kind) {
+      case 'native-directory': {
+        if (sourceRemoteRoot !== targetRemoteRoot) {
+          throw new DOMException('Cannot verify directory ancestry across remote mounts', 'NotSupportedError');
+        }
+        if (await source.handle.isSameEntry(target) || ((await source.handle.resolve(target))?.length ?? 0) > 0) {
+          throw new DOMException('Cannot transfer a directory into itself or a descendant', 'InvalidModificationError');
+        }
+        return 'directory';
+      }
+      case 'zip-directory': return 'directory';
+      case 'native-file': case 'zip-file': return 'file';
+      default: {
+        const exhaustive: never = source;
+        throw new Error(String(exhaustive));
+      }
+      }
+    })();
+    const destination = await findTransferEntry({ directory: target, name, kind });
+    if (destination !== undefined) {
+      if (nativeHandle !== undefined && sourceRemoteRoot === targetRemoteRoot && await destination.isSameEntry(nativeHandle)) {
+        continue;
+      }
+      throw new DOMException('An entry with that name already exists in the destination', 'InvalidModificationError');
+    }
+    if (names.has(name)) {
+      throw new DOMException('Multiple entries would be transferred to the same name', 'InvalidModificationError');
+    }
+    names.add(name);
+    transfers.push({ source, name, kind, removal });
+  }
+
+  if (transfers.length === 0) {
+    return;
+  }
+  const removesDirectory = transfers.some(({ kind, removal }) => kind === 'directory' && removal !== undefined);
+  const signal = new AbortController().signal;
+  await withFileViewLocks({
+    names: transfers.flatMap(({ name, removal }) => removal === undefined ? [name] : [name, removal.name]),
+    mode: removesDirectory ? 'exclusive' : 'shared',
+    signal,
+    async run() {
+      for (const { name, kind, removal } of transfers) {
+        if (await findTransferEntry({ directory: target, name, kind })) {
+          throw new DOMException('An entry with that name already exists in the destination', 'InvalidModificationError');
+        }
+        if (removal !== undefined) {
+          await assertMoveSource({ source: removal });
+        }
+      }
+
+      const removals: { source: MoveSource, stamp: FileEditStamp | undefined }[] = [];
+      for (const { source, name, kind, removal } of transfers) {
+        // A preceding copy may have created a differently spelled equivalent name.
+        if (await findTransferEntry({ directory: target, name, kind })) {
+          throw new DOMException('An entry with that name already exists in the destination', 'InvalidModificationError');
+        }
+        const stamp = await copyTransferSource({ source, target, name, move: removal, signal });
+        if (removal !== undefined) {
+          removals.push({ source: removal, stamp });
+        }
+      }
+      for (const { source, stamp } of removals) {
+        await removeTransferredSource({ source, stamp, signal });
+      }
+    },
+  });
 }
 
 async function deleteEntryPath({
@@ -1764,7 +2485,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       }
 
       const extension = getFileExtension({ name: resolvedFile.name });
-      const mimeCategory = getMimeCategory({ extension });
+      const mimeCategory = validated.format?.kind ?? getMimeCategory({ extension });
       // Unsupported binary previews need no payload, especially for huge VFS files.
       let previewLimit: number;
       switch (mimeCategory) {
@@ -1817,6 +2538,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
             // Read one byte beyond the limit to detect truncation, even if a
             // concurrently changing virtual file has an inaccurate stat size.
             maximumBytes,
+            signal: undefined,
           });
         default: {
           const _exhaustiveCheck: never = resolvedFile;
@@ -1889,7 +2611,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
           kind: 'media',
           mediaKind: mimeCategory,
           blob: mediaBlob,
-          mimeType: mediaBlob.type,
+          mimeType: validated.format?.mimeType ?? mediaBlob.type,
           oversized: false,
         });
       }
@@ -1909,6 +2631,142 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       });
       return fileExplorerReadFileResponseSchema.parse({
         blob: await readResolvedFileBlob({ file: resolvedFile }),
+      });
+    },
+
+    async readFileForView({ request, port }) {
+      const validated = fileExplorerReadFileForViewRequestSchema.parse(request);
+      const session = getSession({ sessionId: validated.sessionId });
+      return runFileViewOperation({
+        sessionId: validated.sessionId,
+        port,
+        async run({ signal }) {
+          switch (validated.mode) {
+          case 'inspect': {
+            const request = { ...validated, mode: 'prefix' as const, maxBytes: FILE_VIEW_PROBE_BYTES };
+            const result = await resolveFileForView({ session, request, signal });
+            switch (result.kind) {
+            case 'file': {
+              const bytes = new Uint8Array(await result.blob.arrayBuffer());
+              signal.throwIfAborted();
+              const format = await inspectFileFormat({ bytes, size: result.size, partial: result.partial });
+              signal.throwIfAborted();
+              return fileExplorerReadFileForViewResponseSchema.parse({ ...result, format });
+            }
+            case 'unsupported': case 'too-large': return fileExplorerReadFileForViewResponseSchema.parse(result);
+            default: {
+              const exhaustive: never = result;
+              throw new Error(`Unexpected file read: ${String(exhaustive)}`);
+            }
+            }
+          }
+          case 'bounded': case 'prefix': case 'snapshot': case 'range':
+            return fileExplorerReadFileForViewResponseSchema.parse(await resolveFileForView({ session, request: validated, signal }));
+          default: {
+            const exhaustive: never = validated;
+            throw new Error(`Unexpected file read: ${String(exhaustive)}`);
+          }
+          }
+        },
+      });
+    },
+
+    async saveFileForView({ request, port }) {
+      const validated = fileExplorerSaveFileForViewRequestSchema.parse(request);
+      const session = getSession({ sessionId: validated.sessionId });
+      return runFileViewOperation({
+        sessionId: validated.sessionId,
+        port,
+        async run({ signal, onProgress }) {
+          const result = await saveFileForView({
+            session,
+            target: validated.target,
+            blob: validated.blob,
+            signal,
+            onProgress,
+          });
+          return fileExplorerSaveFileForViewResponseSchema.parse(result);
+        },
+      });
+    },
+
+    async inspectModelOverviewForView({ request, port }) {
+      const { sessionId, file } = fileExplorerInspectModelRequestSchema.parse(request);
+      getSession({ sessionId });
+      return runFileViewOperation({
+        sessionId,
+        port,
+        async run({ signal }) {
+          const { inspectModelFileDetails } = await import('@/logic/model-file-inspection/metadata');
+          const result = await inspectModelFileDetails({ file, signal });
+          switch (result.status) {
+          case 'weights': break;
+          case 'unknown': case 'invalid': case 'lfs-pointer':
+            return { status: result.status, reason: result.reason.slice(0, MODEL_OVERVIEW_LABEL_LIMIT) };
+          default: {
+            const exhaustive: never = result;
+            throw new Error(`Unhandled model inspection: ${String(exhaustive)}`);
+          }
+          }
+          // Keep validating the bounded header, with only the overview crossing the worker boundary.
+          const { format, version, split, metadata, tensors } = result.value;
+          function overviewLabel({ key }: { key: string }) {
+            const value = metadata.find(entry => entry.key === key)?.value;
+            return typeof value === 'string' ? value.slice(0, MODEL_OVERVIEW_LABEL_LIMIT) : value;
+          }
+          return {
+            status: 'weights',
+            value: {
+              format,
+              version,
+              split,
+              name: overviewLabel({ key: 'general.name' }),
+              architecture: overviewLabel({ key: 'general.architecture' }),
+              metadataCount: metadata.length,
+              tensorCount: tensors.length,
+            },
+          };
+        },
+      });
+    },
+
+    async inspectModelForView({ request, port }) {
+      const { sessionId, file } = fileExplorerInspectModelRequestSchema.parse(request);
+      getSession({ sessionId });
+      return runFileViewOperation({
+        sessionId,
+        port,
+        async run({ signal }) {
+          const { inspectModelFileDetails } = await import('@/logic/model-file-inspection/metadata');
+          return inspectModelFileDetails({ file, signal });
+        },
+      });
+    },
+
+    async readModelValueForView({ request, port }) {
+      const { sessionId, file, entry, start, limit } = fileExplorerReadModelValueRequestSchema.parse(request);
+      getSession({ sessionId });
+      return runFileViewOperation({
+        sessionId,
+        port,
+        async run({ signal }) {
+          const { readModelMetadataValue } = await import('@/logic/model-file-inspection/metadata');
+          return readModelMetadataValue({ file, entry, start, limit, signal });
+        },
+      });
+    },
+
+    async rewriteGgufForView({ request, port }) {
+      const { sessionId, file, changes } = fileExplorerRewriteGgufRequestSchema.parse(request);
+      getSession({ sessionId });
+      return runFileViewOperation({
+        sessionId,
+        port,
+        async run({ signal }) {
+          const { prepareGgufMetadataRewrite } = await import('@/logic/model-file-inspection/metadata');
+          const result = await prepareGgufMetadataRewrite({ file, changes, signal });
+          return workerTransfer({ value: result, transferables: [result.header.buffer] });
+        },
       });
     },
 
@@ -1941,8 +2799,8 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       const validated = fileExplorerReadFileRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
       const abortController = new AbortController();
-      const jobs = fileReadJobs.get(validated.sessionId) ?? new Set<AbortController>();
-      fileReadJobs.set(validated.sessionId, jobs);
+      const jobs = fileIoJobs.get(validated.sessionId) ?? new Set<AbortController>();
+      fileIoJobs.set(validated.sessionId, jobs);
       jobs.add(abortController);
       const source = serveByteStream({
         port,
@@ -1954,7 +2812,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       } finally {
         jobs.delete(abortController);
         if (jobs.size === 0) {
-          fileReadJobs.delete(validated.sessionId);
+          fileIoJobs.delete(validated.sessionId);
         }
       }
     },
@@ -2119,143 +2977,53 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         path: normalizedSourcePath,
         rootName: session.rootName,
       });
-      const parentDirectory = await resolveDirectory({
-        session,
-        path: getParentPath({ path: normalizedSourcePath }),
-      });
-      const writableParentDirectory = getWritableNativeDirectory({ directory: parentDirectory });
-
-      try {
-        const sourceFile = await writableParentDirectory.getFileHandle(sourceName);
-        const targetFile = await writableParentDirectory.getFileHandle(validated.newName, { create: true });
-        await copyFileSystemFileHandle({
-          sourceHandle: sourceFile,
-          targetHandle: targetFile,
-          signal: undefined,
-        });
-      } catch {
-        const sourceDirectory = await writableParentDirectory.getDirectoryHandle(sourceName);
-        const targetDirectoryHandle = await writableParentDirectory.getDirectoryHandle(validated.newName, { create: true });
-        for await (const childHandle of sourceDirectory.values()) {
-          switch (childHandle.kind) {
-          case 'file':
-            await copyFileHandleToDirectory({
-              sourceHandle: childHandle as FileSystemFileHandle,
-              targetDirectoryHandle,
-            });
-            break;
-          case 'directory':
-            await copyDirectoryHandleToDirectory({
-              sourceHandle: childHandle as FileSystemDirectoryHandle,
-              targetDirectoryHandle,
-            });
-            break;
-          default: {
-            throw new Error(`Unhandled directory child kind: ${((childHandle satisfies never) as { readonly kind: string }).kind}`);
-          }
-          }
-        }
+      const source = await resolveTransferSource({ session, path: normalizedSourcePath });
+      if (!('handle' in source) || await isReadOnlyFileViewPath({ session, path: normalizedSourcePath })) {
+        throw new DOMException('Read-only file system', 'NotAllowedError');
       }
-
-      await writableParentDirectory.removeEntry(sourceName, { recursive: true });
+      const isDirectory = source.handle.kind === 'directory';
+      const signal = new AbortController().signal;
+      await withFileViewLocks({
+        names: [sourceName, validated.newName],
+        mode: isDirectory ? 'exclusive' : 'shared',
+        signal,
+        async run() {
+          const parent = getWritableNativeDirectory({ directory: await resolveDirectory({ session, path: getParentPath({ path: normalizedSourcePath }) }) });
+          const removal = { parent, name: sourceName, handle: source.handle };
+          await assertMoveSource({ source: removal });
+          const destination = await findTransferEntry({ directory: parent, name: validated.newName, kind: source.handle.kind });
+          if (destination !== undefined) {
+            if (await destination.isSameEntry(source.handle)) {
+              return;
+            }
+            throw new DOMException('An entry with that name already exists in the destination', 'InvalidModificationError');
+          }
+          const stamp = await copyTransferSource({ source, target: parent, name: validated.newName, move: removal, signal });
+          await removeTransferredSource({ source: removal, stamp, signal });
+        },
+      });
     },
 
     async copyEntries({ request }) {
       const validated = fileExplorerTransferEntriesRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
-      const targetDirectory = await resolveDirectory({
+      await transferEntries({
         session,
-        path: validated.targetDirectoryPath,
+        sourcePaths: validated.sourcePaths,
+        targetDirectoryPath: validated.targetDirectoryPath,
+        operation: 'copy',
       });
-      const writableTargetDirectory = getWritableNativeDirectory({ directory: targetDirectory });
-
-      for (const sourcePath of validated.sourcePaths) {
-        const normalizedSourcePath = normalizeExplorerPath({ path: sourcePath });
-        let sourceFile: ResolvedFile | undefined;
-        try {
-          sourceFile = await resolveFile({ session, path: normalizedSourcePath });
-        } catch (error) {
-          if (!isResolvedFileLookupMiss({ error })) {
-            throw error;
-          }
-        }
-
-        if (sourceFile !== undefined) {
-          switch (sourceFile.kind) {
-          case 'native-file':
-            await copyFileHandleToDirectory({
-              sourceHandle: sourceFile.handle,
-              targetDirectoryHandle: writableTargetDirectory,
-            });
-            break;
-          case 'virtual-file':
-            throw new Error(`Cannot copy virtual file: ${normalizedSourcePath}`);
-          case 'zip-file':
-            await copyZipFileToDirectory({
-              archive: sourceFile.archive,
-              archiveRelativePath: sourceFile.archiveRelativePath,
-              name: sourceFile.name,
-              targetDirectoryHandle: writableTargetDirectory,
-            });
-            break;
-          default: {
-            const _exhaustiveCheck: never = sourceFile;
-            throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`);
-          }
-          }
-          continue;
-        }
-
-        const sourceDirectory = await resolveDirectory({
-          session,
-          path: normalizedSourcePath,
-        });
-        switch (sourceDirectory.kind) {
-        case 'native-directory':
-          await copyDirectoryHandleToDirectory({
-            sourceHandle: sourceDirectory.handle,
-            targetDirectoryHandle: writableTargetDirectory,
-          });
-          break;
-        case 'virtual-directory':
-          throw new Error(`Cannot copy virtual directory: ${normalizedSourcePath}`);
-        case 'zip-directory':
-          await copyZipDirectoryToDirectory({
-            archive: sourceDirectory.archive,
-            archiveRelativePath: sourceDirectory.archiveRelativePath,
-            name: sourceDirectory.name,
-            targetDirectoryHandle: writableTargetDirectory,
-          });
-          break;
-        default: {
-          const _exhaustiveCheck: never = sourceDirectory;
-          throw new Error(`Unhandled resolved directory: ${String(_exhaustiveCheck)}`);
-        }
-        }
-      }
     },
 
     async moveEntries({ request }) {
       const validated = fileExplorerTransferEntriesRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
-      for (const sourcePath of validated.sourcePaths) {
-        const normalizedSourcePath = normalizeExplorerPath({ path: sourcePath });
-        const parentDirectory = await resolveDirectory({
-          session,
-          path: getParentPath({ path: normalizedSourcePath }),
-        });
-        getWritableNativeDirectory({ directory: parentDirectory });
-      }
-      await this.copyEntries({
-        request: {
-          sessionId: validated.sessionId,
-          sourcePaths: validated.sourcePaths,
-          targetDirectoryPath: validated.targetDirectoryPath,
-        },
+      await transferEntries({
+        session,
+        sourcePaths: validated.sourcePaths,
+        targetDirectoryPath: validated.targetDirectoryPath,
+        operation: 'move',
       });
-      for (const sourcePath of validated.sourcePaths) {
-        await deleteEntryPath({ session, path: sourcePath });
-      }
     },
 
     async analyzeZipUpload({ request }) {
@@ -2454,10 +3222,10 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
     async disposeSession({ request }) {
       const validated = fileExplorerDisposeSessionRequestSchema.parse(request);
       sessions.delete(validated.sessionId);
-      for (const controller of fileReadJobs.get(validated.sessionId) ?? []) {
+      for (const controller of fileIoJobs.get(validated.sessionId) ?? []) {
         controller.abort(new DOMException('File explorer session disposed', 'AbortError'));
       }
-      fileReadJobs.delete(validated.sessionId);
+      fileIoJobs.delete(validated.sessionId);
       for (const [jobKey, abortController] of directoryArchiveJobs) {
         if (jobKey.startsWith(`${validated.sessionId}\0`)) {
           abortController.abort(new DOMException('File explorer session disposed', 'AbortError'));

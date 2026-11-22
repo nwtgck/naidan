@@ -55,10 +55,18 @@ function resolveMenuItems({ items }: { items: MenuItemDraft[] }): MenuItem[] {
 }
 
 const menuItems = computed<MenuItem[]>(() => {
-  const readOnly = ctx.readOnly;
-  const directoryAllowsCreation = !ctx.isDeletionOnly({ path: ctx.currentDirectoryPath });
+  const targetEntry = target.value.kind === 'entry' && target.value.tree ? target.value : undefined;
+  const readOnly = targetEntry ? ctx.isLocked || !targetEntry.entry.canMutate : ctx.readOnly;
+  const readOnlyReason = targetEntry
+    ? ctx.isLocked ? 'lock' : !targetEntry.entry.canMutate ? 'source' : undefined
+    : ctx.readOnlyReason;
+  const directoryAllowsCreation = !ctx.isDeletionOnly({ path: targetEntry?.tree?.directoryPath ?? ctx.currentDirectoryPath });
+  const pasteDisabled = ctx.isLocked || (targetEntry?.tree?.directoryReadOnly ?? ctx.readOnly);
+  const pasteDisabledReason = targetEntry?.tree?.directoryReadOnly
+    ? lazyStrings.fileExplorer__read_only()
+    : ctx.isLocked ? lazyStrings.fileExplorer__unlock_to_enable() : undefined;
   const disabledReason = (() => {
-    switch (ctx.readOnlyReason) {
+    switch (readOnlyReason) {
     case 'lock':
       return lazyStrings.fileExplorer__unlock_to_enable();
     case 'source':
@@ -66,7 +74,7 @@ const menuItems = computed<MenuItem[]>(() => {
     case undefined:
       return undefined;
     default: {
-      const _exhaustiveCheck: never = ctx.readOnlyReason;
+      const _exhaustiveCheck: never = readOnlyReason;
       throw new Error(`Unhandled read-only reason: ${_exhaustiveCheck}`);
     }
     }
@@ -93,7 +101,7 @@ const menuItems = computed<MenuItem[]>(() => {
     }
 
     if (directoryAllowsCreation && hasClipboard.value) {
-      items.push({ type: 'action', action: 'paste', label: lazyStrings.fileExplorer__paste(), icon: ClipboardPasteIcon, disabled: readOnly, disabledReason });
+      items.push({ type: 'action', action: 'paste', label: lazyStrings.fileExplorer__paste(), icon: ClipboardPasteIcon, disabled: pasteDisabled, disabledReason: targetEntry ? pasteDisabledReason : disabledReason });
     }
 
     items.push({ type: 'divider' });
@@ -162,6 +170,7 @@ defineExpose({
               ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
               : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800']"
           :disabled="item.disabled"
+          :data-testid="`context-menu-${item.action}`"
           :title="item.disabled && item.disabledReason ? item.disabledReason : undefined"
           @click="!item.disabled && ctx.executeContextAction({ action: item.action })"
         >

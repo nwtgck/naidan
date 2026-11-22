@@ -3,6 +3,7 @@ import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImag
 import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
 import { llamaCppBrowserSettingsToDomain, llamaCppBrowserSettingsToDto } from './llama-cpp-browser-settings';
+import { fileExplorerSettingsToDomain, fileExplorerSettingsToDto } from './file-explorer-settings';
 /**
  * Mappers
  */
@@ -2318,6 +2319,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
+      fileExplorer,
       liveConversationModelId,
       translation,
       llamaCppBrowser,
@@ -2380,6 +2382,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       })(),
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
+      fileExplorer: fileExplorerSettingsToDomain({ dto: fileExplorer }),
       liveConversationModelId,
       translation: translation === undefined ? undefined : (() => {
         const { modelId, autoTranslate, unreadable: _unreadable, ...unhandledTranslation } = translation;
@@ -2484,6 +2487,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
+      fileExplorer,
       liveConversationModelId,
       translation,
       llamaCppBrowser,
@@ -2575,6 +2579,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         }
       })(),
       globalSearch: globalSearchDto,
+      fileExplorer: fileExplorerSettingsToDto({ domain: fileExplorer }),
       liveConversationModelId,
       translation: translation === undefined ? undefined : (() => {
         const { modelId, autoTranslate, ...unhandledTranslation } = translation;

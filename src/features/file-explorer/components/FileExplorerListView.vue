@@ -184,6 +184,7 @@ defineExpose({
       <div
         v-for="col in columns"
         :key="col.field"
+        :data-testid="`sort-field-${col.field}`"
         :tw-class="['flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-gray-100 transition-colors', twClasses(col.class)]"
         @click="ctx.toggleSortField({ field: col.field })"
       >
@@ -210,7 +211,9 @@ defineExpose({
       @drop.prevent="onExternalDrop({ event: $event })"
     >
       <FileExplorerEmptyState
-        v-if="ctx.sortedFilteredEntries.length === 0 && !ctx.isLoading"
+        v-if="ctx.sortedFilteredEntries.length === 0 && !ctx.isLoading && ctx.loadError === undefined"
+        :kind="ctx.entries.length === 0 ? 'empty-folder' : 'no-matching-results'"
+        density="comfortable"
       />
 
       <div
