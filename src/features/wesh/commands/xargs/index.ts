@@ -10,7 +10,7 @@ import {
   type StandardArgvAction,
   type StandardArgvOccurrence,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { parseXargsDelimiter } from '@/features/wesh/commands/xargs/parse-input';
 import {

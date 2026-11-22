@@ -11,7 +11,7 @@ import { resolveContentConfigForContext } from "@/features/wesh/commands/git/con
 import { collectStatus } from "@/features/wesh/commands/git/status";
 import { printLongStatus } from "@/features/wesh/commands/git/status-output";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { analyzeArgvLongForm, analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvLongForm, analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv';
 
 type StashPushShortSemantic = 'include-untracked' | 'message';
 type StashApplySemantic = 'loud' | 'quiet' | 'restore-index' | 'skip-index';

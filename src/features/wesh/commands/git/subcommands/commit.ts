@@ -15,7 +15,7 @@ import { stageWorktreePaths } from "@/features/wesh/commands/git/stage";
 import { resolveContentConfigForContext } from "@/features/wesh/commands/git/content-config";
 import { appendMessageParagraph, cleanupMessage, firstLine } from "@/features/wesh/commands/git/commit-message";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 
 type CommitDeferredSemantic = 'message' | 'file';
 

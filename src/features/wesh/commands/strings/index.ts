@@ -8,7 +8,7 @@ import {
   parseStandardArgv,
   type StandardArgvAction,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';

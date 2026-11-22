@@ -1,4 +1,4 @@
-import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv';
 import { normalizePath } from "@/features/wesh/path";
 import type { WeshCommandContext } from "@/features/wesh/types";
 import { parseConfigKey, registerGitCommandConfigEntries, type GitCommandConfigEntry } from "./config";
@@ -61,7 +61,7 @@ export async function parseGitInvocation({ context }: { context: WeshCommandCont
             throw new GitUsageError({ message: `unknown option: ${arg}`, prefix: 'none' });
           default: {
             const _ex: never = analysis.value;
-            throw new Error(`Unhandled --no-pager argv-v2 value analysis: ${JSON.stringify(_ex)}`);
+            throw new Error(`Unhandled --no-pager argv value analysis: ${JSON.stringify(_ex)}`);
           }
           }
         case 'git-dir':
@@ -74,7 +74,7 @@ export async function parseGitInvocation({ context }: { context: WeshCommandCont
               return { option: '--work-tree', envName: 'GIT_WORK_TREE' } as const;
             default: {
               const _ex: never = analysis.semantic;
-              throw new Error(`Unhandled Git directory argv-v2 semantic: ${_ex}`);
+              throw new Error(`Unhandled Git directory argv semantic: ${_ex}`);
             }
             }
           })();
@@ -92,10 +92,10 @@ export async function parseGitInvocation({ context }: { context: WeshCommandCont
             }
             case 'none':
             case 'unexpected-inline':
-              throw new Error(`Unexpected ${target.option} argv-v2 value analysis: ${JSON.stringify(analysis.value)}`);
+              throw new Error(`Unexpected ${target.option} argv value analysis: ${JSON.stringify(analysis.value)}`);
             default: {
               const _ex: never = analysis.value;
-              throw new Error(`Unhandled ${target.option} argv-v2 value analysis: ${JSON.stringify(_ex)}`);
+              throw new Error(`Unhandled ${target.option} argv value analysis: ${JSON.stringify(_ex)}`);
             }
             }
           })();
@@ -105,16 +105,16 @@ export async function parseGitInvocation({ context }: { context: WeshCommandCont
         }
         default: {
           const _ex: never = analysis.semantic;
-          throw new Error(`Unhandled Git global argv-v2 semantic: ${_ex}`);
+          throw new Error(`Unhandled Git global argv semantic: ${_ex}`);
         }
         }
       case 'unknown':
         throw new GitUsageError({ message: `unknown option: ${arg}`, prefix: 'none' });
       case 'ambiguous':
-        throw new Error(`Exact Git global argv-v2 analysis returned ambiguity: ${JSON.stringify(analysis)}`);
+        throw new Error(`Exact Git global argv analysis returned ambiguity: ${JSON.stringify(analysis)}`);
       default: {
         const _ex: never = analysis;
-        throw new Error(`Unhandled Git global argv-v2 analysis: ${JSON.stringify(_ex)}`);
+        throw new Error(`Unhandled Git global argv analysis: ${JSON.stringify(_ex)}`);
       }
       }
     }

@@ -13,7 +13,7 @@ import {
   type StandardArgvOccurrence,
   type StandardArgvPolicy,
   type StandardArgvRawValue,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';

@@ -1,4 +1,4 @@
-import { formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { canonicalizeExistingPath, toAbsolutePath } from '@/features/wesh/path';

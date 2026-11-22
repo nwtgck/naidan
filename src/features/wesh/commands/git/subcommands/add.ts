@@ -11,7 +11,7 @@ import { stageWorktreePaths } from "@/features/wesh/commands/git/stage";
 import { collectPathsForAdd, listWorktreeEntries, lstatWorktreePath, worktreeAbsolutePath } from "@/features/wesh/commands/git/worktree";
 import { resolveContentConfigForContext } from "@/features/wesh/commands/git/content-config";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 
 const ADD_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
   nonExecutableLongOptions: [

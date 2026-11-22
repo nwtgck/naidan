@@ -1,5 +1,5 @@
 import type { WeshShellBuiltinFunction, WeshCommandResult, WeshBuiltinCommandContext } from '@/features/wesh/types';
-import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { compareAsciiStrings } from '@/features/wesh/commands/_shared/ascii-order';
 import { WeshReadonlyVariableError } from '@/features/wesh/shell/variables';

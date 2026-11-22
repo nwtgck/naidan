@@ -1,7 +1,7 @@
 import { normalizePath } from "@/features/wesh/path";
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { initializeBareRepository, initializeRepository, joinPath } from "@/features/wesh/commands/git/repository";
-import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 import { parseConfig, readGlobalConfigEntries } from "@/features/wesh/commands/git/config";
 import { pathExists, readFileText } from "@/features/wesh/commands/git/files";
 import { GitUsageError } from "@/features/wesh/commands/git/errors";

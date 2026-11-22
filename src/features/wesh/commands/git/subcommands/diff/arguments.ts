@@ -1,4 +1,4 @@
-import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 
 const DIFF_SHORT_ARGV_CATALOG = defineArgvCatalog<'unified-context'>({

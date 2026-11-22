@@ -1,5 +1,5 @@
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
-import { formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { parseTreeArgv, treeArgvHelp } from './argv';
 import { createTreeOutputWriter } from './output';

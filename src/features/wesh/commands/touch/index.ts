@@ -12,7 +12,7 @@ import {
   type ParsedStandardArgv,
   type StandardArgvAction,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { parseDateExpressionMilliseconds } from '@/features/wesh/commands/_shared/date-expression';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { writeAllFileBytes } from '@/features/wesh/utils/fs';

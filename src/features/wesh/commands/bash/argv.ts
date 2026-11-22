@@ -3,7 +3,7 @@ import {
   analyzeArgvShortForm,
   defineArgvCatalog,
   type ArgvOptionDefinition,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import {
   createDefaultExecutionOptions,
   type ShellInvocationMode,
@@ -208,7 +208,7 @@ function createBashInvocationPlan({ state, source, argv0, positionalArgs }: {
 }
 
 
-// Bash owns invocation phase and argv-cursor semantics; argv-v2 owns only the
+// Bash owns invocation phase and argv-cursor semantics; argv owns only the
 // frozen token spelling/value-claim mechanics. In particular, this must remain
 // a direct token-local analyzer consumer rather than a parseStandardArgv wrapper.
 type BashArgvOptionSemantic =

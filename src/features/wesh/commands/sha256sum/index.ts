@@ -9,7 +9,7 @@ import {
   type ParsedStandardArgv,
   type StandardArgvAction,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 import type {

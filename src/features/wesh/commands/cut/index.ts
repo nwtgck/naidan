@@ -7,7 +7,7 @@ import {
   type StandardArgvAction,
   type StandardArgvPolicy,
   type StandardArgvRawValue,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult, WeshFileHandle } from '@/features/wesh/types';
 import { openFileReadStream } from '@/features/wesh/utils/fs';

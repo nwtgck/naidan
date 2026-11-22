@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction } from '@/features/wesh/argv';
 import {
   lineOrByteCountArgvAction,
   parseCoreutilsLineOrByteCount,

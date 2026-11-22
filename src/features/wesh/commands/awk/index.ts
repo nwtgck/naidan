@@ -10,7 +10,7 @@ import {
   type ParsedStandardArgv,
   type StandardArgvAction,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { createBufferedCommandDataWriter, decodeCommandDataBytes, encodeCommandDataText } from '@/features/wesh/commands/_shared/data-codec';
 import { splitByPosixLeftmostLongestMatches } from '@/features/wesh/commands/_shared/posix-regexp';
 import { compileAwkRegularExpression } from '@/features/wesh/commands/awk/regexp';

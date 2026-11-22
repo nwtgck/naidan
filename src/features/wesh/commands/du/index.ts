@@ -1,4 +1,4 @@
-import { formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { iterateNullTerminatedPathnames } from '@/features/wesh/commands/_shared/files0-from';
 import {

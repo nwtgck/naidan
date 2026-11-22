@@ -7,7 +7,7 @@ import {
   type StandardArgvAction,
   type StandardArgvPolicy,
   type StandardArgvRawValue,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';

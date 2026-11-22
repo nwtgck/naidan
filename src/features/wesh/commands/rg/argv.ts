@@ -8,7 +8,7 @@ import {
   type StandardArgvAction,
   type StandardArgvPolicy,
   type StandardArgvRawValue,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 
 export type RgCaseMode = 'sensitive' | 'insensitive' | 'smart';
 export type RgOutputMode = 'normal' | 'files-with-matches' | 'files-without-match' | 'count-lines' | 'count-matches';

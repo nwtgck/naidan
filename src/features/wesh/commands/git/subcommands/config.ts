@@ -1,6 +1,6 @@
 import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
-import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import {
   addGlobalConfigValue,
@@ -126,7 +126,7 @@ function resolveConfigLongOption({ arg }: { arg: string }): ConfigLongOptionSema
       throw new GitUsageError({ message: `unknown option: ${arg}` });
     default: {
       const _ex: never = analysis.value;
-      throw new Error(`Unhandled config argv-v2 value analysis: ${JSON.stringify(_ex)}`);
+      throw new Error(`Unhandled config argv value analysis: ${JSON.stringify(_ex)}`);
     }
     }
   case 'ambiguous':
@@ -140,7 +140,7 @@ function resolveConfigLongOption({ arg }: { arg: string }): ConfigLongOptionSema
     return undefined;
   default: {
     const _ex: never = analysis;
-    throw new Error(`Unhandled config argv-v2 analysis: ${JSON.stringify(_ex)}`);
+    throw new Error(`Unhandled config argv analysis: ${JSON.stringify(_ex)}`);
   }
   }
 }

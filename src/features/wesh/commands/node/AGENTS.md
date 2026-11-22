@@ -29,6 +29,6 @@ These rules are security and architecture boundaries, not temporary missing feat
 - Keep production changes for this command inside `src/features/wesh/commands/node/**`,
   except for the explicitly allowed registration-only edit in
   `src/features/wesh/commands/index.ts`.
-- Do not modify argv-v2, VFS, Wesh lexer/parser/DTO/kernel/worker/shell core, or other
+- Do not modify argv, VFS, Wesh lexer/parser/DTO/kernel/worker/shell core, or other
   reserved Wesh core to hide a node-specific compatibility gap. Record such a gap in the
   compatibility lab instead.

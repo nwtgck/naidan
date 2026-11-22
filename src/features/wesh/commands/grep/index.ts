@@ -20,7 +20,7 @@ import {
   type StandardArgvAction,
   type StandardArgvOccurrence,
   type StandardArgvPolicy,
-} from "@/features/wesh/argv-v2";
+} from "@/features/wesh/argv";
 import { decodeCommandDataBytes, encodeCommandDataText } from "@/features/wesh/commands/_shared/data-codec";
 import {
   foldAsciiCase,

@@ -1,4 +1,4 @@
-import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv';
 import { parseGitMaxCount } from '@/features/wesh/commands/git/max-count';
 import { compileGitBasicRegex } from '@/features/wesh/commands/git/basic-regex';
 import type { GitBasicRegex } from '@/features/wesh/commands/git/basic-regex';

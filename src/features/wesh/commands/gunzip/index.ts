@@ -15,7 +15,7 @@ import {
   stopArgvAtFirstEarlyExit,
   type StandardArgvAction,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { getGzipSuffixDiagnostic } from '@/features/wesh/commands/_shared/gzip-suffix';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';

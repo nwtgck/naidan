@@ -4,7 +4,7 @@ import {
   parseStandardArgv,
   type StandardArgvAction,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { compileTreePattern } from './pattern';
 import type { TreeCharset, TreeGroupingMode, TreeOptions, TreeSortMode } from './types';
 

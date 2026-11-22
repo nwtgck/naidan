@@ -7,7 +7,7 @@ import {
   stopArgvAtFirstEarlyExit,
   type StandardArgvAction,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 
 export type SplitMode =
   | { kind: 'lines', count: number }

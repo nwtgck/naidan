@@ -5,7 +5,7 @@ import type {
   WeshCommandResult,
   WeshShellOption,
 } from '@/features/wesh/types';
-import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { SHELL_EXECUTION_OPTION_NAMES, type WeshExecutionOptions } from '@/features/wesh/shell/invocation';
 

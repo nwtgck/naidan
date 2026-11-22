@@ -4,7 +4,7 @@ import {
   defineArgvCatalog,
   defineArgvHelpPresentation,
   formatArgvOptionHelp,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 
 export type FindSymlinkMode = 'physical' | 'command-line' | 'logical';
 type FindEarlyExitOption = 'help' | 'version';

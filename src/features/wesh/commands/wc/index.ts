@@ -8,7 +8,7 @@ import {
   stopArgvAtFirstEarlyExit,
   type StandardArgvAction,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { iterateNullTerminatedPathnames } from '@/features/wesh/commands/_shared/files0-from';
 import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';

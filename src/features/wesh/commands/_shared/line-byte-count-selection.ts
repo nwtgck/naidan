@@ -1,4 +1,4 @@
-import type { ParsedStandardArgv, StandardArgvAction } from '@/features/wesh/argv-v2';
+import type { ParsedStandardArgv, StandardArgvAction } from '@/features/wesh/argv';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 
 const MAX_SAFE_COUNT = BigInt(Number.MAX_SAFE_INTEGER);

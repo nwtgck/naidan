@@ -4,7 +4,7 @@ import {
   HELP_EARLY_EXIT_OPTIONS,
   parseStandardArgv,
   stopArgvAtFirstEarlyExit,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import {
   resolveCharacterLocaleMode,
   type WeshCharacterLocaleMode,

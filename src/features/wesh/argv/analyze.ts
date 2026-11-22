@@ -106,7 +106,7 @@ export function analyzeArgvShortForm<TSemantic>({
 
 // Internal compiled-catalog entry point shared by the standard scanner and the public
 // token-local analyzer. It keeps lexical/value-claim semantics single-sourced without
-// making callers outside argv-v2 depend on the compiled catalog representation.
+// making callers outside argv depend on the compiled catalog representation.
 export function analyzeArgvShortFormWithData<TSemantic>({
   token,
   bodyOffset,

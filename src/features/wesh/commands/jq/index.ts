@@ -1,4 +1,4 @@
-import { formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { formatArgvUsageSummary } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { getJqOptionHelp, jqArgvHelp, parseJqArgv, type JqInjectedArgument } from '@/features/wesh/commands/jq/argv';
 import type { JsonValue, JqFilter, JqPathExpression, JqUserDefinition } from '@/features/wesh/commands/jq/ast';

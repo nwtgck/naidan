@@ -1,4 +1,4 @@
-import { defineArgvCatalog, defineArgvHelpPresentation, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, defineArgvHelpPresentation, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 import type {
   ColumnContext,
   ColumnSelector,

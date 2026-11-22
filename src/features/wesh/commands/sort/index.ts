@@ -8,7 +8,7 @@ import {
   type StandardArgvAction,
   type StandardArgvPolicy,
   type StandardArgvRawValue,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import {
   resolveCharacterLocaleMode,
   uppercaseAscii,

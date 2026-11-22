@@ -1,4 +1,4 @@
-import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, HELP_EARLY_EXIT_OPTIONS, parseStandardArgv, stopArgvAtFirstEarlyExit, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, HELP_EARLY_EXIT_OPTIONS, parseStandardArgv, stopArgvAtFirstEarlyExit, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';

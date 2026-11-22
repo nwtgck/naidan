@@ -1,5 +1,5 @@
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
-import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp } from '@/features/wesh/argv';
 import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 import { writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 

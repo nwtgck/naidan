@@ -7,7 +7,7 @@ import {
   type StandardArgvAction,
   type StandardArgvOccurrence,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import type { DuOutputFormat } from './format';
 import {
   parseDuBlockSize,

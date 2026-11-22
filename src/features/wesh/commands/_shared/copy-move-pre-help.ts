@@ -1,4 +1,4 @@
-import type { ParsedStandardArgv } from '@/features/wesh/argv-v2';
+import type { ParsedStandardArgv } from '@/features/wesh/argv';
 import { parseUpdateMode, type UpdateMode } from './update';
 
 export type CopyMoveOption = 'backup' | 'update';

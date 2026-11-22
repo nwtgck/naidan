@@ -8,7 +8,7 @@ import {
   stopArgvAtFirstEarlyExit,
   type StandardArgvAction,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { resolveCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import type { WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';

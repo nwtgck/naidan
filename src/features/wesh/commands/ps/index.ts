@@ -9,7 +9,7 @@ import {
   type ParsedStandardArgv,
   type StandardArgvAction,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { getWeshTextDisplayWidth } from '@/features/wesh/utils/display-width';
 import type {
