@@ -201,6 +201,15 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    outputs:
+      artifact-digests: >-
+        {
+          "full-dist-build": "${{ steps.full_dist_build.outputs.artifact-digest }}",
+          "standalone-universal-package": "${{ steps.standalone_universal.outputs.artifact-digest }}",
+          "standalone-all-locale-packages": "${{ steps.standalone_locales.outputs.artifact-digest }}",
+          "naidan-hosted": "${{ steps.hosted.outputs.artifact-digest }}",
+          "naidan-server-binary": "${{ steps.server_binary.outputs.artifact-digest }}"
+        }
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -324,12 +333,15 @@ jobs:
             node:22-bookworm node scripts/release-integrity.mjs seal-build /source.json
 
       - name: Upload full dist build artifact
+        id: full_dist_build
         uses: actions/upload-artifact@v7.0.2
         with:
           name: full-dist-build
           path: dist/
+          if-no-files-found: error
 
       - name: Upload universal standalone package artifact
+        id: standalone_universal
         uses: actions/upload-artifact@v7.0.2
         with:
           name: standalone-universal-package
@@ -340,6 +352,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload all standalone locale packages artifact
+        id: standalone_locales
         uses: actions/upload-artifact@v7.0.2
         with:
           name: standalone-all-locale-packages
@@ -351,6 +364,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload hosted artifact
+        id: hosted
         uses: actions/upload-artifact@v7.0.2
         with:
           name: naidan-hosted
@@ -360,10 +374,12 @@ jobs:
           if-no-files-found: error
 
       - name: Upload naidan-server binary artifact
+        id: server_binary
         uses: actions/upload-artifact@v7.0.2
         with:
           name: naidan-server-binary
           path: naidan-server/naidan-server
+          if-no-files-found: error
 
   build_docs:
     runs-on: ubuntu-latest
@@ -854,6 +870,8 @@ jobs:
 
       - name: Assemble the release candidate and freeze its YAML
         id: prepare
+        env:
+          NAIDAN_WORKFLOW_ARTIFACTS: ${{ needs.build.outputs.artifact-digests }}
         run: |
           mkdir "$RUNNER_TEMP/distribution"
           sha256="$(
@@ -861,7 +879,7 @@ jobs:
               --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
               --mount "type=bind,source=$PWD,target=/work,readonly" \
               --mount "type=bind,source=$RUNNER_TEMP/distribution,target=/output" \
-              -w /work -e GITHUB_REF node:22-bookworm node scripts/release-integrity.mjs \
+              -w /work -e GITHUB_REF -e NAIDAN_WORKFLOW_ARTIFACTS node:22-bookworm node scripts/release-integrity.mjs \
               prepare dist/naidan-build-receipt.json /output
           )"
           [[ "$sha256" =~ ^[0-9a-f]{64}$ ]]
@@ -887,6 +905,12 @@ jobs:
               printf "%s  /output/naidan-release-integrity.yaml\n" "$SIGNED_SHA256" | sha256sum --check --status
               cp /bundle.json /output/attestation.bundle.json
             '
+      - name: Upload the integrity YAML for inspection
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: naidan-integrity-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/distribution/naidan-release-integrity.yaml
+          if-no-files-found: error
       - name: Upload the signed release candidate
         id: distribution
         uses: actions/upload-artifact@v7.0.2

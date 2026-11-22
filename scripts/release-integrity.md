@@ -15,10 +15,11 @@ cannot influence a build, or that a reproducible rebuild produces equal bytes.
 
 ## Verify a download
 
-Choose the expected source ref and revision independently. Download the
-distribution Artifact or the YAML and the payload files from a GitHub Release.
-Verify the YAML **before trusting
-its data or running a command copied from it**:
+Choose the expected source ref and revision independently. On the Actions run,
+download the YAML from `naidan-integrity-<attempt>` or get it with the complete
+distribution from `naidan-distribution-<attempt>`. GitHub Releases also offer
+the YAML alongside their assets. Verify the YAML **before trusting its data
+or running a command copied from it**:
 
 ```bash
 gh attestation verify naidan-release-integrity.yaml \
@@ -52,6 +53,15 @@ After successful attestation verification:
 4. To check the complete current release, also compare its uploaded asset
    names with the YAML inventory plus `naidan-release-integrity.yaml` itself.
    Hash checking listed files alone does not detect unrelated extra files.
+
+### Verify an individual Actions Artifact
+
+Download the Artifact ZIP from the same Actions run and hash it before
+extracting it. For example, run `sha256sum standalone-universal-package.zip`
+and compare the result with `workflow_artifacts.standalone-universal-package`
+in the verified YAML. The same check applies to `standalone-all-locale-packages`,
+`naidan-hosted`, `naidan-server-binary` and `full-dist-build`. Each hash covers
+the complete downloaded archive, including any debug files it contains.
 
 The source fingerprint is independent of Git's commit object hash. The commit
 is still a useful locator; compare the content fingerprint against a trusted
@@ -125,9 +135,9 @@ where Bash's automatic `errexit` behavior alone is insufficient.
    A tag such as `v0.72.1-release-trigger-1` makes the same files
    available as a GitHub prerelease outside the Latest release.
 
-The signed inventory describes the candidate's bytes. Later additions or
-replacements on a Release can change what GitHub serves. GitHub-generated
-source archives, release notes and debug reports are outside the inventory.
+The signed file inventory describes the candidate's bytes. Later additions
+or replacements on a Release can change what GitHub serves. GitHub-generated
+source archives and release notes are outside the signed file inventory.
 
 ## Offline verification and disclosure
 

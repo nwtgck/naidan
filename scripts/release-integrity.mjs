@@ -9,6 +9,7 @@ import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {runCommandSync} from '../build/command.ts';
 import {READ_ENV_GITHUB_REPOSITORY, READ_ENV_GITHUB_REF, READ_ENV_GITHUB_SHA, READ_ENV_GITHUB_RUN_ID, READ_ENV_GITHUB_RUN_ATTEMPT,
+  READ_ENV_NAIDAN_WORKFLOW_ARTIFACTS,
   READ_ENV_PATH, READ_ENV_HOME} from '../build/node-env.ts';
 
 export const integrityName = 'naidan-release-integrity.yaml';
@@ -213,7 +214,7 @@ export async function stageReleaseAssets({root, receipt, version, sourceRef, out
 const readJson = async ({file}) => JSON.parse(await readFile(file, 'utf8'));
 const writeNewJson = ({file, value}) => writeFile(file, JSON.stringify(value), {flag: 'wx'});
 
-export async function renderIntegrity({receipt, version, sourceRef, assets}) {
+export async function renderIntegrity({receipt, version, sourceRef, assets, workflowArtifacts}) {
   checkReceipt({receipt});
   assert.equal(version, distributionVersion({sourceRef, packageVersion: version}));
   assert.ok(assets.length > 0);
@@ -227,6 +228,14 @@ export async function renderIntegrity({receipt, version, sourceRef, assets}) {
     assert.match(asset.name, safeAssetPattern);
     assert.match(asset.sha256, sha256Pattern);
     assert.ok(Number.isSafeInteger(asset.size) && asset.size >= 0);
+  }
+  assert.ok(workflowArtifacts && typeof workflowArtifacts === 'object' && !Array.isArray(workflowArtifacts),
+    'Invalid Actions artifact digests');
+  const artifactDigests = Object.entries(workflowArtifacts);
+  assert.ok(artifactDigests.length > 0, 'Missing Actions artifact digests');
+  for (const [name, sha256] of artifactDigests) {
+    assert.match(name, safeAssetPattern);
+    assert.match(sha256, sha256Pattern, `Invalid Actions artifact digest: ${name}`);
   }
   // JSON-quoted scalars are YAML scalars. Only the audited Bash uses a literal block.
   return `\
@@ -257,6 +266,9 @@ build:
   attempt: ${quote(source.build_attempt)}
 artifacts:
 ${assets.map(asset => `  - name: ${quote(asset.name)}\n    size: ${asset.size}\n    sha256: ${quote(asset.sha256)}`).join('\n')}
+# SHA-256 of each complete Actions Artifact ZIP, before extraction.
+workflow_artifacts:
+${artifactDigests.map(([name, sha256]) => `  ${quote(name)}: ${quote(sha256)}`).join('\n')}
 verification:
   # Choose the expected ref and commit yourself. Verify the signature before running the recipe.
   attestation: |
@@ -298,8 +310,9 @@ async function main() {
     const receipt = await readJson({file: input});
     const sourceRef = READ_ENV_GITHUB_REF();
     const version = distributionVersion({sourceRef, packageVersion: (await readJson({file: path.join(root, 'package.json')})).version});
+    const workflowArtifacts = JSON.parse(READ_ENV_NAIDAN_WORKFLOW_ARTIFACTS());
     const assets = await stageReleaseAssets({root, receipt, version, sourceRef, output: path.join(output, 'assets')});
-    const yaml = await renderIntegrity({receipt, version, sourceRef, assets});
+    const yaml = await renderIntegrity({receipt, version, sourceRef, assets, workflowArtifacts});
     await writeFile(path.join(output, integrityName), yaml, {flag: 'wx'});
     writeSync(process.stdout.fd, createHash('sha256').update(yaml).digest('hex'));
   } else {

@@ -2,12 +2,13 @@
 // !!! ALLOW-EXTERNAL-COMMAND bash -c:* !!! -- Execute the published artifact-verification recipe against fixture files.
 // !!! ALLOW-EXTERNAL-COMMAND node:* !!! -- Run the offline release integrity CLI against fixture packages.
 import assert from 'node:assert/strict';
-import {mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {it} from 'node:test';
+import {UI_LOCALES} from '../../src/01-models/ui-locale.ts';
 import {runCommandSync} from '../../build/command.ts';
 import {READ_ENV_PATH, READ_ENV_HOME, READ_ENV_TMPDIR} from '../../build/node-env.ts';
 import {captureSource, collectBuildInputs, distributionVersion, fingerprintScheme, hashFile, integrityName,
@@ -17,6 +18,14 @@ const require = createRequire(import.meta.url);
 const workflow = await readFile(new URL('../../.github/workflows/sync-release-notes.yml', import.meta.url), 'utf8');
 const integrityScript = fileURLToPath(new URL('../release-integrity.mjs', import.meta.url));
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const standaloneZips = ['naidan-standalone.zip', ...UI_LOCALES.map(locale => `naidan-standalone-${locale}.zip`)];
+const workflowArtifacts = {
+  'full-dist-build': '1'.repeat(64),
+  'standalone-universal-package': '2'.repeat(64),
+  'standalone-all-locale-packages': '3'.repeat(64),
+  'naidan-hosted': '4'.repeat(64),
+  'naidan-server-binary': '5'.repeat(64),
+};
 const source = () => ({repository: 'https://github.com/nwtgck/naidan', commit: 'a'.repeat(40),
   run_id: '1234', build_attempt: '1', tree_fingerprint: {algorithm: 'sha256', scheme: fingerprintScheme, value: 'b'.repeat(64)}});
 
@@ -39,7 +48,7 @@ async function fixture({t}) {
   await mkdir(path.join(root, 'dist/hosted/sub'), {recursive: true});
   for (const [name, bytes] of [
     ['hosted/index.html', '<html>build</html>'], ['hosted/sub/module.js', 'export const x = 1;'],
-    ['naidan-hosted.zip', 'hosted ZIP'], ['naidan-standalone.zip', 'universal ZIP'], ['naidan-standalone-ja.zip', 'Japanese ZIP'],
+    ['naidan-hosted.zip', 'hosted ZIP'], ...standaloneZips.map(name => [name, `built ${name}`]),
   ]) {
     await writeFile(path.join(root, 'dist', name), bytes);
   }
@@ -90,8 +99,8 @@ it('binds hosted files and all ZIPs, allowing a later attempt within the same ru
   const {root, receipt} = await fixture({t});
   await verifyBuild({root, receipt, source: {...source(), build_attempt: '2'}});
   assert.deepEqual(receipt.files.map(entry => entry.path), [
-    'hosted/index.html', 'hosted/sub/module.js', 'naidan-hosted.zip', 'naidan-standalone-ja.zip', 'naidan-standalone.zip',
-  ]);
+    'hosted/index.html', 'hosted/sub/module.js', 'naidan-hosted.zip', ...standaloneZips,
+  ].sort());
   for (const change of [{run_id: '999'}, {commit: 'c'.repeat(40)}, {repository: 'https://github.com/other/repo'},
     {tree_fingerprint: {...source().tree_fingerprint, value: 'c'.repeat(64)}}]) {
     await assert.rejects(verifyBuild({root, receipt, source: {...source(), ...change}}), /another run/);
@@ -137,7 +146,7 @@ it('derives public GoReleaser assets from rehashed files, rejecting escapes and 
   const stage = async () => stageReleaseAssets({root, receipt, version: '1.2.3',
     sourceRef: 'refs/tags/v1.2.3', output: path.join(await mkdtemp(path.join(root, 'stage-')), 'assets')});
   const assets = await stage();
-  assert.equal(assets.length, 6);
+  assert.equal(assets.length, go.length + standaloneZips.length + 1);
   assert.equal(assets.find(entry => entry.name === 'checksums.txt').sha256,
     (await hashFile({file: path.join(root, 'dist/goreleaser-dist/checksums.txt')})).sha256);
   const save = async ({entries}) => writeFile(path.join(root, 'dist/goreleaser-dist/artifacts.json'), JSON.stringify(entries));
@@ -159,7 +168,7 @@ it('embeds the exact fingerprint script and runnable artifact checks, without se
   await prepare({version: '1.2.3'});
   const proofDirectory = path.join(root, 'assets');
   const assets = await stageReleaseAssets({root, receipt, version: '1.2.3', sourceRef: 'refs/tags/v1.2.3', output: proofDirectory});
-  const yaml = await renderIntegrity({receipt, version: '1.2.3', sourceRef: 'refs/tags/v1.2.3', assets});
+  const yaml = await renderIntegrity({receipt, version: '1.2.3', sourceRef: 'refs/tags/v1.2.3', assets, workflowArtifacts});
   const script = await readFile(new URL('../treefingerprint.sh', import.meta.url), 'utf8');
   assert.ok(yaml.includes(script.trimEnd().split('\n').map(line => `      ${line}`).join('\n')));
   assert.match(yaml, /--signer-workflow nwtgck\/naidan\/\.github\/workflows\/main\.yml/);
@@ -213,7 +222,7 @@ async function candidateFixture({t, sourceRef}) {
     const options = commandOptions({cwd: root});
     const result = completed({result: runCommandSync({
       argv: ['node', integrityScript, 'prepare', receiptFile, directory],
-      options: {...options, env: {...options.env, GITHUB_REF: sourceRef}},
+      options: {...options, env: {...options.env, GITHUB_REF: sourceRef, NAIDAN_WORKFLOW_ARTIFACTS: JSON.stringify(workflowArtifacts)}},
     })});
     assert.equal(result.status, 0, result.stderr);
     return result.stdout;
@@ -227,7 +236,7 @@ it('seals branch, stable tag and prerelease candidates through the same entry po
     ['refs/tags/v1.2.3', '1.2.3'],
     ['refs/tags/v0.72.1-release-trigger-1', '0.72.1-release-trigger-1'],
   ]) {
-    const {directory, prepareIntegrity} = await candidateFixture({t, sourceRef});
+    const {root, directory, prepareIntegrity} = await candidateFixture({t, sourceRef});
     const digest = prepareIntegrity();
     const file = path.join(directory, integrityName);
     const yaml = await readFile(file, 'utf8');
@@ -235,6 +244,17 @@ it('seals branch, stable tag and prerelease candidates through the same entry po
     assert.ok(yaml.includes(`version: "${version}"`));
     assert.ok(yaml.includes(`  ref: "${sourceRef}"`));
     assert.ok(yaml.includes(`naidan-hosted-v${version}.zip`));
+    const signedArtifactDigests = yaml.split('\nworkflow_artifacts:\n')[1].split('\nverification:\n')[0];
+    assert.deepEqual(signedArtifactDigests.split('\n'),
+      Object.entries(workflowArtifacts).map(([name, sha256]) => `  "${name}": "${sha256}"`));
+    const assetDirectory = path.join(directory, 'assets');
+    const versionedZips = standaloneZips.map(name => `${name.slice(0, -4)}-v${version}.zip`);
+    assert.deepEqual((await readdir(assetDirectory)).filter(name => name.startsWith('naidan-standalone-')).sort(),
+      [...versionedZips].sort());
+    for (const [index, name] of versionedZips.entries()) {
+      assert.deepEqual(await readFile(path.join(assetDirectory, name)), await readFile(path.join(root, 'dist', standaloneZips[index])));
+      assert.ok(yaml.includes(`name: "${name}"`));
+    }
     if (sourceRef.startsWith('refs/heads/')) {
       assert.match(yaml, /release_tag: null/);
       assert.match(yaml, /name: "naidan-server"/);
@@ -245,6 +265,16 @@ it('seals branch, stable tag and prerelease candidates through the same entry po
     }
     assert.throws(prepareIntegrity, /EEXIST/);
     assert.equal((await hashFile({file})).sha256, digest);
+  }
+});
+
+it('refuses to render integrity evidence with an empty or malformed Actions artifact digest', async t => {
+  const {receipt} = await fixture({t});
+  const sourceRef = 'refs/tags/v1.2.3';
+  const assets = [{name: 'naidan-standalone-v1.2.3.zip', size: 10, sha256: 'a'.repeat(64)}];
+  for (const digests of [{}, {...workflowArtifacts, 'naidan-hosted': ''}, {...workflowArtifacts, 'naidan-hosted': 'invalid'}]) {
+    await assert.rejects(renderIntegrity({receipt, version: '1.2.3', sourceRef, assets, workflowArtifacts: digests}),
+      /Actions artifact digest/);
   }
 });
 

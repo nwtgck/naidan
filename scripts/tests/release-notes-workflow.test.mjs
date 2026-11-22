@@ -310,6 +310,9 @@ it('shares the signed candidate across branch builds and both Release destinatio
   assert.match(candidate, /GOTMPDIR=\/work\/dist/);
   assert.match(candidate, /subject-digest: sha256:\$\{\{ steps\.prepare\.outputs\.sha256 \}\}/);
   assert.match(candidate, /attestation\.bundle\.json/);
+  assert.match(candidate, /name: naidan-integrity-\$\{\{ github\.run_attempt \}\}\n +path: \$\{\{ runner\.temp \}\}\/distribution\/naidan-release-integrity\.yaml/);
+  assert.match(candidate, /NAIDAN_WORKFLOW_ARTIFACTS: \$\{\{ needs\.build\.outputs\.artifact-digests \}\}/);
+  assert.match(candidate, /-e NAIDAN_WORKFLOW_ARTIFACTS/);
   assert.match(candidate, /path: \$\{\{ runner\.temp \}\}\/distribution\//);
   assert.match(stable, /!contains\(github\.ref_name, '-'\)/);
   assert.match(stable, /distribution-artifact-id: \$\{\{ needs\.prepare_release\.outputs\.artifact-id \}\}/);

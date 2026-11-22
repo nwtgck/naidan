@@ -19,3 +19,4 @@ export const READ_ENV_GITHUB_REF = () => process.env.GITHUB_REF;
 export const READ_ENV_GITHUB_SHA = () => process.env.GITHUB_SHA;
 export const READ_ENV_GITHUB_RUN_ID = () => process.env.GITHUB_RUN_ID;
 export const READ_ENV_GITHUB_RUN_ATTEMPT = () => process.env.GITHUB_RUN_ATTEMPT;
+export const READ_ENV_NAIDAN_WORKFLOW_ARTIFACTS = () => process.env.NAIDAN_WORKFLOW_ARTIFACTS;
