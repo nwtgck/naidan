@@ -188,6 +188,7 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v7.1.0
@@ -195,11 +196,21 @@ jobs:
           node-version: 22.x
           cache: 'npm'
 
+      - name: Capture committed release source before dependency installation
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/release-integrity.mjs capture-source "$RUNNER_TEMP/naidan-build-source.json"
+
       - name: Install dependencies
         id: npm_install
         uses: $/.github/actions/retry-npm-ci
         with:
           node-image: node:22-bookworm
+
+      - name: Require unchanged tracked release source after installation
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          test "$(git --no-replace-objects rev-parse HEAD)" = "$GITHUB_SHA"
+          git --no-replace-objects diff --quiet --no-ext-diff "$GITHUB_SHA" --
 
       - name: Run build
         # Keep headroom for memory-intensive standalone and hosted bundles.
@@ -216,6 +227,9 @@ jobs:
             -v "$PWD:/work" \
             -v "$PWD/naidan-server:/work/naidan-server:ro" \
             -v "$PWD/package.json:/work/package.json:ro" \
+            -v "$PWD/scripts:/work/scripts:ro" \
+            -v "$PWD/build:/work/build:ro" \
+            -v "$PWD/.git:/work/.git:ro" \
             -w /work \
             -e HOME=/tmp -e CI=true -e NODE_OPTIONS \
             node:22-bookworm npm run build:all
@@ -267,6 +281,10 @@ jobs:
           test -d dist/debug-tailwind-standalone
           test -f dist/naidan-hosted.zip
           test -d dist/debug-tailwind-hosted
+
+      - name: Bind release ZIPs and embedded hosted files to this build
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/release-integrity.mjs seal-build "$RUNNER_TEMP/naidan-build-source.json"
 
       - name: Upload full dist build artifact
         uses: actions/upload-artifact@v7.0.2
@@ -733,13 +751,15 @@ jobs:
             --cap-drop=ALL --security-opt=no-new-privileges:true \
             --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev \
             --mount "type=bind,source=$PWD,target=/work,readonly" -w /work \
-            node:22-bookworm node --test scripts/tests/release-notes-workflow.test.mjs
+            node:22-bookworm node --test scripts/tests/*.test.mjs
 
   release_to_github:
     needs: [build, test_release_tooling]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     # A single reusable job serializes note synchronization AND asset publishing.
     uses: $/.github/workflows/sync-release-notes.yml
     with:

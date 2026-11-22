@@ -263,12 +263,22 @@ it('workflow keeps audit boundaries, shared non-dropping lock, and guarded asset
   const offline = workflow.split('- name: Plan all release-note changes offline')[1].split('- name: Validate')[0];
   assert.doesNotMatch(offline, /GH_TOKEN|GITHUB_TOKEN|docker\.sock|--privileged|--network host/);
   assert.doesNotMatch(workflow, /require\(['"]\.\//);
-  const assets = workflow.split('- name: Download full dist build artifact')[1];
-  assert.equal((assets.match(/if: \$\{\{ inputs.publish-tag != '' && !inputs.dry-run \}\}/g) || []).length, 5);
+  const assets = workflow.slice(workflow.indexOf('      - name: Refuse to overwrite an already signed publication'));
+  for (const step of assets.split(/^      - name:/m).slice(1)) {
+    assert.match(step, /if: \$\{\{ inputs.publish-tag != '' && !inputs.dry-run \}\}/,
+      'Every publication step must require a non-dry tag publication');
+  }
+  assert.ok(assets.indexOf('id: guard_publication') < assets.indexOf('uses: softprops/action-gh-release'));
+  assert.ok(assets.indexOf('id: verify_publication') < assets.indexOf('uses: actions/attest@'));
+  assert.ok(assets.indexOf('uses: actions/attest@') < assets.indexOf('id: publish_integrity'));
+  assert.equal((assets.match(/uses: actions\/attest@/g) || []).length, 1);
   assert.doesNotMatch(assets, /^\s+(body|body_path|generate_release_notes):/m);
   const main = await readFile(new URL('.github/workflows/main.yml', root), 'utf8');
   assert.match(main, /needs: \[build, test_release_tooling\]/);
   assert.match(main, /uses: \$\/\.github\/workflows\/sync-release-notes.yml/);
+  const caller = main.split('  release_to_github:')[1];
+  assert.match(caller, /id-token: write/);
+  assert.match(caller, /attestations: write/);
   assert.doesNotMatch(main, /uses: goreleaser\/goreleaser-action/);
   const config = await readFile(new URL('.goreleaser.yaml', root), 'utf8');
   assert.match(config, /changelog:\n(?:  #[^\n]*\n)*  disable: true/);
@@ -309,4 +319,19 @@ it('shared changelog formatting changes trigger release-note synchronization', (
   const push = workflow.split('  workflow_dispatch:')[0];
   assert.match(push, /^      - scripts\/changelog_format\.py$/m);
   assert.doesNotMatch(push, /^      - changelog-unreleased/m);
+});
+
+it('protects host publication tooling and Git state across dependency installation and build', async () => {
+  const main = await readFile(new URL('.github/workflows/main.yml', root), 'utf8');
+  const build = main.split('  build:\n')[1].split(/^  [a-z_]+:/m)[0];
+  const install = await readFile(new URL('.github/actions/retry-npm-ci/action.yml', root), 'utf8');
+  for (const [block, prefix] of [[install, '$GITHUB_WORKSPACE'], [build, '$PWD']]) {
+    assert.ok(block.includes(`-v "${prefix}/scripts:/work/scripts:ro"`));
+    assert.ok(block.includes(`-v "${prefix}/build:/work/build:ro"`));
+    assert.ok(block.includes(`-v "${prefix}/.git:/work/.git:ro"`));
+  }
+  assert.ok(build.indexOf('capture-source') < build.indexOf('name: Install dependencies'));
+  assert.ok(build.indexOf('rev-parse HEAD)" = "$GITHUB_SHA"') < build.indexOf('name: Run build'));
+  assert.ok(build.includes('diff --quiet --no-ext-diff "$GITHUB_SHA" --'));
+  assert.ok(build.indexOf('seal-build') < build.indexOf('name: Upload full dist build artifact'));
 });
