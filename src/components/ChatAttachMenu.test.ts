@@ -5,11 +5,9 @@ import ChatAttachMenu from './ChatAttachMenu.vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const bounds = { top: ref(400), bottom: ref(436), left: ref(280), width: ref(36) };
-const windowSize = { width: ref(360), height: ref(640) };
 vi.mock('@vueuse/core', async importOriginal => ({
   ...(await importOriginal<typeof import('@vueuse/core')>()),
   useElementBounding: () => bounds,
-  useWindowSize: () => windowSize,
 }));
 enableAutoUnmount(afterEach);
 
@@ -17,8 +15,9 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   bounds.top.value = 400;
   bounds.bottom.value = 436;
-  windowSize.width.value = 360;
-  windowSize.height.value = 640;
+  vi.stubGlobal('innerWidth', 360);
+  vi.stubGlobal('innerHeight', 640);
+  vi.stubGlobal('visualViewport', undefined);
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -36,6 +35,11 @@ describe('ChatAttachMenu', () => {
     await flushPromises();
     expect(menu.textContent).toContain('Chromium');
     expect(menu.style.maxHeight).not.toBe('');
+
+    vi.stubGlobal('innerWidth', 300);
+    window.dispatchEvent(new Event('resize'));
+    await flushPromises();
+    expect(parseFloat(menu.style.left) + parseFloat(menu.style.width)).toBeLessThanOrEqual(284);
   });
 
   it('clamps its height and width to the visual viewport when a software keyboard is open', async () => {
