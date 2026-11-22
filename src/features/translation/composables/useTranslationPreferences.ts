@@ -10,33 +10,44 @@ export function useTranslationPreferences({ store }: {
   const preferences = computed(() => store.settings.value.experimental?.translation);
   const saving = ref(false);
   const failed = ref(false);
+  let pending: Promise<void> | undefined;
   let disposed = false;
   onScopeDispose(() => {
     disposed = true;
   });
 
-  async function save({ patch }: { patch: TranslationPreferences }): Promise<boolean> {
+  async function save({ patch, signal }: { patch: TranslationPreferences, signal?: AbortSignal }): Promise<boolean> {
     if (disposed || saving.value) {
       return false;
     }
     // Save before exposing the new selection. Serial controls avoid optimistic
     // values being overwritten by an older queued settings write.
     const isCurrent = store.captureExperimentalStorage();
+    const settled = Promise.withResolvers<void>();
+    pending = settled.promise;
     saving.value = true;
     failed.value = false;
     try {
       const outcome = await store.updateExperimentalForStorage({
-        isCurrent: () => !disposed && isCurrent(),
+        isCurrent: () => !disposed && !signal?.aborted && isCurrent(),
         updater: ({ experimental }) => ({ ...experimental, translation: { ...experimental?.translation, ...patch } }),
       });
-      return !disposed && isCurrent() && outcome === 'saved';
+      return !disposed && !signal?.aborted && isCurrent() && outcome === 'saved';
     } catch {
       if (!disposed && isCurrent()) {
         failed.value = true;
       }
       return false;
     } finally {
+      pending = undefined;
       saving.value = false;
+      settled.resolve();
+    }
+  }
+
+  async function waitForSave(): Promise<void> {
+    while (pending !== undefined) {
+      await pending;
     }
   }
   return {
@@ -44,6 +55,7 @@ export function useTranslationPreferences({ store }: {
     saving,
     failed,
     save,
+    waitForSave,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };
 }

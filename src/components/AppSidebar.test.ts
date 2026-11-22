@@ -224,7 +224,7 @@ it('keeps chat model controls above the shared settings, catalog and debug row w
 });
 
 it('keeps the image target while workspace navigation is pending and never borrows another owner', async () => {
-  const unregister = registerTranslationNavigation({ navigation: { openModels: vi.fn(), openWorkspace: vi.fn() } });
+  const unregister = registerTranslationNavigation({ navigation: { openWorkspace: vi.fn() } });
   using _registered = {
     [Symbol.dispose]() {
       unregister();

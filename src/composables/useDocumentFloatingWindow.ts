@@ -4,7 +4,7 @@ type DocumentPictureInPicture = {
   requestWindow({ width, height }: { width: number, height: number }): Promise<Window>,
 };
 
-export function useAudioTranscriptionFloatingWindow({ microphone, title }: { microphone: Readonly<Ref<boolean>>, title: () => string }) {
+export function useDocumentFloatingWindow({ enabled, title, width, height, includeAppStyles = false }: { enabled: Readonly<Ref<boolean>>, title: () => string, width: number, height: number, includeAppStyles?: boolean }) {
   const api = (window as Window & { documentPictureInPicture?: DocumentPictureInPicture }).documentPictureInPicture;
   const supported = typeof api?.requestWindow === 'function';
   const target = shallowRef<Window>();
@@ -22,7 +22,7 @@ export function useAudioTranscriptionFloatingWindow({ microphone, title }: { mic
     clearWindow();
     previous?.close();
   }
-  watch(microphone, active => {
+  watch(enabled, active => {
     if (!active) {
       close();
     }
@@ -33,7 +33,7 @@ export function useAudioTranscriptionFloatingWindow({ microphone, title }: { mic
   });
 
   async function show(): Promise<void> {
-    if (!microphone.value || disposed || !supported || api === undefined || opening.value) {
+    if (!enabled.value || disposed || !supported || api === undefined || opening.value) {
       return;
     }
     if (target.value !== undefined) {
@@ -43,8 +43,8 @@ export function useAudioTranscriptionFloatingWindow({ microphone, title }: { mic
     opening.value = true;
     let opened: Window | undefined;
     try {
-      opened = await api.requestWindow({ width: 400, height: 280 });
-      if (disposed || !microphone.value) {
+      opened = await api.requestWindow({ width, height });
+      if (disposed || !enabled.value) {
         opened.close();
         return;
       }
@@ -53,7 +53,23 @@ export function useAudioTranscriptionFloatingWindow({ microphone, title }: { mic
       const style = pipDocument.createElement('style');
       // The floating document needs its own copy of Naidan's generated CSS.
       // Use the already loaded rules so opening the window starts no fetches.
-      const registeredStyles = document.head.querySelector('style[data-naidan-tailwind-runtime]');
+      const registeredStyles = document.head.querySelector<HTMLStyleElement>('style[data-naidan-tailwind-runtime]');
+      if (includeAppStyles) {
+        const componentStyles = pipDocument.createElement('style');
+        // Copy loaded application rules, including Vue's scoped styles, so
+        // Teleport can reuse the same controls without loading stylesheets again.
+        componentStyles.textContent = Array.from(document.styleSheets).flatMap(sheet => {
+          if (sheet === registeredStyles?.sheet || sheet.disabled || (sheet.href !== null && new URL(sheet.href, document.baseURI).origin !== window.location.origin)) {
+            return [];
+          }
+          try {
+            return Array.from(sheet.cssRules).flatMap(rule => rule.type === CSSRule.IMPORT_RULE ? [] : [rule.cssText]);
+          } catch {
+            return [];
+          }
+        }).join('\n');
+        pipDocument.head.append(componentStyles);
+      }
       const syncStyles = () => {
         const root = pipDocument.documentElement;
         root.lang = document.documentElement.lang;

@@ -4071,7 +4071,6 @@ import { translation__translation } from '@/strings/messages/translation__transl
 import { translation__translation_appears_here } from '@/strings/messages/translation__translation_appears_here/de';
 import { translation__translation_complete } from '@/strings/messages/translation__translation_complete/de';
 import { translation__translation_failed } from '@/strings/messages/translation__translation_failed/de';
-import { translation__translation_models } from '@/strings/messages/translation__translation_models/de';
 import { translation__translation_options } from '@/strings/messages/translation__translation_options/de';
 import { translation__translation_stopped } from '@/strings/messages/translation__translation_stopped/de';
 import { translation__translation_truncated } from '@/strings/messages/translation__translation_truncated/de';
@@ -8574,7 +8573,6 @@ export const catalog = {
   translation__translation_appears_here,
   translation__translation_complete,
   translation__translation_failed,
-  translation__translation_models,
   translation__translation_options,
   translation__translation_stopped,
   translation__translation_truncated,

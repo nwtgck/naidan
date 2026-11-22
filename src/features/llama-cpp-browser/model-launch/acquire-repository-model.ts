@@ -6,7 +6,7 @@ import { findLocalSuggestedModel } from '@/features/llama-cpp-browser/hugging-fa
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
 import { targetForSelection } from '@/features/llama-cpp-browser/model-launch/target';
 import { selectionKey } from '@/features/llama-cpp-browser/hugging-face/download-plan';
-import { installedHostRepositoryVariant, installedSelection } from '@/features/llama-cpp-browser/hugging-face/storage';
+import { installedRepositoryVariant, installedSelection } from '@/features/llama-cpp-browser/hugging-face/storage';
 import type { DownloadSelection } from '@/features/llama-cpp-browser/hugging-face/types';
 import { repositoryModelDownloadIdentity, resolveBundledRepositoryTarget, type RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
 import { isHostDestination, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
@@ -79,7 +79,7 @@ export async function acquireRepositoryModel({ selection, usage, models, capture
   function recheckHostVariant({ destination, expectedRoot }: { destination: Extract<ModelDestination, { kind: 'host' }>, expectedRoot: FileSystemDirectoryHandle | undefined }): Promise<LocalModel | undefined> {
     switch (source.kind) {
     case 'bundled': return awaitInspection({
-      task: installedHostRepositoryVariant({
+      task: installedRepositoryVariant({
         repository: source.repository,
         variant: source.variant,
         requireProjector: source.companionPath !== undefined,

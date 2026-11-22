@@ -1,36 +1,39 @@
 <script setup lang="ts">
 import { computed, onMounted, onScopeDispose, ref, shallowRef, useId, watch } from 'vue';
-import { ArrowLeftRightIcon, ChevronRightIcon, CopyIcon, ChevronDownIcon, FilePenLineIcon, LanguagesIcon, Loader2Icon, PlusIcon, SlidersHorizontalIcon, SquareIcon, Trash2Icon } from 'lucide-vue-next';
+import { ChevronRightIcon, LanguagesIcon, PictureInPicture2Icon, PlusIcon, SlidersHorizontalIcon, Trash2Icon } from 'lucide-vue-next';
+import logoUrl from '@/assets/logo.svg?inline';
 import { currentLocale, lazyStrings } from '@/strings';
 import { useSettings } from '@/composables/useSettings';
-import ToggleSwitch from '@/components/ToggleSwitch.vue';
+import { useDocumentFloatingWindow } from '@/composables/useDocumentFloatingWindow';
+import { splitModelIdDisplay } from '@/01-models/llama-cpp-browser-model-id';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import SettingsSelectScope from '@/components/SettingsSelectScope.vue';
 import LlamaCppBrowserModelActionButton from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelActionButton.vue';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
-import { splitModelName } from '@/utils/model-name';
-import TranslationModelPanel from './TranslationModelPanel.vue';
-import TranslationAutomaticSettings from './TranslationAutomaticSettings.vue';
-import TranslationInputProgress from './TranslationInputProgress.vue';
-import TranslationOutput from './TranslationOutput.vue';
+import TranslationModelSelector from './TranslationModelSelector.vue';
+import { defaultTranslationModel } from '@/features/translation/model-catalog';
+import { acquireRepositoryModel } from '@/features/llama-cpp-browser/model-launch/acquire-repository-model';
+import type { RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
+import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
+import { getDownloadQueue } from '@/features/llama-cpp-browser/hugging-face/download-queue';
+import { findLocalSuggestedModel } from '@/features/llama-cpp-browser/hugging-face/suggestion-plan';
+import TranslationEditors from './TranslationEditors.vue';
 import { automaticTranslationSettings } from '@/features/translation/automatic-settings';
 import { useTranslationModelPreparation } from '@/features/translation/composables/useTranslationModelPreparation';
-import LlamaCppBrowserModelLoadProgress from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelLoadProgress.vue';
 import { useAutomaticTranslation } from '@/features/translation/composables/useAutomaticTranslation';
 import { useTranslationLanguages } from '@/features/translation/composables/useTranslationLanguages';
-import type { EngineState } from '@/features/llama-cpp-browser/types';
+import type { EngineState, LocalModel } from '@/features/llama-cpp-browser/types';
 import { useTranslationPreferences } from '@/features/translation/composables/useTranslationPreferences';
 import { useTranslationSession } from '@/features/translation/composables/useTranslationSession';
 import { inspectStoredTranslationModel } from '@/features/translation/model-detection';
 import { translationProfile } from '@/features/translation/profiles';
 import { registerTranslationNavigation } from '@/features/translation/navigation';
 import type { TranslationDetection, TranslationGlossaryEntry, TranslationIssue } from '@/features/translation/types';
+import { awaitInspection } from '@/logic/model-file-inspection/abort';
 
-const props = defineProps<{ tab: 'workspace' | 'models' }>();
-const emit = defineEmits<{ openWorkspace: [], openModels: [] }>();
 const id = useId();
 const store = useSettings();
-const { preferences, saving, failed: saveFailed, save } = useTranslationPreferences({ store });
+const { preferences, saving, failed: saveFailed, save, waitForSave } = useTranslationPreferences({ store });
 const { phase, output, previousOutput, displayRevision, progress, issue, failure, busy, translate, stop, invalidate, reset } = useTranslationSession({ service: llamaCppBrowserService, inspectModel: inspectStoredTranslationModel });
 const text = ref('');
 const context = ref('');
@@ -38,12 +41,29 @@ const glossary = ref<TranslationGlossaryEntry[]>([]);
 const form = ref<'default' | 'polite' | 'plain'>('default');
 const detailsOpen = ref(false);
 const detailsTrigger = ref<HTMLElement>();
-const sourceInput = ref<HTMLTextAreaElement>();
-const outputElement = ref<InstanceType<typeof TranslationOutput>>();
+const mainEditors = ref<InstanceType<typeof TranslationEditors>>();
+const floatingOpenFailed = ref(false);
+const floatingWindow = useDocumentFloatingWindow({
+  enabled: store.initialized,
+  title: () => lazyStrings.translation__translation() ?? document.title,
+  width: 450,
+  height: 410,
+  includeAppStyles: true,
+});
+const floatingDocument = floatingWindow.document;
+const floatingButtonLabel = computed(() => floatingWindow.supported ? lazyStrings.AudioTranscriptionWorkspace__open_floating_window() : lazyStrings.AudioTranscriptionWorkspace__floating_window_unavailable());
 const storageEpoch = ref(0);
 const copied = ref<'idle' | 'copied' | 'failed'>('idle');
-const modelTrigger = ref<HTMLElement>();
-const composing = ref(false);
+const modelSelector = ref<InstanceType<typeof TranslationModelSelector>>();
+const modelPickerOpen = ref(false);
+const inventory = shallowRef<readonly LocalModel[]>();
+const chosenRepositoryModel = shallowRef<RepositoryModelSelection>();
+const acquiring = shallowRef<{ controller: AbortController, selection: RepositoryModelSelection, translateAfterDownload: boolean }>();
+const activeDownloadId = ref<number>();
+const downloadFailed = ref(false);
+const runWhenReady = ref<string>();
+const composingInput = shallowRef<HTMLTextAreaElement>();
+const composing = computed(() => composingInput.value !== undefined);
 const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
 const selectedDetection = shallowRef<TranslationDetection>();
 const inspecting = ref(false);
@@ -54,13 +74,58 @@ let inspection: AbortController | undefined;
 let selection: AbortController | undefined;
 let disposed = false;
 let storageCurrent = store.initialized.value ? store.captureExperimentalStorage() : undefined;
-const modelId = computed(() => preferences.value?.modelId);
+const blocked = computed(() => saving.value || checkingSelection.value || changingLanguages.value || !store.initialized.value);
+const downloadDestination = useModelDownloadDestination({ blocked: () => blocked.value || busy.value || acquiring.value !== undefined, changed: () => {} });
+const downloadQueue = getDownloadQueue();
+const downloadProgress = computed(() => downloadQueue.jobs.value.find(job => job.id === activeDownloadId.value)?.progress);
+const modelId = computed(() => {
+  const saved = preferences.value?.modelId;
+  const models = inventory.value ?? [];
+  if (saved) {
+    return saved;
+  }
+  const quantization = defaultTranslationModel;
+  const opfs = findLocalSuggestedModel({ quantization, models, destination: { kind: 'opfs' } });
+  if (opfs !== undefined) {
+    return opfs.modelId;
+  }
+  const linked = new Set(models.flatMap(({ source }) => source === undefined ? [] : [source.directoryId]));
+  for (const directoryId of linked) {
+    const model = findLocalSuggestedModel({ quantization, models, destination: { kind: 'host', directoryId } });
+    if (model !== undefined) {
+      return model.modelId;
+    }
+  }
+  return undefined;
+});
+const pendingModel = computed<RepositoryModelSelection | undefined>(() => {
+  if (!store.initialized.value) {
+    return undefined;
+  }
+  if (chosenRepositoryModel.value !== undefined) {
+    return { ...chosenRepositoryModel.value, destination: downloadDestination.destination.value, authorizeDestination: downloadDestination.authorize };
+  }
+  if (modelId.value) {
+    return undefined;
+  }
+  const { hfRepository: repository, preferredQuantization: variant } = defaultTranslationModel;
+  return {
+    modelId: `hf.co/${repository}:${variant}`,
+    source: { kind: 'bundled', repository, variant, companionPath: undefined },
+    destination: downloadDestination.destination.value,
+    authorizeDestination: downloadDestination.authorize,
+  };
+});
+const floatingModel = computed(() => pendingModel.value?.modelId ?? modelId.value);
+const floatingModelName = computed(() => floatingModel.value === undefined ? undefined : splitModelIdDisplay({ modelId: floatingModel.value }).name);
 const automaticSettings = computed(() => automaticTranslationSettings({ value: preferences.value?.autoTranslate }));
 const autoTranslate = computed(() => automaticSettings.value.enabled);
 const debounceMs = computed(() => automaticSettings.value.debounceMs);
-const modelParts = computed(() => splitModelName({ name: modelId.value }));
 const profile = computed(() => {
   const detection = selectedDetection.value;
+  if (pendingModel.value !== undefined) {
+    return translationProfile({ id: 'plamo3-translate' });
+  }
   if (detection === undefined) {
     return undefined;
   }
@@ -75,17 +140,16 @@ const profile = computed(() => {
 });
 const preparation = useTranslationModelPreparation({
   service: llamaCppBrowserService,
-  modelId: computed(() => store.initialized.value && profile.value ? modelId.value : undefined),
+  modelId: computed(() => store.initialized.value && selectedDetection.value?.status === 'supported' && pendingModel.value === undefined ? modelId.value : undefined),
   engine: state,
-  generating: busy,
+  generating: computed(() => busy.value || acquiring.value !== undefined),
   storageEpoch,
 });
 const languages = useTranslationLanguages({ defaultTarget: computed(() => profile.value?.defaultTargetLanguage ?? 'ja') });
 const { sourceLang, targetLang, invalid: invalidLanguages, changing: changingLanguages, failed: languageFailure } = languages;
-const drawer = computed(() => props.tab === 'models' && !!modelId.value);
-const catalogOpen = computed(() => !modelId.value || modelFailure.value !== undefined || props.tab === 'models');
-const blocked = computed(() => saving.value || checkingSelection.value || changingLanguages.value || !store.initialized.value);
-const canTranslate = computed(() => preparation.ready.value && !blocked.value && !inspecting.value && !catalogOpen.value && !invalidLanguages.value && state.value.status !== 'unavailable' && state.value.status !== 'working' && !!profile.value && !!modelId.value && !!text.value.trim());
+const canUseInput = computed(() => !blocked.value && !busy.value && acquiring.value === undefined && !modelPickerOpen.value && !invalidLanguages.value && state.value.status !== 'unavailable' && !!text.value.trim());
+const canTranslate = computed(() => canUseInput.value && pendingModel.value === undefined && preparation.ready.value && !inspecting.value && state.value.status !== 'working' && !!profile.value && !!modelId.value);
+const canDownload = computed(() => canUseInput.value && pendingModel.value !== undefined && inventory.value !== undefined && !downloadDestination.unavailable.value && !downloadDestination.view.busy.value);
 const canSwap = computed(() => !blocked.value && sourceLang.value !== undefined && profile.value?.sourceLanguages.includes(targetLang.value) === true && profile.value.targetLanguages.includes(sourceLang.value));
 const languageSearch = computed(() => ({ label: lazyStrings.translation__search_languages(), noResults: lazyStrings.translation__no_matching_languages() }));
 const options = computed(() => {
@@ -171,10 +235,12 @@ const modelProgress = computed(() => {
   }
 });
 
-async function inspectSelected(): Promise<void> {
+async function inspectSelected({ preserve = false }: { preserve?: boolean } = {}): Promise<void> {
   inspection?.abort();
-  selectedDetection.value = undefined;
-  modelFailure.value = undefined;
+  if (!preserve) {
+    selectedDetection.value = undefined;
+    modelFailure.value = undefined;
+  }
   inspecting.value = false;
   const selected = modelId.value;
   if (disposed || !selected || !store.initialized.value) {
@@ -190,7 +256,8 @@ async function inspectSelected(): Promise<void> {
     }
     selectedDetection.value = found;
     switch (found.status) {
-    case 'supported': break;
+    case 'supported': modelFailure.value = undefined;
+      break;
     case 'unsupported': modelFailure.value = 'unsupported';
       break;
     default: {
@@ -200,6 +267,7 @@ async function inspectSelected(): Promise<void> {
     }
   } catch {
     if (!disposed && !controller.signal.aborted && inspection === controller) {
+      selectedDetection.value = undefined;
       modelFailure.value = 'unreadable';
     }
   } finally {
@@ -209,9 +277,10 @@ async function inspectSelected(): Promise<void> {
   }
 }
 
-async function selectModel({ selected }: { selected: string }): Promise<void> {
-  if (blocked.value || busy.value || disposed) {
-    return;
+async function selectModel({ modelId: selected, downloadSignal }: { modelId: string | undefined, downloadSignal?: AbortSignal }): Promise<boolean> {
+  downloadSignal?.throwIfAborted();
+  if (selected === undefined || saving.value || checkingSelection.value || !store.initialized.value || busy.value || disposed || (downloadSignal === undefined && changingLanguages.value)) {
+    return false;
   }
   const controller = new AbortController();
   selection?.abort();
@@ -222,21 +291,23 @@ async function selectModel({ selected }: { selected: string }): Promise<void> {
   try {
     const found = await inspectStoredTranslationModel({ modelId: selected, signal: controller.signal });
     if (disposed || controller.signal.aborted || !isCurrent()) {
-      return;
+      return false;
     }
     switch (found.status) {
     case 'supported': break;
     case 'unsupported': selectionFailure.value = 'unsupported';
-      return;
+      return false;
     default: {
       const exhaustive: never = found;
       throw new Error(String(exhaustive));
     }
     }
-    if (await save({ patch: { modelId: selected } }) && !disposed && !controller.signal.aborted && isCurrent()) {
-      // The current draft belongs to the workspace, not to the model picker.
+    if (await save({ patch: { modelId: selected }, signal: controller.signal }) && !disposed && !controller.signal.aborted && isCurrent()) {
+      chosenRepositoryModel.value = undefined;
+      downloadFailed.value = false;
+      runWhenReady.value = undefined;
       invalidate();
-      emit('openWorkspace');
+      return true;
     }
   } catch {
     if (!disposed && !controller.signal.aborted && isCurrent()) {
@@ -246,6 +317,21 @@ async function selectModel({ selected }: { selected: string }): Promise<void> {
     if (selection === controller) {
       checkingSelection.value = false;
     }
+  }
+  return false;
+}
+
+function selectPendingModel({ selection: pending }: { selection: RepositoryModelSelection }): void {
+  chosenRepositoryModel.value = pending;
+  downloadFailed.value = false;
+  runWhenReady.value = undefined;
+}
+
+function modelPickerChanged({ open }: { open: boolean }): void {
+  modelPickerOpen.value = open;
+  if (!open && acquiring.value === undefined) {
+    selection?.abort();
+    selectionFailure.value = undefined;
   }
 }
 
@@ -265,13 +351,8 @@ async function chooseLanguage({ side, value }: { side: 'source' | 'target', valu
   }
 }
 
-async function changeAutomatic({ event }: { event: Event }): Promise<void> {
-  if (event.target instanceof HTMLInputElement) {
-    const next = event.target.checked;
-    // Keep the control honest while settings are being written or after failure.
-    event.target.checked = autoTranslate.value;
-    await save({ patch: { autoTranslate: { ...preferences.value?.autoTranslate, enabled: next } } });
-  }
+async function changeAutomatic({ enabled }: { enabled: boolean }): Promise<void> {
+  await save({ patch: { autoTranslate: { ...preferences.value?.autoTranslate, enabled } } });
 }
 
 async function changeDelay({ value }: { value: number }): Promise<void> {
@@ -280,18 +361,32 @@ async function changeDelay({ value }: { value: number }): Promise<void> {
   }
 }
 
-function sourceChanged({ event }: { event: Event }): void {
-  if (event.target instanceof HTMLTextAreaElement) {
-    // Unlike v-model, the DOM input includes uncommitted IME composition.
-    // Never write into the composing element or replace its selection.
-    text.value = event.target.value;
+function endComposition({ input }: { input: HTMLTextAreaElement }): void {
+  if (composingInput.value === input) {
+    text.value = input.value;
+    composingInput.value = undefined;
   }
 }
+
+watch(floatingDocument, (current, previous, onCleanup) => {
+  if (current === undefined && composingInput.value?.ownerDocument === previous) {
+    composingInput.value = undefined;
+  }
+  if (current !== undefined) {
+    const pointerdown: NonNullable<Document['onpointerdown']> = event => {
+      if (event.button === 0) {
+        modelSelector.value?.closeFromOutside();
+      }
+    };
+    current.addEventListener('pointerdown', pointerdown, true);
+    onCleanup(() => current.removeEventListener('pointerdown', pointerdown, true));
+  }
+});
 
 function shortcut({ event }: { event: KeyboardEvent }): void {
   if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing && !composing.value) {
     event.preventDefault();
-    void automatic.runManually();
+    void submit();
   }
 }
 
@@ -335,8 +430,12 @@ function clearText(): void {
     return;
   }
   text.value = '';
+  composingInput.value = undefined;
+  runWhenReady.value = undefined;
+  if (acquiring.value !== undefined) {
+    acquiring.value.translateAfterDownload = false;
+  }
   reset();
-  sourceInput.value?.focus();
 }
 
 function toggleDetails({ event }: { event: Event }): void {
@@ -345,21 +444,38 @@ function toggleDetails({ event }: { event: Event }): void {
   }
 }
 
-async function copyOutput(): Promise<void> {
+let copyRevision = 0;
+
+async function copyOutput({ view, focus }: { view: Window | null, focus: () => void }): Promise<void> {
   const value = output.value;
   if (!value || busy.value) {
     return;
   }
+  const request = ++copyRevision;
+  const current = () => !disposed && request === copyRevision && output.value === value && (view === window || floatingDocument.value?.defaultView === view);
   try {
-    await navigator.clipboard.writeText(value);
-    if (!disposed && output.value === value) {
+    const clipboard = view?.navigator.clipboard;
+    if (clipboard === undefined) {
+      throw new Error('Clipboard unavailable');
+    }
+    await clipboard.writeText(value);
+    if (current()) {
       copied.value = 'copied';
     }
   } catch {
-    if (!disposed && output.value === value) {
+    if (current()) {
       copied.value = 'failed';
-      outputElement.value?.focus();
+      focus();
     }
+  }
+}
+
+async function openFloatingWindow(): Promise<void> {
+  floatingOpenFailed.value = false;
+  try {
+    await floatingWindow.show();
+  } catch {
+    floatingOpenFailed.value = !disposed;
   }
 }
 
@@ -371,11 +487,6 @@ watch([modelId, store.initialized], () => {
   }
   void inspectSelected();
 }, { immediate: true });
-watch(() => props.tab, () => {
-  // Closing the picker invalidates an in-flight selection, not the draft.
-  selection?.abort();
-  selectionFailure.value = undefined;
-});
 watch([store.settings, store.initialized], () => {
   if (!store.initialized.value) {
     return;
@@ -387,6 +498,11 @@ watch([store.settings, store.initialized], () => {
     selectedDetection.value = undefined;
     storageEpoch.value++;
     selection?.abort();
+    acquiring.value?.controller.abort();
+    chosenRepositoryModel.value = undefined;
+    inventory.value = undefined;
+    runWhenReady.value = undefined;
+    downloadFailed.value = false;
     reset();
     text.value = '';
     context.value = '';
@@ -415,13 +531,137 @@ const automatic = useAutomaticTranslation({
   },
   stop,
 });
-const showRun = computed(() => !autoTranslate.value || automatic.manuallyStopped.value || ['error', 'stopped', 'truncated'].includes(phase.value));
-const canStop = computed(() => busy.value || (loadingModel.value && autoTranslate.value && !!text.value.trim() && !automatic.manuallyStopped.value));
+
+async function submit(): Promise<void> {
+  const pending = pendingModel.value;
+  if (pending === undefined) {
+    await automatic.runManually();
+    return;
+  }
+  if (!canDownload.value || composing.value) {
+    return;
+  }
+  const operation = new AbortController();
+  const request = { controller: operation, selection: pending, translateAfterDownload: true };
+  acquiring.value = request;
+  downloadFailed.value = false;
+  try {
+    const model = await acquireRepositoryModel({
+      selection: pending,
+      usage: 'translation',
+      models: inventory.value ?? [],
+      capturedRoot: downloadDestination.captureRoot({ destination: pending.destination }),
+      signal: operation.signal,
+      onDownload: ({ id: jobId }) => {
+        activeDownloadId.value = jobId;
+      },
+    });
+    await awaitInspection({ task: waitForSave(), signal: operation.signal });
+    const selected = await selectModel({ modelId: model.modelId, downloadSignal: operation.signal });
+    if (!operation.signal.aborted) {
+      downloadFailed.value = !selected;
+      if (selected && request.translateAfterDownload) {
+        runWhenReady.value = model.modelId;
+      }
+    }
+  } catch {
+    if (!operation.signal.aborted) {
+      downloadFailed.value = true;
+    }
+  } finally {
+    acquiring.value = undefined;
+    activeDownloadId.value = undefined;
+  }
+}
+
+watch([runWhenReady, modelId, canTranslate, composing], ([requested, current, ready, isComposing]) => {
+  if (requested !== undefined && requested === current && ready && !isComposing) {
+    runWhenReady.value = undefined;
+    void automatic.runManually();
+  }
+});
+
+function stopTranslation(): void {
+  if (acquiring.value) {
+    // Keep this choice pending if the shared download completes after Stop.
+    // Its completion alone must not restart automatic translation.
+    chosenRepositoryModel.value = acquiring.value.selection;
+    acquiring.value.controller.abort();
+    selection?.abort();
+  }
+  runWhenReady.value = undefined;
+  automatic.stopManually();
+}
+
+const showRun = computed(() => pendingModel.value !== undefined || !autoTranslate.value || automatic.manuallyStopped.value || ['error', 'stopped', 'truncated'].includes(phase.value));
+const canStop = computed(() => busy.value || acquiring.value !== undefined || (loadingModel.value && (autoTranslate.value || runWhenReady.value !== undefined) && !!text.value.trim() && !automatic.manuallyStopped.value));
 const displayedStatus = computed(() => automatic.manuallyStopped.value && !busy.value ? lazyStrings.translation__translation_stopped() : statusLabel.value);
+const downloadError = computed(() => {
+  switch (selectionFailure.value) {
+  case 'unsupported': return lazyStrings.translation__unsupported_model();
+  case 'unreadable': return lazyStrings.translation__model_unreadable();
+  case undefined: return lazyStrings.LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume();
+  default: throw new Error(String(selectionFailure.value satisfies never));
+  }
+});
+const editorProps = computed<InstanceType<typeof TranslationEditors>['$props']>(() => ({
+  text: text.value,
+  sourceLang: sourceLang.value,
+  targetLang: targetLang.value,
+  options: options.value,
+  languageSearch: languageSearch.value,
+  profileAvailable: profile.value !== undefined,
+  canSwap: canSwap.value,
+  blocked: blocked.value,
+  autoTranslate: autoTranslate.value,
+  debounceMs: debounceMs.value,
+  showRun: showRun.value,
+  canRun: (canTranslate.value || canDownload.value) && !composing.value,
+  busy: busy.value,
+  loadingModel: loadingModel.value,
+  acquiring: acquiring.value !== undefined,
+  downloadProgress: downloadProgress.value,
+  modelProgress: modelProgress.value,
+  progress: progress.value,
+  prefill: phase.value === 'prefill',
+  canStop: canStop.value,
+  stopping: phase.value === 'stopping',
+  output: output.value,
+  previousOutput: previousOutput.value,
+  revision: displayRevision.value,
+  outputState: outputState.value,
+  copied: copied.value,
+  displayedStatus: displayedStatus.value,
+  issueLabel: issueLabel.value,
+  failure: failure.value,
+  preparationFailure: preparation.failure.value,
+}));
+const editorEvents = {
+  text: ({ value }: { value: string }) => {
+    text.value = value;
+  },
+  compositionStart: ({ input }: { input: HTMLTextAreaElement }) => {
+    composingInput.value = input;
+  },
+  compositionEnd: endComposition,
+  chooseLanguage,
+  swapLanguages,
+  clear: clearText,
+  copy: copyOutput,
+  changeAutomatic,
+  changeDelay,
+  retry: preparation.retry,
+  stop: stopTranslation,
+};
 watch(output, () => {
+  copyRevision++;
   copied.value = 'idle';
 });
-const unregister = registerTranslationNavigation({ navigation: { openWorkspace: () => emit('openWorkspace'), openModels: () => emit('openModels') } });
+const unregister = registerTranslationNavigation({
+  navigation: {
+    openWorkspace: () => modelSelector.value?.closePicker(),
+  },
+});
 let unsubscribe: (() => void) | undefined;
 onMounted(() => {
   unsubscribe = llamaCppBrowserService.subscribe({
@@ -434,6 +674,7 @@ onScopeDispose(() => {
   disposed = true;
   inspection?.abort();
   selection?.abort();
+  acquiring.value?.controller.abort();
   unregister();
   unsubscribe?.();
 });
@@ -442,62 +683,48 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <div data-testid="translation-page" tw-class="absolute inset-0 overflow-y-auto overscroll-y-contain bg-[#fcfcfd] dark:bg-gray-900">
     <main tw-class="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 text-gray-900 sm:px-8 sm:py-6 dark:text-gray-100">
-      <header :inert="drawer ? true : undefined" tw-class="flex items-center gap-3">
+      <header tw-class="flex items-center gap-3">
         <LanguagesIcon aria-hidden="true" tw-class="h-5 w-5 text-blue-500 dark:text-blue-400" />
-        <h1 tw-class="text-xl font-semibold tracking-tight">{{ lazyStrings.translation__translation() }}</h1>
+        <h1 tw-class="flex-1 text-xl font-semibold tracking-tight">{{ lazyStrings.translation__translation() }}</h1>
+        <button type="button" :disabled="!store.initialized.value || !floatingWindow.supported || floatingWindow.opening.value" :title="floatingButtonLabel" :aria-label="floatingButtonLabel" data-testid="translation-open-floating" @click="openFloatingWindow" tw-class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-40 dark:text-gray-400 dark:hover:bg-gray-800"><PictureInPicture2Icon aria-hidden="true" tw-class="h-4 w-4" /></button>
       </header>
-      <button v-if="modelId" ref="modelTrigger" type="button" :inert="drawer ? true : undefined" :title="modelId" :aria-label="lazyStrings.translation__translation_models()" aria-haspopup="dialog" :aria-expanded="drawer" data-testid="translation-open-models" @click="emit('openModels')" tw-class="group flex min-h-14 w-full items-center gap-3 rounded-xl border border-gray-200/80 bg-gray-50/60 px-4 py-2.5 text-left transition-colors hover:border-blue-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:border-gray-700/70 dark:bg-gray-800/40 dark:hover:border-blue-500/40 motion-reduce:transition-none">
-        <FilePenLineIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-gray-400" />
-        <span data-testid="translation-selected-model" tw-class="min-w-0 flex-1">
-          <span tw-class="block truncate text-sm font-medium leading-5" dir="ltr">{{ modelParts.suffix }}</span>
-          <span v-if="modelParts.prefix" tw-class="mt-0.5 block truncate text-xs leading-4 text-gray-500 dark:text-gray-400" dir="ltr">{{ modelParts.prefix.replace(/\/$/, '') }}</span>
-        </span>
-        <ChevronDownIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-gray-400" />
-      </button>
-      <TranslationModelPanel :open="catalogOpen" :drawer="drawer" :disabled="blocked || busy" :model-id="modelId" :return-focus="modelTrigger ?? sourceInput" @select="selectModel({ selected: $event })" @changed="inspectSelected" @close="emit('openWorkspace')">
-        <p v-if="saveFailed" role="alert" tw-class="text-sm text-red-600 dark:text-red-400">{{ lazyStrings.translation__preferences_not_saved() }}</p>
-        <p v-if="checkingSelection" role="status" tw-class="text-xs text-gray-500">{{ lazyStrings.translation__checking_model() }}</p>
-        <p v-if="selectionFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ selectionFailure === 'unsupported' ? lazyStrings.translation__unsupported_model() : lazyStrings.translation__model_unreadable() }}</p>
-      </TranslationModelPanel>
-      <SettingsSelectScope :active="!drawer" :return-focus="modelTrigger">
-        <form :inert="drawer ? true : undefined" novalidate tw-class="space-y-4" @submit.prevent="automatic.runManually" @keydown="shortcut({ event: $event })">
-          <div v-if="saveFailed || languageFailure || modelFailure || invalidLanguages" role="alert" tw-class="space-y-1 text-sm text-red-600 dark:text-red-400">
+      <p v-if="floatingOpenFailed" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.AudioTranscriptionWorkspace__could_not_open_floating_window() }}</p>
+      <TranslationModelSelector
+        ref="modelSelector"
+        :model-id="modelId"
+        :disabled="!store.initialized.value || busy || acquiring !== undefined"
+        :selection-blocked="blocked"
+        :pending-model="pendingModel"
+        :pending-destination="pendingModel ? downloadDestination.label({ destination: pendingModel.destination }) : undefined"
+        :inventory-epoch="storageEpoch"
+        :track-inventory="store.initialized.value && (!preferences?.modelId || pendingModel !== undefined)"
+        :acquiring="acquiring !== undefined"
+        :confirm-selection="selectModel"
+        @open-change="modelPickerChanged({ open: $event })"
+        @inventory="inventory = $event"
+        @pending-selection="selectPendingModel({ selection: $event })"
+        @inventory-changed="!busy && inspectSelected({ preserve: true })"
+      >
+        <template v-if="saveFailed || checkingSelection || selectionFailure" #status>
+          <p v-if="saveFailed" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.translation__preferences_not_saved() }}</p>
+          <p v-if="checkingSelection" role="status" tw-class="text-xs text-gray-500">{{ lazyStrings.translation__checking_model() }}</p>
+          <p v-if="selectionFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ selectionFailure === 'unsupported' ? lazyStrings.translation__unsupported_model() : lazyStrings.translation__model_unreadable() }}</p>
+        </template>
+      </TranslationModelSelector>
+      <SettingsSelectScope :active="!modelPickerOpen" :return-focus="mainEditors?.sourceInput">
+        <form novalidate tw-class="space-y-4" @submit.prevent="submit" @keydown="shortcut({ event: $event })">
+          <div v-if="saveFailed || languageFailure || modelFailure || invalidLanguages || downloadFailed" role="alert" tw-class="space-y-1 text-sm text-red-600 dark:text-red-400">
             <p v-if="saveFailed || languageFailure">{{ lazyStrings.translation__preferences_not_saved() }}</p>
+            <p v-if="downloadFailed">{{ downloadError }}</p>
             <p v-if="invalidLanguages">{{ lazyStrings.translation__choose_supported_languages() }}</p>
-            <p v-if="modelFailure">{{ modelFailure === 'unsupported' ? lazyStrings.translation__unsupported_model() : lazyStrings.translation__model_unreadable() }} <button type="button" :disabled="blocked || inspecting" @click="inspectSelected" tw-class="underline disabled:opacity-45">{{ lazyStrings.translation__check_again() }}</button></p>
+            <p v-if="modelFailure">{{ modelFailure === 'unsupported' ? lazyStrings.translation__unsupported_model() : lazyStrings.translation__model_unreadable() }} <button type="button" :disabled="blocked || inspecting" @click="inspectSelected()" tw-class="underline disabled:opacity-45">{{ lazyStrings.translation__check_again() }}</button></p>
           </div>
-          <div tw-class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2 sm:gap-3">
-            <div tw-class="min-w-0 space-y-2"><span tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.translation__source_language() }}</span><SettingsFormSelect :model-value="sourceLang ?? ''" :options="options.sources" :search="languageSearch" :label="lazyStrings.translation__source_language()" :disabled="blocked || !profile" data-testid="translation-source-language" @update:model-value="chooseLanguage({ side: 'source', value: $event })" /></div>
-            <button type="button" :disabled="!canSwap" :title="lazyStrings.translation__swap_languages()" :aria-label="lazyStrings.translation__swap_languages()" data-testid="translation-swap" @click="swapLanguages" tw-class="flex h-10 w-9 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-35 dark:hover:bg-gray-800"><ArrowLeftRightIcon aria-hidden="true" tw-class="h-4 w-4" /></button>
-            <div tw-class="min-w-0 space-y-2"><span tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.translation__target_language() }}</span><SettingsFormSelect :model-value="targetLang" :options="options.targets" :search="languageSearch" :label="lazyStrings.translation__target_language()" :disabled="blocked || !profile" data-testid="translation-target-language" @update:model-value="chooseLanguage({ side: 'target', value: $event })" /></div>
-          </div>
-          <div class="translation-editors" :class="{ 'translation-editors-preview': !modelId }" data-testid="translation-editors" tw-class="grid min-w-0 gap-4 md:grid-cols-2">
-            <section class="translation-editor" data-testid="translation-source-panel" tw-class="flex min-w-0 flex-col overflow-hidden rounded-xl border border-gray-200/80 bg-white has-[textarea:focus-visible]:border-blue-400 has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-blue-500/20 dark:border-gray-700/70 dark:bg-gray-800/20 dark:has-[textarea:focus-visible]:border-blue-500">
-              <div tw-class="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-gray-100 px-4 dark:border-gray-800"><label :for="`${id}-source`" tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.translation__source_text() }}</label><button type="button" :disabled="!text || blocked" @click="clearText" data-testid="translation-clear" tw-class="rounded-lg p-2 text-xs text-gray-500 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-35 dark:hover:text-gray-100">{{ lazyStrings.translation__clear() }}</button></div>
-              <textarea :id="`${id}-source`" ref="sourceInput" :value="text" @input="sourceChanged({ event: $event })" dir="auto" :placeholder="lazyStrings.translation__enter_source_text()" data-testid="translation-source" @compositionstart="composing = true" @compositionend="sourceChanged({ event: $event }); composing = false" tw-class="block min-h-0 w-full flex-1 resize-none overflow-y-auto border-0 bg-transparent p-4 text-sm leading-7 outline-none" />
-              <div data-testid="translation-source-footer" tw-class="flex h-14 shrink-0 items-center justify-between gap-2 border-t border-gray-100 px-4 dark:border-gray-800">
-                <div tw-class="flex min-w-0 items-center gap-1"><label tw-class="flex min-w-0 cursor-pointer items-center gap-2 text-xs text-gray-500 dark:text-gray-400"><ToggleSwitch><input type="checkbox" role="switch" :checked="autoTranslate" :disabled="blocked" data-testid="translation-automatic" @change="changeAutomatic({ event: $event })" /></ToggleSwitch><span :title="lazyStrings.translation__automatic_translation()" tw-class="truncate">{{ lazyStrings.translation__automatic_translation() }}</span></label><TranslationAutomaticSettings :debounce-ms="debounceMs" :disabled="blocked" @change="changeDelay({ value: $event })" /></div>
-                <button v-show="showRun" type="submit" :disabled="!canTranslate || busy || composing" data-testid="translation-run" tw-class="inline-flex h-9 min-w-24 shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-medium text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500 dark:hover:bg-blue-600 motion-reduce:transition-none"><LanguagesIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ lazyStrings.translation__translate() }}</button>
-              </div>
-            </section>
-            <section :aria-busy="busy || loadingModel" class="translation-editor" data-testid="translation-output-panel" tw-class="flex min-w-0 flex-col overflow-hidden rounded-xl border border-gray-200/80 bg-gray-50/50 has-[pre:focus-visible]:border-blue-400 has-[pre:focus-visible]:ring-2 has-[pre:focus-visible]:ring-blue-500/20 dark:border-gray-700/70 dark:bg-gray-800/40 dark:has-[pre:focus-visible]:border-blue-500">
-              <div tw-class="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-gray-100 px-4 dark:border-gray-800"><h2 tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.translation__translated_text() }}</h2><button type="button" :disabled="busy || !output" @click="copyOutput" data-testid="translation-copy" tw-class="flex items-center gap-1 rounded-lg p-2 text-xs text-gray-500 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-35 dark:hover:text-gray-100"><CopyIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ copied === 'copied' ? lazyStrings.translation__copied() : lazyStrings.translation__copy() }}</button></div>
-              <div tw-class="relative min-h-0 flex-1 overflow-hidden">
-                <TranslationOutput :id="`${id}-output`" ref="outputElement" :text="output" :previous-text="previousOutput" :revision="displayRevision" :state="outputState" :label="lazyStrings.translation__translated_text()" :placeholder="lazyStrings.translation__translation_appears_here()" data-testid="translation-output" />
-                <div v-if="issue || failure || preparation.failure.value" role="alert" data-testid="translation-error" tw-class="absolute inset-x-0 bottom-0 max-h-[50%] overflow-y-auto bg-gray-50 p-4 text-sm text-red-600 dark:bg-gray-900 dark:text-red-400">
-                  <p v-if="issueLabel">{{ issueLabel }}</p><p v-if="failure">{{ failure === 'context-full' ? lazyStrings.translation__source_too_long() : lazyStrings.translation__translation_failed() }} <code tw-class="text-xs">{{ failure }}</code></p><p v-if="preparation.failure.value">{{ lazyStrings.translation__translation_failed() }} <code tw-class="text-xs">{{ preparation.failure.value }}</code> <button type="button" @click="preparation.retry" tw-class="underline">{{ lazyStrings.translation__check_again() }}</button></p>
-                </div>
-              </div>
-              <div data-testid="translation-output-footer" tw-class="flex h-14 shrink-0 items-center justify-between gap-2 border-t border-gray-100 px-4 dark:border-gray-800">
-                <div role="status" aria-live="polite" data-testid="translation-status" tw-class="min-w-0 flex-1 text-xs text-gray-500 dark:text-gray-400">
-                  <LlamaCppBrowserModelLoadProgress v-if="loadingModel" :progress="modelProgress" appearance="compact" />
-                  <TranslationInputProgress v-else-if="phase === 'prefill'" :progress="progress" />
-                  <div v-else tw-class="flex min-w-0 items-center gap-2"><Loader2Icon v-if="busy" aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" /><span tw-class="truncate" :title="copied === 'failed' ? lazyStrings.translation__copy_failed_select_text() : displayedStatus">{{ copied === 'failed' ? lazyStrings.translation__copy_failed_select_text() : displayedStatus }}</span><span v-if="previousOutput && !output" tw-class="truncate">{{ lazyStrings.translation__previous_translation() }}</span></div>
-                </div>
-                <LlamaCppBrowserModelActionButton :disabled="!canStop || phase === 'stopping'" :tw-class="['h-9 min-w-20 shrink-0 justify-center', { invisible: !canStop }]" data-testid="translation-stop" @click="automatic.stopManually"><SquareIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ lazyStrings.translation__stop() }}</LlamaCppBrowserModelActionButton>
-              </div>
-            </section>
-          </div>
+
+          <TranslationEditors
+            ref="mainEditors"
+            v-bind="editorProps"
+            v-on="editorEvents"
+          />
           <p v-if="state.status === 'unavailable'" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.translation__runtime_unavailable() }}</p>
           <p v-else-if="!busy && !loadingModel && state.status === 'working'" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.translation__runtime_busy() }}</p>
           <details :open="detailsOpen" @toggle="toggleDetails({ event: $event })" data-testid="translation-details" tw-class="group/translation-settings overflow-hidden rounded-xl border border-gray-200/70 dark:border-gray-800">
@@ -522,27 +749,24 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </form>
       </SettingsSelectScope>
     </main>
+    <Teleport v-if="floatingDocument" :to="floatingDocument.body">
+      <main data-testid="translation-floating" tw-class="h-dvh overflow-y-auto bg-gray-50 px-4 py-3 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+        <header tw-class="mb-3 flex min-w-0 shrink-0 items-center justify-between gap-3">
+          <div tw-class="flex shrink-0 items-center gap-2">
+            <span tw-class="flex items-center gap-1.5 text-sm font-semibold"><img :src="logoUrl" alt="" width="18" height="18" />Naidan</span>
+            <h1 tw-class="border-l border-gray-200 pl-2 text-xs font-medium text-gray-600 dark:border-gray-700 dark:text-gray-300">{{ lazyStrings.translation__translation() }}</h1>
+          </div>
+          <span v-if="floatingModelName" :title="floatingModel" tw-class="truncate text-xs text-gray-500 dark:text-gray-400">{{ floatingModelName }}</span>
+        </header>
+        <form tw-class="space-y-2.5" @submit.prevent="submit" @keydown="shortcut({ event: $event })">
+          <p v-if="saveFailed || languageFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.translation__preferences_not_saved() }}</p>
+          <p v-if="downloadFailed" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ downloadError }}</p>
+          <p v-if="modelFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ modelFailure === 'unsupported' ? lazyStrings.translation__unsupported_model() : lazyStrings.translation__model_unreadable() }} <button type="button" :disabled="blocked || inspecting" @click="inspectSelected()" tw-class="underline disabled:opacity-45">{{ lazyStrings.translation__check_again() }}</button></p>
+          <p v-if="invalidLanguages" role="status" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.translation__choose_supported_languages() }}</p>
+          <p v-if="state.status === 'unavailable'" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.translation__runtime_unavailable() }}</p>
+          <TranslationEditors :popup-target="floatingDocument.body" v-bind="editorProps" v-on="editorEvents" />
+        </form>
+      </main>
+    </Teleport>
   </div>
 </template>
-<style scoped>
-.translation-editor {
-  height: clamp(18rem, calc(100dvh - 19rem), 34rem);
-}
-@media (max-width: 767px) {
-  .translation-editor {
-    height: 19rem;
-  }
-  .translation-editors-preview {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .translation-editors-preview .translation-editor {
-    height: 15rem;
-  }
-}
-@media (forced-colors: active) {
-  .translation-editor:has(textarea:focus-visible, pre:focus-visible) {
-    outline: 2px solid Highlight;
-    outline-offset: 2px;
-  }
-}
-</style>

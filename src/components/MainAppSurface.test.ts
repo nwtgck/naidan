@@ -77,7 +77,7 @@ describe('MainAppSurface', () => {
   it('keeps the common sidebar mounted when a workspace registers or releases navigation', async () => {
     const { wrapper } = await mountSurface({ postStartupFeatures: 'inactive', path: '/' });
     const sidebar = wrapper.get('[data-testid="app-sidebar"]').element;
-    const unregister = registerTranslationNavigation({ navigation: { openWorkspace: vi.fn(), openModels: vi.fn() } });
+    const unregister = registerTranslationNavigation({ navigation: { openWorkspace: vi.fn() } });
     using _cleanup = {
       [Symbol.dispose]() {
         unregister();
