@@ -1,10 +1,12 @@
 // !!! ALLOW-EXTERNAL-COMMAND git:* !!! -- Create and inspect temporary source fixtures for release evidence.
 // !!! ALLOW-EXTERNAL-COMMAND bash -c:* !!! -- Execute the published artifact-verification recipe against fixture files.
+// !!! ALLOW-EXTERNAL-COMMAND node:* !!! -- Run the offline release integrity CLI against recorded API responses.
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
 import {it} from 'node:test';
 import {runCommandSync} from '../../build/command.ts';
 import {READ_ENV_PATH, READ_ENV_HOME, READ_ENV_TMPDIR} from '../../build/node-env.ts';
@@ -13,12 +15,13 @@ import {captureSource, collectBuildInputs, fingerprintScheme, hashFile, integrit
 
 const require = createRequire(import.meta.url);
 const workflow = await readFile(new URL('../../.github/workflows/sync-release-notes.yml', import.meta.url), 'utf8');
+const integrityScript = fileURLToPath(new URL('../release-integrity.mjs', import.meta.url));
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const source = () => ({repository: 'https://github.com/nwtgck/naidan', commit: 'a'.repeat(40),
   run_id: '1234', build_attempt: '1', tree_fingerprint: {algorithm: 'sha256', scheme: fingerprintScheme, value: 'b'.repeat(64)}});
 
 function commandOptions({cwd}) {
-  return {cwd, encoding: 'utf8', env: {
+  return {cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: {
     PATH: READ_ENV_PATH(), HOME: READ_ENV_HOME(), TMPDIR: READ_ENV_TMPDIR(),
     GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0',
   }};
@@ -205,14 +208,18 @@ async function publicationHarness({t}) {
   const directory = path.join(root, 'notes/integrity');
   await mkdir(directory, {recursive: true});
   const yaml = await renderIntegrity({receipt, tag: 'v1.2.3', assets});
-  await writeFile(path.join(directory, integrityName), yaml);
-  await writeFile(path.join(directory, 'expected-assets.json'), JSON.stringify(assets));
+  const receiptFile = path.join(root, 'dist/naidan-build-receipt.json');
+  await writeFile(receiptFile, JSON.stringify(receipt));
   const remote = assets.map((entry, index) => ({id: index + 1, name: entry.name, size: entry.size,
     digest: `sha256:${entry.sha256}`, state: 'uploaded'}));
   const release = {id: 42, tag_name: 'v1.2.3', draft: false, prerelease: false};
   const writes = [], outputs = {};
+  const tag = 'v1.2.3';
   const github = {rest: {repos: {
-    getReleaseByTag: async () => ({data: release}),
+    getReleaseByTag: async params => {
+      assert.deepEqual(params, {owner: 'nwtgck', repo: 'naidan', tag});
+      return {data: release};
+    },
     listReleaseAssets: () => {
       throw new Error('Pagination required');
     },
@@ -231,6 +238,7 @@ async function publicationHarness({t}) {
   }}, paginate: async (method, params) => {
     assert.equal(method, github.rest.repos.listReleaseAssets);
     assert.equal(params.per_page, 100);
+    assert.equal(params.release_id, 42);
     return remote.map(entry => ({...entry}));
   }};
   const context = {repo: {owner: 'nwtgck', repo: 'naidan'}};
@@ -238,18 +246,29 @@ async function publicationHarness({t}) {
     outputs[name] = value;
   }, info: () => {}};
   const env = {PUBLISH_TAG: 'v1.2.3', NOTES_DIR: path.join(root, 'notes'), RELEASE_ID: '42'};
-  const run = async ({stepId}) => inlineScript({stepId})(github, context, core, require, {env});
-  return {root, directory, remote, release, writes, outputs, run, github};
+  const online = ({stepId}) => inlineScript({stepId})(github, context, core, require, {env});
+  const guard = () => online({stepId: 'guard_publication'});
+  const upload = () => online({stepId: 'publish_integrity'});
+  const prepareIntegrity = async () => {
+    await online({stepId: 'read_publication'});
+    const result = completed({result: runCommandSync({
+      argv: ['node', integrityScript, 'prepare', receiptFile, directory, tag, '42'],
+      options: commandOptions({cwd: root}),
+    })});
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout;
+  };
+  return {directory, remote, release, writes, outputs, guard, upload, prepareIntegrity};
 }
 
 it('guards signed releases before uploading and accepts only a complete matching remote inventory', async t => {
   const h = await publicationHarness({t});
-  await h.run({stepId: 'guard_publication'});
+  await h.guard();
   assert.equal(h.outputs['release-id'], '42');
   h.remote.push({name: integrityName});
-  await assert.rejects(h.run({stepId: 'guard_publication'}), /already has signed/);
+  await assert.rejects(h.guard(), /already has signed/);
   assert.deepEqual(h.writes, []);
-  await assert.rejects(h.run({stepId: 'verify_publication'}), /Unexpected or missing/);
+  await assert.rejects(h.prepareIntegrity(), /Asset/);
 });
 
 it('rejects substituted, incomplete, unexpected, duplicate or unhashable remote assets before signing', async t => {
@@ -279,45 +298,34 @@ it('rejects substituted, incomplete, unexpected, duplicate or unhashable remote 
   for (const attack of attacks) {
     const h = await publicationHarness({t});
     attack(h);
-    await assert.rejects(h.run({stepId: 'verify_publication'}));
+    await assert.rejects(h.prepareIntegrity(), /Asset|Release was replaced/);
+    await assert.rejects(readFile(path.join(h.directory, integrityName)), {code: 'ENOENT'});
     assert.deepEqual(h.writes, []);
   }
 });
 
-it('publishes only the frozen YAML and confirms both payload IDs/digests and its own digest', async t => {
+it('signs the digest of the exact YAML passed to the single Release upload', async t => {
   const h = await publicationHarness({t});
-  await h.run({stepId: 'verify_publication'});
-  assert.match(h.outputs.sha256, /^[0-9a-f]{64}$/);
-  await h.run({stepId: 'publish_integrity'});
+  const sha256 = await h.prepareIntegrity();
+  assert.equal(sha256, (await hashFile({file: path.join(h.directory, integrityName)})).sha256);
+  await h.upload();
   assert.equal(h.writes.length, 1);
   assert.equal(h.remote.at(-1).name, integrityName);
-  await assert.rejects(h.run({stepId: 'publish_integrity'}), /snapshot changed/);
+  await assert.rejects(h.guard(), /already has signed/);
   assert.equal(h.writes.length, 1);
 });
 
-it('detects mutation between signing and upload without changing release files', async t => {
-  for (const target of ['yaml', 'remote']) {
-    const h = await publicationHarness({t});
-    await h.run({stepId: 'verify_publication'});
-    if (target === 'yaml') {
-      await writeFile(path.join(h.directory, integrityName), 'changed YAML');
-    } else {
-      h.remote[0].id += 1000;
-    }
-    await assert.rejects(h.run({stepId: 'publish_integrity'}));
-    assert.deepEqual(h.writes, []);
-  }
-});
-
-it('detects concurrent remote changes after upload and never overwrites the proof', async t => {
+it('refuses to replace a prepared integrity YAML', async t => {
   const h = await publicationHarness({t});
-  await h.run({stepId: 'verify_publication'});
-  const upload = h.github.rest.repos.uploadReleaseAsset;
-  h.github.rest.repos.uploadReleaseAsset = async payload => {
-    const result = await upload(payload);
-    h.remote[0].digest = `sha256:${'d'.repeat(64)}`;
-    return result;
-  };
-  await assert.rejects(h.run({stepId: 'publish_integrity'}), /snapshot changed/);
-  assert.equal(h.writes.length, 1);
+  const sha256 = await h.prepareIntegrity();
+  await assert.rejects(h.prepareIntegrity(), /EEXIST/);
+  assert.equal((await hashFile({file: path.join(h.directory, integrityName)})).sha256, sha256);
+  assert.deepEqual(h.writes, []);
+});
+
+it('refuses to prepare a proof when the Release is no longer a published stable tag', async t => {
+  const h = await publicationHarness({t});
+  h.release.draft = true;
+  await assert.rejects(h.prepareIntegrity(), /stable published release/);
+  await assert.rejects(readFile(path.join(h.directory, integrityName)), {code: 'ENOENT'});
 });

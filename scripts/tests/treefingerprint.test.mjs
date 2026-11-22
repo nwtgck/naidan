@@ -28,25 +28,25 @@ function harness({t}) {
     GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.invalid',
     GIT_ALLOW_PROTOCOL: 'file',
   };
-  const options = ({cwd, input}) => ({cwd: cwd ?? repo, env, input});
+  const options = ({cwd}) => ({cwd: cwd ?? repo, env, stdio: ['ignore', 'pipe', 'pipe']});
   const completed = ({result}) => {
     assert.equal(result.error, undefined);
     assert.equal(result.signal, null);
     return result;
   };
-  const git = ({args, cwd, input}) => {
-    const result = completed({result: runCommandSync({argv: ['git', ...args], options: options({cwd, input})})});
+  const git = ({args, cwd}) => {
+    const result = completed({result: runCommandSync({argv: ['git', ...args], options: options({cwd})})});
     assert.equal(result.status, 0, result.stderr.toString());
     return result.stdout.toString().trim();
   };
-  const bash = ({args, cwd, input}) => completed({result: runCommandSync({
-    argv: ['bash', ...args], options: options({cwd, input}),
+  const bash = ({args, cwd}) => completed({result: runCommandSync({
+    argv: ['bash', ...args], options: options({cwd}),
   })});
   const fingerprint = ({cwd, invocation}) => bash({
     args: invocation === 'conditional'
       ? ['-c', 'if source "$1"; then exit 0; else exit $?; fi', 'test', script]
       : [script],
-    cwd, input: undefined,
+    cwd,
   });
   const digest = ({cwd}) => {
     const result = fingerprint({cwd, invocation: 'standalone'});
@@ -154,7 +154,9 @@ it('ignores Git replacement refs when reading source blobs', t => {
   h.commit();
   const original = h.digest({});
   const blob = h.git({args: ['rev-parse', 'HEAD:file']});
-  const replacement = h.git({args: ['hash-object', '-w', '--stdin'], input: 'replacement'});
+  const replacementFile = path.join(h.base, 'replacement');
+  writeFileSync(replacementFile, 'replacement');
+  const replacement = h.git({args: ['hash-object', '-w', '--', replacementFile]});
   h.git({args: ['replace', blob, replacement]});
   assert.equal(h.digest({}), original);
 });

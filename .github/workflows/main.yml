@@ -196,9 +196,18 @@ jobs:
           node-version: 22.x
           cache: 'npm'
 
-      - name: Capture committed release source before dependency installation
+      - name: Pull the release integrity tooling image (online)
         if: startsWith(github.ref, 'refs/tags/v')
-        run: node scripts/release-integrity.mjs capture-source "$RUNNER_TEMP/naidan-build-source.json"
+        run: docker pull node:22-bookworm
+
+      - name: Capture committed release source before dependency installation (offline)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
+            --mount "type=bind,source=$PWD,target=/work,readonly" -w /work \
+            -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT \
+            node:22-bookworm node scripts/release-integrity.mjs capture-source - > "$RUNNER_TEMP/naidan-build-source.json"
 
       - name: Install dependencies
         id: npm_install
@@ -282,9 +291,15 @@ jobs:
           test -f dist/naidan-hosted.zip
           test -d dist/debug-tailwind-hosted
 
-      - name: Bind release ZIPs and embedded hosted files to this build
+      - name: Bind release ZIPs and embedded hosted files to this build (offline)
         if: startsWith(github.ref, 'refs/tags/v')
-        run: node scripts/release-integrity.mjs seal-build "$RUNNER_TEMP/naidan-build-source.json"
+        run: |
+          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
+            --mount "type=bind,source=$PWD,target=/work,readonly" \
+            --mount "type=bind,source=$PWD/dist,target=/work/dist" \
+            --mount "type=bind,source=$RUNNER_TEMP/naidan-build-source.json,target=/source.json,readonly" -w /work \
+            node:22-bookworm node scripts/release-integrity.mjs seal-build /source.json
 
       - name: Upload full dist build artifact
         uses: actions/upload-artifact@v7.0.2

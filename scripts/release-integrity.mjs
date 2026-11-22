@@ -3,8 +3,8 @@
 // !!! ALLOW-EXTERNAL-COMMAND bash:* !!! -- Execute the exact auditable committed-tree fingerprint recipe.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {createReadStream} from 'node:fs';
-import {lstat, mkdir, readFile, readdir, writeFile} from 'node:fs/promises';
+import {createReadStream, writeSync} from 'node:fs';
+import {lstat, readFile, readdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {runCommandSync} from '../build/command.ts';
@@ -58,8 +58,9 @@ export async function captureSource({root, repository, commit, runId, buildAttem
   // Do not pass the publication token or shell startup hooks to these readers.
   const env = {PATH: READ_ENV_PATH(), HOME: READ_ENV_HOME(), LC_ALL: 'C',
     GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1'};
+  const options = {cwd: root, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']};
   const git = ({args}) => {
-    const result = runCommandSync({argv: ['git', ...args], options: {cwd: root, env, encoding: 'utf8'}});
+    const result = runCommandSync({argv: ['git', ...args], options});
     assert.equal(result.status, 0, result.stderr || result.error?.message || 'Git source read failed');
     return result.stdout.trim();
   };
@@ -69,7 +70,7 @@ export async function captureSource({root, repository, commit, runId, buildAttem
     'Tracked source must be clean before the build');
   const script = fileURLToPath(new URL('./treefingerprint.sh', import.meta.url));
   const result = runCommandSync({argv: ['bash', '--noprofile', '--norc', script],
-    options: {cwd: root, env, encoding: 'utf8', maxBuffer: 1024 * 1024}});
+    options: {...options, maxBuffer: 1024 * 1024}});
   assert.equal(result.status, 0, result.stderr || result.error?.message || 'Source fingerprint failed');
   const context = {
     repository: `https://github.com/${repository}`, commit: head, run_id: runId, build_attempt: buildAttempt,
@@ -181,6 +182,30 @@ export async function releaseAssets({root, receipt, tag}) {
   return assets.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 }
 
+const readJson = async ({file}) => JSON.parse(await readFile(file, 'utf8'));
+const writeNewJson = ({file, value}) => writeFile(file, JSON.stringify(value), {flag: 'wx'});
+
+function sortAssets({assets}) {
+  return [...assets].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+}
+
+function readUploadedAssets({remote, tag, releaseId}) {
+  const {release, assets} = remote;
+  assert.ok(Number.isSafeInteger(release.id) && release.id > 0, 'Invalid release ID');
+  assert.equal(String(release.id), releaseId, 'Release was replaced');
+  assert.equal(release.tag_name, tag, 'Release has a different tag');
+  assert.ok(release.draft === false && release.prerelease === false, 'Expected a stable published release');
+  assert.ok(Array.isArray(assets), 'Invalid release asset list');
+  const entries = assets.map(({name, size, digest, state}) => {
+    assert.match(name, safeAssetPattern);
+    assert.ok(Number.isSafeInteger(size) && size >= 0, `Invalid Asset size: ${name}`);
+    assert.equal(state, 'uploaded', `Asset is not uploaded: ${name}`);
+    assert.match(digest, /^sha256:[0-9a-f]{64}$/, `Missing or invalid Asset digest: ${name}`);
+    return {name, size, digest};
+  });
+  return sortAssets({assets: entries});
+}
+
 export async function renderIntegrity({receipt, tag, assets}) {
   checkReceipt({receipt});
   assert.match(tag, /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/);
@@ -244,25 +269,32 @@ ${assets.map(asset => `    ${asset.sha256}  ${asset.name}`).join('\n')}
 }
 
 async function main() {
-  const [command, input, output, tag] = process.argv.slice(2);
+  const [command, input, output, tag, releaseId] = process.argv.slice(2);
   const root = process.cwd();
   const source = async () => captureSource({root, repository: READ_ENV_GITHUB_REPOSITORY(),
     commit: READ_ENV_GITHUB_SHA(), runId: READ_ENV_GITHUB_RUN_ID(), buildAttempt: READ_ENV_GITHUB_RUN_ATTEMPT()});
-  const json = async ({file}) => JSON.parse(await readFile(file, 'utf8'));
   if (command === 'capture-source') {
-    await writeFile(input, JSON.stringify(await source()), {flag: 'wx'});
+    const context = await source();
+    if (input === '-') {
+      writeSync(process.stdout.fd, JSON.stringify(context));
+    } else {
+      await writeNewJson({file: input, value: context});
+    }
   } else if (command === 'seal-build') {
-    await writeFile(path.join(root, 'dist', receiptName), JSON.stringify(await sealBuild({root, source: await json({file: input})})), {flag: 'wx'});
+    await writeNewJson({file: path.join(root, 'dist', receiptName), value: await sealBuild({root, source: await readJson({file: input})})});
   } else if (command === 'verify-build') {
-    await verifyBuild({root, receipt: await json({file: input}), source: await source()});
+    await verifyBuild({root, receipt: await readJson({file: input}), source: await source()});
   } else if (command === 'prepare') {
-    const receipt = await json({file: input});
+    const receipt = await readJson({file: input});
     const assets = await releaseAssets({root, receipt, tag});
-    await mkdir(output, {recursive: true});
-    await writeFile(path.join(output, integrityName), await renderIntegrity({receipt, tag, assets}), {flag: 'wx'});
-    await writeFile(path.join(output, 'expected-assets.json'), JSON.stringify(assets), {flag: 'wx'});
+    const remote = await readJson({file: path.join(output, 'remote.json')});
+    assert.deepEqual(readUploadedAssets({remote, tag, releaseId}),
+      assets.map(({name, size, sha256}) => ({name, size, digest: `sha256:${sha256}`})), 'Uploaded Assets differ from this build');
+    const yaml = await renderIntegrity({receipt, tag, assets});
+    await writeFile(path.join(output, integrityName), yaml, {flag: 'wx'});
+    writeSync(process.stdout.fd, createHash('sha256').update(yaml).digest('hex'));
   } else {
-    throw new Error('Usage: release-integrity.mjs capture-source OUT | seal-build SOURCE | verify-build RECEIPT | prepare RECEIPT OUTDIR TAG');
+    throw new Error(`Unknown release integrity command: ${command}`);
   }
 }
 

@@ -57,6 +57,7 @@ jobs:
       PUBLISH_TAG: ${{ inputs.publish-tag }}
       # Official Python image index, pinned for reproducible offline planning.
       PLANNER_IMAGE: python:3.13-slim-bookworm@sha256:281d39ff02e3b389401586134ff9e6572954687822a58055ec07a60ded4e0b7f
+      INTEGRITY_IMAGE: node:22-bookworm
       DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}
     steps:
       - name: Checkout tooling (and tagged source for asset publication)
@@ -278,15 +279,18 @@ jobs:
           name: full-dist-build
           path: dist
 
-      - name: Set up Node.js for release integrity tooling
+      - name: Pull the integrity tooling image (online)
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        uses: actions/setup-node@v7.1.0
-        with:
-          node-version: 22.x
+        run: docker pull "$INTEGRITY_IMAGE"
 
-      - name: Check downloaded source and build inputs
+      - name: Check downloaded source and build inputs (offline)
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        run: node scripts/release-integrity.mjs verify-build dist/naidan-build-receipt.json
+        run: |
+          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
+            --mount "type=bind,source=$PWD,target=/work,readonly" -w /work \
+            -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT \
+            "$INTEGRITY_IMAGE" node scripts/release-integrity.mjs verify-build dist/naidan-build-receipt.json
 
       - name: Rename zips with tag for release
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
@@ -328,58 +332,39 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Prepare exact local release integrity evidence
+      - name: Read the Release and its complete Asset list (online)
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        run: node scripts/release-integrity.mjs prepare dist/naidan-build-receipt.json "$NOTES_DIR/integrity" "$PUBLISH_TAG"
-
-      - name: Require the uploaded asset set to match this build before signing
-        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        id: verify_publication
+        id: read_publication
         uses: actions/github-script@v9.0.0
         env:
           RELEASE_ID: ${{ steps.guard_publication.outputs.release-id }}
         with:
           script: |
             const fs = require('node:fs/promises');
-            const path = require('node:path');
-            const assert = require('node:assert/strict');
-            const crypto = require('node:crypto');
-            const directory = path.join(process.env.NOTES_DIR, 'integrity');
-            const expected = JSON.parse(await fs.readFile(path.join(directory, 'expected-assets.json'), 'utf8'));
-            assert.ok(Array.isArray(expected) && expected.length > 0);
-            const names = new Set();
-            for (const asset of expected) {
-              assert.deepEqual(Object.keys(asset).sort(), ['name', 'sha256', 'size']);
-              assert.match(asset.name, /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-              assert.match(asset.sha256, /^[0-9a-f]{64}$/);
-              assert.ok(Number.isSafeInteger(asset.size) && asset.size >= 0);
-              assert.ok(!names.has(asset.name) && asset.name !== 'naidan-release-integrity.yaml');
-              names.add(asset.name);
-            }
+            const directory = process.env.NOTES_DIR + '/integrity';
             const {data: release} = await github.rest.repos.getReleaseByTag({...context.repo, tag: process.env.PUBLISH_TAG});
-            assert.equal(String(release.id), process.env.RELEASE_ID, 'Release was replaced');
-            assert.ok(!release.draft && !release.prerelease);
             const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
-              ...context.repo, release_id: release.id, per_page: 100,
+              ...context.repo, release_id: Number(process.env.RELEASE_ID), per_page: 100,
             });
-            // GitHub supplies the digest of stored bytes. Missing digests fail closed.
-            // The inventory comes ONLY from local same-run build outputs, never this list.
-            assert.equal(assets.length, expected.length, 'Unexpected or missing uploaded asset');
-            for (const entry of expected) {
-              const matches = assets.filter(asset => asset.name === entry.name);
-              assert.equal(matches.length, 1, `Missing or duplicate asset: ${entry.name}`);
-              const [asset] = matches;
-              assert.equal(asset.state, 'uploaded');
-              assert.equal(asset.size, entry.size, `Asset size mismatch: ${entry.name}`);
-              assert.equal(asset.digest, `sha256:${entry.sha256}`, `Asset digest mismatch: ${entry.name}`);
-            }
-            const yaml = await fs.readFile(path.join(directory, 'naidan-release-integrity.yaml'));
-            const sha256 = crypto.createHash('sha256').update(yaml).digest('hex');
-            await fs.writeFile(path.join(directory, 'publication-snapshot.json'), JSON.stringify({
-              release_id: release.id, assets: assets.map(({id, name, size, digest}) => ({id, name, size, digest})),
-              integrity: {size: yaml.length, sha256},
-            }), {flag: 'wx'});
-            core.setOutput('sha256', sha256);
+            await fs.mkdir(directory, {recursive: true});
+            await fs.writeFile(directory + '/remote.json', JSON.stringify({release, assets}));
+
+      - name: Match uploaded Assets against local outputs and freeze the YAML (offline)
+        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
+        id: seal_publication
+        env:
+          RELEASE_ID: ${{ steps.guard_publication.outputs.release-id }}
+        run: |
+          sha256="$(
+            docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+              --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
+              --mount "type=bind,source=$PWD,target=/work,readonly" \
+              --mount "type=bind,source=$NOTES_DIR/integrity,target=/proof" \
+              -w /work "$INTEGRITY_IMAGE" node scripts/release-integrity.mjs \
+              prepare dist/naidan-build-receipt.json /proof "$PUBLISH_TAG" "$RELEASE_ID"
+          )"
+          [[ "$sha256" =~ ^[0-9a-f]{64}$ ]]
+          printf 'sha256=%s\n' "$sha256" >> "$GITHUB_OUTPUT"
 
       - name: Attest the exact integrity YAML
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
@@ -387,53 +372,48 @@ jobs:
         uses: actions/attest@v4.2.2
         with:
           subject-name: naidan-release-integrity.yaml
-          subject-digest: sha256:${{ steps.verify_publication.outputs.sha256 }}
+          subject-digest: sha256:${{ steps.seal_publication.outputs.sha256 }}
           create-storage-record: false
 
-      - name: Save the attestation bundle for offline verification
+      - name: Stage the signature bundle next to the YAML (offline)
+        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
+        env:
+          BUNDLE_PATH: ${{ steps.attest_integrity.outputs.bundle-path }}
+          SIGNED_SHA256: ${{ steps.seal_publication.outputs.sha256 }}
+        run: |
+          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
+            --mount "type=bind,source=$BUNDLE_PATH,target=/bundle.json,readonly" \
+            --mount "type=bind,source=$NOTES_DIR/integrity,target=/proof" \
+            -e SIGNED_SHA256 "$INTEGRITY_IMAGE" bash -euc '
+              printf "%s  /proof/naidan-release-integrity.yaml\\n" "$SIGNED_SHA256" | sha256sum --check --status
+              cp /bundle.json /proof/attestation.bundle.json
+            '
+
+      - name: Upload the signed YAML and bundle as an Actions Artifact
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
         uses: actions/upload-artifact@v7.0.2
         with:
           name: release-integrity-attestation-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ steps.attest_integrity.outputs.bundle-path }}
+          path: |
+            ${{ runner.temp }}/release-notes/integrity/naidan-release-integrity.yaml
+            ${{ runner.temp }}/release-notes/integrity/attestation.bundle.json
           if-no-files-found: error
 
-      - name: Publish the signed YAML and confirm the final asset set
+      - name: Upload the signed YAML to the Release (online)
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
         id: publish_integrity
         uses: actions/github-script@v9.0.0
+        env:
+          RELEASE_ID: ${{ steps.guard_publication.outputs.release-id }}
         with:
-          # No automatic POST retry: never delete or overwrite an existing witness.
+          # A single POST by Release ID. GitHub rejects duplicate names.
           script: |
             const fs = require('node:fs/promises');
-            const path = require('node:path');
-            const assert = require('node:assert/strict');
-            const crypto = require('node:crypto');
-            const directory = path.join(process.env.NOTES_DIR, 'integrity');
-            const snapshot = JSON.parse(await fs.readFile(path.join(directory, 'publication-snapshot.json'), 'utf8'));
-            const yaml = await fs.readFile(path.join(directory, 'naidan-release-integrity.yaml'));
-            assert.equal(yaml.length, snapshot.integrity.size);
-            assert.equal(crypto.createHash('sha256').update(yaml).digest('hex'), snapshot.integrity.sha256, 'Signed YAML changed');
-            const current = async () => {
-              const {data: release} = await github.rest.repos.getReleaseByTag({...context.repo, tag: process.env.PUBLISH_TAG});
-              assert.equal(release.id, snapshot.release_id, 'Release was replaced');
-              assert.ok(!release.draft && !release.prerelease);
-              return github.paginate(github.rest.repos.listReleaseAssets, {
-                ...context.repo, release_id: release.id, per_page: 100,
-              });
-            };
-            const check = (assets, expected) => {
-              assert.ok(assets.every(asset => asset.state === 'uploaded'));
-              const byName = entries => [...entries].sort((a, b) => a.name.localeCompare(b.name));
-              assert.deepEqual(byName(assets.map(({id, name, size, digest}) => ({id, name, size, digest}))), byName(expected),
-                'Release asset snapshot changed; signature remains historical evidence only');
-            };
-            check(await current(), snapshot.assets);
-            // Explicit network write: this one additional file; GitHub rejects duplicate names.
-            const {data: uploaded} = await github.rest.repos.uploadReleaseAsset({
-              ...context.repo, release_id: snapshot.release_id, name: 'naidan-release-integrity.yaml',
-              data: yaml, headers: {'content-type': 'application/yaml', 'content-length': yaml.length},
+            const directory = process.env.NOTES_DIR + '/integrity';
+            const name = 'naidan-release-integrity.yaml';
+            const data = await fs.readFile(directory + '/' + name);
+            await github.rest.repos.uploadReleaseAsset({
+              ...context.repo, release_id: Number(process.env.RELEASE_ID), name, data,
+              headers: {'content-type': 'application/yaml', 'content-length': data.length},
             });
-            check(await current(), [...snapshot.assets, {id: uploaded.id, name: 'naidan-release-integrity.yaml',
-              size: snapshot.integrity.size, digest: `sha256:${snapshot.integrity.sha256}`}]);
-            core.info('Verified published payloads and signed integrity YAML. Later release mutations are outside this snapshot.');

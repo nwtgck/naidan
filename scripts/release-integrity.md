@@ -122,17 +122,17 @@ where Bash's automatic `errexit` behavior alone is insufficient.
    GoReleaser's `artifacts.json`, and create the YAML. Unknown types, duplicate
    names and unexpected paths fail closed. Server output hashes do not come
    from remote release metadata or unverified GoReleaser checksum fields.
-7. Compare the **entire** remote uploaded asset set with the local expected
-   names, sizes, upload states and GitHub's SHA-256 asset digests. A missing
-   remote digest is a failure. Record asset IDs as well to detect replacement.
+7. Fetch the complete Release Asset list in the workflow. Compare the list
+   with the local names, sizes and SHA-256 hashes in an offline container.
+   A missing digest, unexpected Asset or incomplete upload prevents signing.
 8. Call `actions/attest` once with the frozen YAML digest and default build
    provenance. It obtains the workflow identity from GitHub and stores the
    attestation in GitHub's attestation service. No custom predicate replaces
    the standard provenance. Both caller and reusable job grant `id-token:
    write` and `attestations: write`; no registry-storage permission is needed.
-9. Save the returned attestation bundle as a workflow artifact. Recheck the
-   YAML and remote snapshot, upload the YAML without overwrite, and recheck
-   the complete final remote set including the YAML digest.
+9. Verify the YAML digest offline and stage the bundle alongside it. Upload
+   both files in one workflow artifact, then add the YAML to the Release
+   with a single upload request that fails on a duplicate name.
 
 This deliberately keeps the existing mutable Release workflow. GitHub may
 show payloads before the final proof arrives. If publication fails before the
@@ -143,9 +143,9 @@ is lost, inspect and verify the release rather than blindly deleting proof.
 
 The job's concurrency group serializes this workflow's publishers and release
 note updates. It cannot lock out an administrator, another token or a separate
-workflow. Checks detect inconsistencies at observation time, but do not make
-the release immutable. Later file additions, deletion or replacement do not
-invalidate a previously saved signature; they change the current release
+workflow. The asset check observes the set before signing. Later file
+additions, deletion or replacement leave previously saved signatures valid
+and change the current release
 relative to its signed snapshot. An older valid attestation is not proof of
 the latest release, freshness, revocation or absence of rollback.
 
@@ -163,9 +163,10 @@ verification, preserve the exact YAML, selected payloads, the Sigstore bundle
 and a trusted root obtained through a trusted channel. Use the same identity
 policy with `--bundle /path/to/bundle.json` and
 `--custom-trusted-root /path/to/trusted-root.jsonl`. Trust roots must not come
-only from the untrusted artifact being checked. The workflow bundle artifact
-has normal artifact retention; GitHub's attestation service is the online
-lookup path. Offline bundle verification checks historical recorded names;
+only from the untrusted artifact being checked. The Actions artifact
+`release-integrity-attestation-<run-id>-<run-attempt>` contains the exact YAML
+and `attestation.bundle.json`, with normal artifact retention. GitHub's
+attestation service is the online lookup path. Offline verification uses historical names;
 it cannot determine current repository renames or latest-release state.
 
 This public-repository attestation exposes repository/workflow/run/source

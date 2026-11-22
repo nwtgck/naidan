@@ -269,7 +269,14 @@ it('workflow keeps audit boundaries, shared non-dropping lock, and guarded asset
       'Every publication step must require a non-dry tag publication');
   }
   assert.ok(assets.indexOf('id: guard_publication') < assets.indexOf('uses: softprops/action-gh-release'));
-  assert.ok(assets.indexOf('id: verify_publication') < assets.indexOf('uses: actions/attest@'));
+  const readAssets = assets.indexOf('id: read_publication');
+  const seal = assets.indexOf('id: seal_publication');
+  const attest = assets.indexOf('uses: actions/attest@');
+  assert.ok(0 <= readAssets && readAssets < seal && seal < attest);
+  assert.match(assets.slice(seal, attest), /--pull=never --network none/);
+  assert.match(assets, /subject-digest: sha256:\$\{\{ steps\.seal_publication\.outputs\.sha256 \}\}/);
+  const proof = assets.slice(assets.indexOf('name: Upload the signed YAML and bundle as an Actions Artifact'));
+  assert.match(proof, /path: \|\n +\$\{\{ runner\.temp \}\}\/release-notes\/integrity\/naidan-release-integrity\.yaml\n +\$\{\{ runner\.temp \}\}\/release-notes\/integrity\/attestation\.bundle\.json/);
   assert.ok(assets.indexOf('uses: actions/attest@') < assets.indexOf('id: publish_integrity'));
   assert.equal((assets.match(/uses: actions\/attest@/g) || []).length, 1);
   assert.doesNotMatch(assets, /^\s+(body|body_path|generate_release_notes):/m);
