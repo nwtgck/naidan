@@ -2,29 +2,20 @@
 import { onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { ChevronLeftIcon, ChevronRightIcon, XIcon, SlidersHorizontalIcon, ZoomInIcon, ZoomOutIcon } from 'lucide-vue-next';
 import { trapImageDialogFocus } from '@/features/image-generation/dialog-keyboard';
+import { useImageViewport } from '@/composables/useImageViewport';
 import { lazyStrings } from '@/strings';
 const props = defineProps<{ count: number, downloadEnabled: boolean }>();
 const index = defineModel<number>('index', { required: true });
 const emit = defineEmits<{ close: [], download: [] }>();
-const container = ref<HTMLElement>(), zoom = ref(1), position = ref({ x: 0, y: 0 });
+const container = ref<HTMLElement>();
+const { zoom, position, reset, magnify, pointerDown, pointerMove, endPan } = useImageViewport();
 const detailsOpen = ref(false), detailsId = useId();
 let previousFocus: HTMLElement | undefined;
-let pointer: { id: number, x: number, y: number } | undefined;
-
-function reset(): void {
-  pointer = undefined;
-  zoom.value = 1;
-  position.value = { x: 0, y: 0 };
-}
 
 watch(index, reset);
 
 function move({ offset }: { offset: number }): void {
   index.value = Math.max(0, Math.min(props.count - 1, index.value + offset));
-}
-
-function magnify({ factor }: { factor: number }): void {
-  zoom.value = Math.max(0.25, Math.min(8, zoom.value * factor));
 }
 
 function keydown({ event }: { event: KeyboardEvent }): void {
@@ -51,22 +42,6 @@ function keydown({ event }: { event: KeyboardEvent }): void {
     move({ offset: 1 });
     break;
   }
-}
-
-function pointerDown({ event }: { event: PointerEvent }): void {
-  if (!(event.currentTarget instanceof HTMLElement) || event.button !== 0) {
-    return;
-  }
-  pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
-  event.currentTarget.setPointerCapture(event.pointerId);
-}
-
-function pointerMove({ event }: { event: PointerEvent }): void {
-  if (!pointer || event.pointerId !== pointer.id) {
-    return;
-  }
-  position.value = { x: position.value.x + event.clientX - pointer.x, y: position.value.y + event.clientY - pointer.y };
-  pointer = { ...pointer, x: event.clientX, y: event.clientY };
 }
 
 onMounted(() => {
@@ -112,7 +87,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { zoom, position, det
         </div>
       </div>
       <div tw-class="flex flex-col md:flex-row min-h-0 flex-1">
-        <div data-testid="image-viewer-stage" tw-class="min-w-0 min-h-0 flex-1 overflow-hidden flex items-center justify-center touch-none cursor-grab" @wheel.prevent="magnify({ factor: $event.deltaY < 0 ? 1.1 : 1 / 1.1 })" @pointerdown="pointerDown({ event: $event })" @pointermove="pointerMove({ event: $event })" @pointerup="pointer = undefined" @pointercancel="pointer = undefined">
+        <div data-testid="image-viewer-stage" tw-class="min-w-0 min-h-0 flex-1 overflow-hidden flex items-center justify-center touch-none cursor-grab" @wheel.prevent="magnify({ factor: $event.deltaY < 0 ? 1.1 : 1 / 1.1 })" @pointerdown="pointerDown({ event: $event })" @pointermove="pointerMove({ event: $event })" @pointerup="endPan({ event: $event })" @pointercancel="endPan({ event: $event })" @lostpointercapture="endPan({ event: $event })">
           <div :style="{ transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})` }" tw-class="w-full h-full max-w-full max-h-full flex items-center justify-center select-none pointer-events-none">
             <slot :index="index" />
           </div>

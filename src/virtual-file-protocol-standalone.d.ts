@@ -15,6 +15,12 @@ declare module 'virtual:file-protocol-standalone/worker/advanced-text-editor-v3'
   export function disposeStandaloneWorkerBootstrap(): void;
 }
 
+declare module 'virtual:file-protocol-standalone/worker/editor-v4' {
+  import type { StandaloneWorkerCreateOptions } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
+
+  export function createStandaloneWorker({ name, startupTimeoutMs }?: { readonly name?: StandaloneWorkerCreateOptions['name'], readonly startupTimeoutMs?: StandaloneWorkerCreateOptions['startupTimeoutMs'] }): Promise<Worker>;
+}
+
 declare module 'virtual:file-protocol-standalone/worker/highlight' {
   import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
 

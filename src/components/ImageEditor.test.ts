@@ -112,6 +112,22 @@ describe('ImageEditor', () => {
     expect(wrapper.vm.TEST_ONLY.hasChanges.value).toBe(true);
   });
 
+  it('can keep the original format for a caller editing a saved image', async () => {
+    const wrapper = mount(ImageEditor, { props: { ...props, initialOutputFormat: 'original' } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await vi.waitFor(() => expect(wrapper.vm.TEST_ONLY.historyIndex.value).toBe(0));
+    const finishButton = wrapper.get<HTMLButtonElement>('[data-testid="image-editor-finish-button"]');
+    expect(finishButton.element.disabled).toBe(true);
+
+    await wrapper.vm.TEST_ONLY.applyTransform({ type: 'rotate-r' });
+    await finishButton.trigger('click');
+    expect(HTMLCanvasElement.prototype.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg');
+  });
+
   it('should maintain aspect ratio by default during resize', async () => {
     const wrapper = mount(ImageEditor, { props });
     await nextTick();

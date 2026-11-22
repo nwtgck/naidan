@@ -137,6 +137,7 @@ export async function createFileExplorerWorkerClient({
     },
     prepareFileDownload: streams.prepareFileDownload,
     openFileStream: streams.openFileStream,
+    fileAccess: streams.fileAccess,
     startDirectoryArchive: streams.startDirectoryArchive,
     async createFile({ parentPath, name }) {
       await remote.createFile({ request: { sessionId, parentPath, name } });

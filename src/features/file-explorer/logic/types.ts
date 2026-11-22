@@ -144,8 +144,24 @@ export interface ColumnPaneState {
   isLoading: boolean,
 }
 
+export type FileExplorerTreeMenuEvent = {
+  event: MouseEvent,
+  entry: FileExplorerEntry,
+  directoryPath: string,
+  directoryReadOnly: boolean,
+  open: () => void,
+};
+
+export type FileExplorerTreeMenu = {
+  directoryPath: string,
+  directoryReadOnly: boolean,
+  open: () => void,
+  runMutation: ({ paths, mutate }: { paths: readonly string[], mutate: () => Promise<void> }) => Promise<void>,
+  onMutation: ({ paths }: { paths: readonly string[] }) => void,
+};
+
 export type ContextMenuTarget =
-  | { kind: 'entry', entry: FileExplorerEntry, selectedEntries: FileExplorerEntry[] }
+  | { kind: 'entry', entry: FileExplorerEntry, selectedEntries: FileExplorerEntry[], tree?: FileExplorerTreeMenu }
   | { kind: 'background' };
 
 export interface ContextMenuState {
@@ -162,6 +178,11 @@ export interface ClipboardState {
   entries: FileExplorerEntry[],
 }
 
+export interface FileExplorerBinaryPreview {
+  bytes: Uint8Array<ArrayBuffer>,
+  partial: boolean,
+}
+
 export interface PreviewState {
   visibility: PreviewVisibility,
   entry: FileExplorerEntry | undefined,
@@ -173,6 +194,9 @@ export interface PreviewState {
   loadingState: 'idle' | 'loading' | 'loaded' | 'error',
   errorMessage: string | undefined,
   oversized: boolean,
+  partial?: boolean,
+  modelFile?: Blob | undefined,
+  binaryPreview?: FileExplorerBinaryPreview | undefined,
 }
 
 export type DragState =
@@ -234,7 +258,10 @@ export interface FileExplorerContext {
   applySelection: ({ action }: { action: SelectionAction }) => void,
   moveFocus: ({ direction, extend }: { direction: 'prev' | 'next', extend: boolean }) => void,
 
-  createFile: ({ name }: { name: string }) => Promise<void>,
+  newFileDirectoryPath: string | undefined,
+  openNewFile: () => void,
+  closeNewFile: () => void,
+  createFile: ({ name, blob }: { name: string, blob: Blob }) => Promise<boolean>,
   createFolder: ({ name }: { name: string }) => Promise<void>,
   deleteEntries: ({ entries }: { entries: FileExplorerEntry[] }) => Promise<void>,
   renameEntry: ({ entry, newName }: { entry: FileExplorerEntry, newName: string }) => Promise<void>,

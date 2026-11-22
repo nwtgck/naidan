@@ -262,6 +262,21 @@ export const ExperimentalTranslationSettingsSchemaDto = resolveMissingAsUndefine
 }));
 export type ExperimentalTranslationSettingsDto = dtozod.infer<typeof ExperimentalTranslationSettingsSchemaDto>;
 
+const FileExplorerPaneVisibilitySchemaDto = dtozod.enum(['visible', 'hidden']);
+
+export const ExperimentalFileExplorerSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  viewMode: missingAsUndefined(dtozod.enum(['icon', 'list', 'column', 'tree'])),
+  previewVisibility: missingAsUndefined(FileExplorerPaneVisibilitySchemaDto),
+  previewWidthPx: missingAsUndefined(dtozod.number()),
+  treeVisibility: missingAsUndefined(FileExplorerPaneVisibilitySchemaDto),
+  treeWidthPx: missingAsUndefined(dtozod.number()),
+  fileInformationVisibility: missingAsUndefined(FileExplorerPaneVisibilitySchemaDto),
+  sortField: missingAsUndefined(dtozod.enum(['name', 'size', 'dateModified', 'type'])),
+  sortDirection: missingAsUndefined(dtozod.enum(['ascending', 'descending'])),
+  wordWrap: missingAsUndefined(dtozod.enum(['wrap', 'no_wrap'])),
+  editorLineNumbers: missingAsUndefined(dtozod.enum(['shown', 'hidden'])),
+}));
+
 export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
   locale: missingAsUndefined(ExperimentalSettingsLocaleSchemaDto),
   /**
@@ -310,6 +325,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
       dtozod.literal('full'),
     ])),
   }))),
+  fileExplorer: missingAsUndefined(optionalExperimentalFieldSchemaDto({ schema: ExperimentalFileExplorerSettingsSchemaDto })),
   liveConversationModelId: missingAsUndefined(dtozod.string()),
   // Isolate the deliberately removed Boolean autoTranslate without losing the model.
   translation: missingAsUndefined(optionalExperimentalFieldSchemaDto({ schema: ExperimentalTranslationSettingsSchemaDto })),

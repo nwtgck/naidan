@@ -4,6 +4,7 @@ import { acquireSharedHighlightWorkerClientLease } from '@/features/highlight/wo
 import type { SharedHighlightWorkerClientLease } from '@/features/highlight/worker/client-shared';
 import type { FileExplorerEntry, PreviewState } from '@/features/file-explorer/logic/types';
 import { EXTENSION_LANGUAGE_MAP } from '@/features/file-explorer/logic/constants';
+import { BINARY_PREVIEW_BYTES, DELIMITED_PREVIEW_BYTES, getDelimitedFormat, getFileViewKind } from '@/features/file-explorer/logic/file-view';
 import { sanitizeHighlightHtml } from '@/logic/security/allowedHtml';
 import type { AllowedHtml } from '@/logic/security/allowedHtml';
 
@@ -26,6 +27,8 @@ export function useFileExplorerPreview({
   });
   let latestPreviewRequestId = 0;
   let latestHighlightRequestId = 0;
+  let previewAbort: AbortController | undefined;
+  let activeLoad: { entry: FileExplorerEntry, promise: Promise<void> } | undefined;
   let highlightWorkerClientLeasePromise: Promise<SharedHighlightWorkerClientLease> | undefined;
   let disposed = false;
 
@@ -97,7 +100,13 @@ export function useFileExplorerPreview({
     entry: FileExplorerEntry,
     mode: 'bounded' | 'force',
   }): Promise<void> {
+    if (disposed) {
+      return;
+    }
     const requestId = ++latestPreviewRequestId;
+    previewAbort?.abort();
+    const abort = new AbortController();
+    previewAbort = abort;
     latestHighlightRequestId += 1;
     revokeObjectUrl();
     previewState.value = {
@@ -109,10 +118,100 @@ export function useFileExplorerPreview({
       objectUrl: undefined,
       errorMessage: undefined,
       oversized: false,
+      partial: false,
+      modelFile: undefined,
+      binaryPreview: undefined,
       loadingState: 'loading',
     };
 
     try {
+      const kind = getFileViewKind({ entry });
+      if (entry.kind === 'file' && kind === 'model' && client.fileAccess !== undefined) {
+        const snapshot = await client.fileAccess.openSnapshot({ path: entry.path, signal: abort.signal });
+        if (!isCurrentPreviewRequest({ requestId })) {
+          return;
+        }
+        switch (snapshot.kind) {
+        case 'file':
+          previewState.value = snapshot.blob.size === 0
+            ? { ...previewState.value, rawTextContent: '', loadingState: 'loaded' }
+            : { ...previewState.value, modelFile: snapshot.blob, loadingState: 'loaded' };
+          return;
+        case 'unsupported': {
+          const sample = await client.fileAccess.read({ path: entry.path, mode: 'prefix', maxBytes: 1, signal: abort.signal });
+          if (!isCurrentPreviewRequest({ requestId })) {
+            return;
+          }
+          if ('blob' in sample && sample.blob.size === 0 && !sample.partial) {
+            previewState.value = { ...previewState.value, rawTextContent: '', loadingState: 'loaded' };
+            return;
+          }
+          break;
+        }
+        case 'too-large':
+          break;
+        default: {
+          const exhaustive: never = snapshot;
+          throw new Error(`Unhandled model file snapshot: ${String(exhaustive)}`);
+        }
+        }
+      }
+      if (entry.kind === 'file' && kind === 'binary' && client.fileAccess !== undefined) {
+        const prefix = await client.fileAccess.read({ path: entry.path, mode: 'prefix', maxBytes: BINARY_PREVIEW_BYTES, signal: abort.signal });
+        if (!isCurrentPreviewRequest({ requestId })) {
+          return;
+        }
+        switch (prefix.kind) {
+        case 'file': {
+          const bytes = new Uint8Array(await prefix.blob.arrayBuffer());
+          if (isCurrentPreviewRequest({ requestId })) {
+            previewState.value = { ...previewState.value, binaryPreview: { bytes, partial: prefix.partial }, loadingState: 'loaded' };
+          }
+          return;
+        }
+        case 'unsupported': case 'too-large': break;
+        default: {
+          const exhaustive: never = prefix;
+          throw new Error(`Unhandled binary file preview: ${String(exhaustive)}`);
+        }
+        }
+      }
+      if (mode === 'bounded' && getDelimitedFormat({ extension: entry.extension }) !== undefined && client.fileAccess !== undefined) {
+        const prefix = await client.fileAccess.read({
+          path: entry.path,
+          mode: 'prefix',
+          maxBytes: DELIMITED_PREVIEW_BYTES,
+          signal: abort.signal,
+        });
+        if (!isCurrentPreviewRequest({ requestId })) {
+          return;
+        }
+        switch (prefix.kind) {
+        case 'too-large':
+          previewState.value = { ...previewState.value, loadingState: 'loaded', oversized: true };
+          return;
+        case 'file': {
+          const bytes = await prefix.blob.arrayBuffer();
+          const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes, { stream: prefix.partial });
+          if (isCurrentPreviewRequest({ requestId })) {
+            previewState.value = {
+              ...previewState.value,
+              rawTextContent: text,
+              textContent: text,
+              partial: prefix.partial,
+              loadingState: 'loaded',
+            };
+          }
+          return;
+        }
+        case 'unsupported':
+          break;
+        default: {
+          const exhaustive: never = prefix;
+          throw new Error(`Unhandled file prefix result: ${String(exhaustive)}`);
+        }
+        }
+      }
       const response = await client.readPreview({ path: entry.path, mode });
       if (!isCurrentPreviewRequest({ requestId })) {
         return;
@@ -135,7 +234,7 @@ export function useFileExplorerPreview({
           };
           return;
         }
-        const highlightedHtml = await highlightText({
+        const highlightedHtml = kind === 'patch' || kind === 'markdown' || response.displayText.length === 0 ? undefined : await highlightText({
           entry,
           displayText: response.displayText,
         });
@@ -160,6 +259,10 @@ export function useFileExplorerPreview({
             loadingState: 'loaded',
             oversized: true,
           };
+          return;
+        }
+        if (response.blob.size === 0) {
+          previewState.value = { ...previewState.value, rawTextContent: '', loadingState: 'loaded' };
           return;
         }
         previewState.value = {
@@ -191,15 +294,33 @@ export function useFileExplorerPreview({
         loadingState: 'error',
         errorMessage: error instanceof Error ? error.message : String(error),
       };
+    } finally {
+      if (previewAbort === abort) {
+        previewAbort = undefined;
+      }
     }
   }
 
-  async function loadPreview({ entry }: { entry: FileExplorerEntry }): Promise<void> {
-    await loadPreviewWithMode({ entry, mode: 'bounded' });
+  function loadPreview({ entry }: { entry: FileExplorerEntry }): Promise<void> {
+    if (activeLoad?.entry.path === entry.path
+      && activeLoad.entry.size === entry.size
+      && activeLoad.entry.lastModified === entry.lastModified
+      && previewState.value.loadingState !== 'error') {
+      return activeLoad.promise;
+    }
+    const promise = loadPreviewWithMode({ entry, mode: 'bounded' });
+    activeLoad = { entry, promise };
+    return promise;
   }
 
-  async function loadPreviewForced({ entry }: { entry: FileExplorerEntry }): Promise<void> {
-    await loadPreviewWithMode({ entry, mode: 'force' });
+  function loadPreviewForced({ entry }: { entry: FileExplorerEntry }): Promise<void> {
+    const promise = loadPreviewWithMode({ entry, mode: 'force' });
+    activeLoad = { entry, promise };
+    return promise;
+  }
+
+  function invalidatePreviewLoad(): void {
+    activeLoad = undefined;
   }
 
   function toggleJsonFormat(): void {
@@ -258,6 +379,8 @@ export function useFileExplorerPreview({
   function clearPreview(): void {
     latestPreviewRequestId += 1;
     latestHighlightRequestId += 1;
+    invalidatePreviewLoad();
+    previewAbort?.abort();
     revokeObjectUrl();
     previewState.value = {
       visibility: previewState.value.visibility,
@@ -296,6 +419,7 @@ export function useFileExplorerPreview({
     loadPreview,
     loadPreviewForced,
     clearPreview,
+    invalidatePreviewLoad,
     togglePreviewVisibility,
     toggleJsonFormat,
     dispose(): void {
@@ -305,6 +429,8 @@ export function useFileExplorerPreview({
       disposed = true;
       latestPreviewRequestId += 1;
       latestHighlightRequestId += 1;
+      invalidatePreviewLoad();
+      previewAbort?.abort();
       revokeObjectUrl();
 
       const leasePromise = highlightWorkerClientLeasePromise;

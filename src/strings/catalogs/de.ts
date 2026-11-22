@@ -112,6 +112,7 @@ import { AudioTranscriptionWorkspace__copy } from '@/strings/messages/AudioTrans
 import { AudioTranscriptionWorkspace__could_not_auto_copy } from '@/strings/messages/AudioTranscriptionWorkspace__could_not_auto_copy/de';
 import { AudioTranscriptionWorkspace__could_not_copy_select_the_text } from '@/strings/messages/AudioTranscriptionWorkspace__could_not_copy_select_the_text/de';
 import { AudioTranscriptionWorkspace__could_not_open_floating_window } from '@/strings/messages/AudioTranscriptionWorkspace__could_not_open_floating_window/de';
+import { AudioTranscriptionWorkspace__could_not_save_the_transcript } from '@/strings/messages/AudioTranscriptionWorkspace__could_not_save_the_transcript/de';
 import { AudioTranscriptionWorkspace__drop_audio_or_video_file } from '@/strings/messages/AudioTranscriptionWorkspace__drop_audio_or_video_file/de';
 import { AudioTranscriptionWorkspace__edit_transcribed_text } from '@/strings/messages/AudioTranscriptionWorkspace__edit_transcribed_text/de';
 import { AudioTranscriptionWorkspace__end_voice_input } from '@/strings/messages/AudioTranscriptionWorkspace__end_voice_input/de';
@@ -137,6 +138,7 @@ import { AudioTranscriptionWorkspace__preparing_model } from '@/strings/messages
 import { AudioTranscriptionWorkspace__remove_file } from '@/strings/messages/AudioTranscriptionWorkspace__remove_file/de';
 import { AudioTranscriptionWorkspace__resume } from '@/strings/messages/AudioTranscriptionWorkspace__resume/de';
 import { AudioTranscriptionWorkspace__resume_voice_input } from '@/strings/messages/AudioTranscriptionWorkspace__resume_voice_input/de';
+import { AudioTranscriptionWorkspace__save_as_text_file } from '@/strings/messages/AudioTranscriptionWorkspace__save_as_text_file/de';
 import { AudioTranscriptionWorkspace__start_voice_input } from '@/strings/messages/AudioTranscriptionWorkspace__start_voice_input/de';
 import { AudioTranscriptionWorkspace__tap_to_resume_auto_copy } from '@/strings/messages/AudioTranscriptionWorkspace__tap_to_resume_auto_copy/de';
 import { AudioTranscriptionWorkspace__text } from '@/strings/messages/AudioTranscriptionWorkspace__text/de';
@@ -860,6 +862,34 @@ import { DevelopmentMetaCspRecovery__development_meta_csp } from '@/strings/mess
 import { DevelopmentMetaCspRecovery__development_only_never_for_security } from '@/strings/messages/DevelopmentMetaCspRecovery__development_only_never_for_security/de';
 import { DevelopmentMetaCspRecovery__setting_cleared_current_meta_remains } from '@/strings/messages/DevelopmentMetaCspRecovery__setting_cleared_current_meta_remains/de';
 import { DevelopmentMetaCspRecovery__storage_changed_try_again } from '@/strings/messages/DevelopmentMetaCspRecovery__storage_changed_try_again/de';
+import { EditorV4__close_find } from '@/strings/messages/EditorV4__close_find/de';
+import { EditorV4__document_counts } from '@/strings/messages/EditorV4__document_counts/de';
+import { EditorV4__document_statistics } from '@/strings/messages/EditorV4__document_statistics/de';
+import { EditorV4__editor_options } from '@/strings/messages/EditorV4__editor_options/de';
+import { EditorV4__emacs_key_bindings } from '@/strings/messages/EditorV4__emacs_key_bindings/de';
+import { EditorV4__find_in_document } from '@/strings/messages/EditorV4__find_in_document/de';
+import { EditorV4__find_match_position } from '@/strings/messages/EditorV4__find_match_position/de';
+import { EditorV4__find_next } from '@/strings/messages/EditorV4__find_next/de';
+import { EditorV4__find_previous } from '@/strings/messages/EditorV4__find_previous/de';
+import { EditorV4__invalid_regular_expression } from '@/strings/messages/EditorV4__invalid_regular_expression/de';
+import { EditorV4__line_and_column } from '@/strings/messages/EditorV4__line_and_column/de';
+import { EditorV4__line_numbers } from '@/strings/messages/EditorV4__line_numbers/de';
+import { EditorV4__match_case } from '@/strings/messages/EditorV4__match_case/de';
+import { EditorV4__redo } from '@/strings/messages/EditorV4__redo/de';
+import { EditorV4__replace_all } from '@/strings/messages/EditorV4__replace_all/de';
+import { EditorV4__replace_current } from '@/strings/messages/EditorV4__replace_current/de';
+import { EditorV4__replace_with } from '@/strings/messages/EditorV4__replace_with/de';
+import { EditorV4__replacement_too_large } from '@/strings/messages/EditorV4__replacement_too_large/de';
+import { EditorV4__search_timed_out } from '@/strings/messages/EditorV4__search_timed_out/de';
+import { EditorV4__search_unavailable } from '@/strings/messages/EditorV4__search_unavailable/de';
+import { EditorV4__select_all_occurrences } from '@/strings/messages/EditorV4__select_all_occurrences/de';
+import { EditorV4__select_next_occurrence } from '@/strings/messages/EditorV4__select_next_occurrence/de';
+import { EditorV4__selected_characters } from '@/strings/messages/EditorV4__selected_characters/de';
+import { EditorV4__text_editor } from '@/strings/messages/EditorV4__text_editor/de';
+import { EditorV4__toggle_replace_field } from '@/strings/messages/EditorV4__toggle_replace_field/de';
+import { EditorV4__undo } from '@/strings/messages/EditorV4__undo/de';
+import { EditorV4__use_regular_expression } from '@/strings/messages/EditorV4__use_regular_expression/de';
+import { EditorV4__word_wrap } from '@/strings/messages/EditorV4__word_wrap/de';
 import { EndpointPresetButtons__connection_presets } from '@/strings/messages/EndpointPresetButtons__connection_presets/de';
 import { ExperimentalFeatureRow__details } from '@/strings/messages/ExperimentalFeatureRow__details/de';
 import { ExperimentalFeatureRow__details_for } from '@/strings/messages/ExperimentalFeatureRow__details_for/de';
@@ -903,6 +933,57 @@ import { FeatureFlagsSettings__tool_persistence_enabled_details } from '@/string
 import { FeatureFlagsSettings__use_fake_lm_endpoint } from '@/strings/messages/FeatureFlagsSettings__use_fake_lm_endpoint/de';
 import { FeatureFlagsSettings__uses_bundled_fake_lm } from '@/strings/messages/FeatureFlagsSettings__uses_bundled_fake_lm/de';
 import { FeatureFlagsSettings__view_token_counts_and_measurement_intervals } from '@/strings/messages/FeatureFlagsSettings__view_token_counts_and_measurement_intervals/de';
+import { FileExplorerBinaryPreview__first_bytes } from '@/strings/messages/FileExplorerBinaryPreview__first_bytes/de';
+import { FileExplorerBinaryPreview__show_as_text } from '@/strings/messages/FileExplorerBinaryPreview__show_as_text/de';
+import { FileExplorerDelimitedView__could_not_display_as_a_table } from '@/strings/messages/FileExplorerDelimitedView__could_not_display_as_a_table/de';
+import { FileExplorerDelimitedView__no_complete_rows_to_display } from '@/strings/messages/FileExplorerDelimitedView__no_complete_rows_to_display/de';
+import { FileExplorerDelimitedView__row_column } from '@/strings/messages/FileExplorerDelimitedView__row_column/de';
+import { FileExplorerDelimitedView__save_table_changes } from '@/strings/messages/FileExplorerDelimitedView__save_table_changes/de';
+import { FileExplorerDelimitedView__show_more_rows } from '@/strings/messages/FileExplorerDelimitedView__show_more_rows/de';
+import { FileExplorerDelimitedView__showing_part_of_the_file } from '@/strings/messages/FileExplorerDelimitedView__showing_part_of_the_file/de';
+import { FileExplorerFileContent__save_as_utf8 } from '@/strings/messages/FileExplorerFileContent__save_as_utf8/de';
+import { FileExplorerFileContent__use_one_of_these_file_extensions } from '@/strings/messages/FileExplorerFileContent__use_one_of_these_file_extensions/de';
+import { FileExplorerFileView__resize_tree } from '@/strings/messages/FileExplorerFileView__resize_tree/de';
+import { FileExplorerImageView__could_not_load_image } from '@/strings/messages/FileExplorerImageView__could_not_load_image/de';
+import { FileExplorerImageView__edit_image } from '@/strings/messages/FileExplorerImageView__edit_image/de';
+import { FileExplorerImageView__fit_image } from '@/strings/messages/FileExplorerImageView__fit_image/de';
+import { FileExplorerImageView__zoom_in } from '@/strings/messages/FileExplorerImageView__zoom_in/de';
+import { FileExplorerImageView__zoom_out } from '@/strings/messages/FileExplorerImageView__zoom_out/de';
+import { FileExplorerModelView__architecture } from '@/strings/messages/FileExplorerModelView__architecture/de';
+import { FileExplorerModelView__copied } from '@/strings/messages/FileExplorerModelView__copied/de';
+import { FileExplorerModelView__copy_value } from '@/strings/messages/FileExplorerModelView__copy_value/de';
+import { FileExplorerModelView__edit_value } from '@/strings/messages/FileExplorerModelView__edit_value/de';
+import { FileExplorerModelView__failed_to_copy_value } from '@/strings/messages/FileExplorerModelView__failed_to_copy_value/de';
+import { FileExplorerModelView__failed_to_prepare_metadata_changes } from '@/strings/messages/FileExplorerModelView__failed_to_prepare_metadata_changes/de';
+import { FileExplorerModelView__failed_to_read_metadata_value } from '@/strings/messages/FileExplorerModelView__failed_to_read_metadata_value/de';
+import { FileExplorerModelView__failed_to_read_model } from '@/strings/messages/FileExplorerModelView__failed_to_read_model/de';
+import { FileExplorerModelView__file_offset } from '@/strings/messages/FileExplorerModelView__file_offset/de';
+import { FileExplorerModelView__gguf_version } from '@/strings/messages/FileExplorerModelView__gguf_version/de';
+import { FileExplorerModelView__metadata } from '@/strings/messages/FileExplorerModelView__metadata/de';
+import { FileExplorerModelView__next_page } from '@/strings/messages/FileExplorerModelView__next_page/de';
+import { FileExplorerModelView__original_shape } from '@/strings/messages/FileExplorerModelView__original_shape/de';
+import { FileExplorerModelView__original_value } from '@/strings/messages/FileExplorerModelView__original_value/de';
+import { FileExplorerModelView__overview } from '@/strings/messages/FileExplorerModelView__overview/de';
+import { FileExplorerModelView__previous_page } from '@/strings/messages/FileExplorerModelView__previous_page/de';
+import { FileExplorerModelView__review_and_save } from '@/strings/messages/FileExplorerModelView__review_and_save/de';
+import { FileExplorerModelView__shard } from '@/strings/messages/FileExplorerModelView__shard/de';
+import { FileExplorerModelView__tensor_shape } from '@/strings/messages/FileExplorerModelView__tensor_shape/de';
+import { FileExplorerModelView__tensors } from '@/strings/messages/FileExplorerModelView__tensors/de';
+import { FileExplorerModelView__tokenizer } from '@/strings/messages/FileExplorerModelView__tokenizer/de';
+import { FileExplorerModelView__value } from '@/strings/messages/FileExplorerModelView__value/de';
+import { FileExplorerModelView__value_is_not_set } from '@/strings/messages/FileExplorerModelView__value_is_not_set/de';
+import { FileExplorerNewFileDialog__an_empty_file_with_this_name_exists } from '@/strings/messages/FileExplorerNewFileDialog__an_empty_file_with_this_name_exists/de';
+import { FileExplorerNewFileDialog__paste_one_file_at_a_time } from '@/strings/messages/FileExplorerNewFileDialog__paste_one_file_at_a_time/de';
+import { FileExplorerNewFileDialog__paste_text_or_a_file } from '@/strings/messages/FileExplorerNewFileDialog__paste_text_or_a_file/de';
+import { FileExplorerNewFileDialog__remove_attachment } from '@/strings/messages/FileExplorerNewFileDialog__remove_attachment/de';
+import { FileExplorerPatchView__change } from '@/strings/messages/FileExplorerPatchView__change/de';
+import { FileExplorerPatchView__new_line } from '@/strings/messages/FileExplorerPatchView__new_line/de';
+import { FileExplorerPatchView__no_newline_at_end_of_file } from '@/strings/messages/FileExplorerPatchView__no_newline_at_end_of_file/de';
+import { FileExplorerPatchView__old_line } from '@/strings/messages/FileExplorerPatchView__old_line/de';
+import { FileExplorerPatchView__showing_source } from '@/strings/messages/FileExplorerPatchView__showing_source/de';
+import { FileExplorerPreviewPanel__resize_preview } from '@/strings/messages/FileExplorerPreviewPanel__resize_preview/de';
+import { FileExplorerPreviewPanel__showing_the_beginning_of_this_file } from '@/strings/messages/FileExplorerPreviewPanel__showing_the_beginning_of_this_file/de';
+import { FileExplorerTextWrapButton__wrap_text } from '@/strings/messages/FileExplorerTextWrapButton__wrap_text/de';
 import { GenerationSpeed__always_show_token_count_and_interval } from '@/strings/messages/GenerationSpeed__always_show_token_count_and_interval/de';
 import { GenerationSpeed__could_not_save_display_settings } from '@/strings/messages/GenerationSpeed__could_not_save_display_settings/de';
 import { GenerationSpeed__enable_again_in_developer_settings } from '@/strings/messages/GenerationSpeed__enable_again_in_developer_settings/de';
@@ -2775,6 +2856,7 @@ import { fileExplorer__close } from '@/strings/messages/fileExplorer__close/de';
 import { fileExplorer__close_preview } from '@/strings/messages/fileExplorer__close_preview/de';
 import { fileExplorer__column_view } from '@/strings/messages/fileExplorer__column_view/de';
 import { fileExplorer__copy } from '@/strings/messages/fileExplorer__copy/de';
+import { fileExplorer__could_not_save_file } from '@/strings/messages/fileExplorer__could_not_save_file/de';
 import { fileExplorer__create } from '@/strings/messages/fileExplorer__create/de';
 import { fileExplorer__creating_archive } from '@/strings/messages/fileExplorer__creating_archive/de';
 import { fileExplorer__cut } from '@/strings/messages/fileExplorer__cut/de';
@@ -2783,12 +2865,16 @@ import { fileExplorer__delete_confirmation } from '@/strings/messages/fileExplor
 import { fileExplorer__delete_file } from '@/strings/messages/fileExplorer__delete_file/de';
 import { fileExplorer__delete_folder } from '@/strings/messages/fileExplorer__delete_folder/de';
 import { fileExplorer__delete_items } from '@/strings/messages/fileExplorer__delete_items/de';
+import { fileExplorer__discard_changes } from '@/strings/messages/fileExplorer__discard_changes/de';
 import { fileExplorer__download } from '@/strings/messages/fileExplorer__download/de';
 import { fileExplorer__download_directory } from '@/strings/messages/fileExplorer__download_directory/de';
+import { fileExplorer__edit_as_text } from '@/strings/messages/fileExplorer__edit_as_text/de';
+import { fileExplorer__edit_source } from '@/strings/messages/fileExplorer__edit_source/de';
 import { fileExplorer__empty } from '@/strings/messages/fileExplorer__empty/de';
 import { fileExplorer__empty_folder } from '@/strings/messages/fileExplorer__empty_folder/de';
 import { fileExplorer__enter_a_name_for_the_new_file } from '@/strings/messages/fileExplorer__enter_a_name_for_the_new_file/de';
 import { fileExplorer__enter_a_name_for_the_new_folder } from '@/strings/messages/fileExplorer__enter_a_name_for_the_new_folder/de';
+import { fileExplorer__enter_the_file_path } from '@/strings/messages/fileExplorer__enter_the_file_path/de';
 import { fileExplorer__entry_info } from '@/strings/messages/fileExplorer__entry_info/de';
 import { fileExplorer__exclude_items } from '@/strings/messages/fileExplorer__exclude_items/de';
 import { fileExplorer__exclude_items_help } from '@/strings/messages/fileExplorer__exclude_items_help/de';
@@ -2807,7 +2893,12 @@ import { fileExplorer__failed_to_rename } from '@/strings/messages/fileExplorer_
 import { fileExplorer__failed_to_upload_files } from '@/strings/messages/fileExplorer__failed_to_upload_files/de';
 import { fileExplorer__file } from '@/strings/messages/fileExplorer__file/de';
 import { fileExplorer__file_explorer_opfs } from '@/strings/messages/fileExplorer__file_explorer_opfs/de';
+import { fileExplorer__file_information } from '@/strings/messages/fileExplorer__file_information/de';
+import { fileExplorer__file_is_empty } from '@/strings/messages/fileExplorer__file_is_empty/de';
 import { fileExplorer__file_is_too_large_to_preview } from '@/strings/messages/fileExplorer__file_is_too_large_to_preview/de';
+import { fileExplorer__file_saved } from '@/strings/messages/fileExplorer__file_saved/de';
+import { fileExplorer__file_tree } from '@/strings/messages/fileExplorer__file_tree/de';
+import { fileExplorer__file_view } from '@/strings/messages/fileExplorer__file_view/de';
 import { fileExplorer__files } from '@/strings/messages/fileExplorer__files/de';
 import { fileExplorer__filter_by_name } from '@/strings/messages/fileExplorer__filter_by_name/de';
 import { fileExplorer__folder } from '@/strings/messages/fileExplorer__folder/de';
@@ -2817,10 +2908,12 @@ import { fileExplorer__get_info } from '@/strings/messages/fileExplorer__get_inf
 import { fileExplorer__go_back } from '@/strings/messages/fileExplorer__go_back/de';
 import { fileExplorer__hide_preview } from '@/strings/messages/fileExplorer__hide_preview/de';
 import { fileExplorer__icon_view } from '@/strings/messages/fileExplorer__icon_view/de';
+import { fileExplorer__invalid_file_path } from '@/strings/messages/fileExplorer__invalid_file_path/de';
 import { fileExplorer__item_count_label } from '@/strings/messages/fileExplorer__item_count_label/de';
 import { fileExplorer__list_view } from '@/strings/messages/fileExplorer__list_view/de';
 import { fileExplorer__load_anyway } from '@/strings/messages/fileExplorer__load_anyway/de';
 import { fileExplorer__locked_click_to_unlock } from '@/strings/messages/fileExplorer__locked_click_to_unlock/de';
+import { fileExplorer__maximize_editor } from '@/strings/messages/fileExplorer__maximize_editor/de';
 import { fileExplorer__merge_count } from '@/strings/messages/fileExplorer__merge_count/de';
 import { fileExplorer__modified } from '@/strings/messages/fileExplorer__modified/de';
 import { fileExplorer__modified_label } from '@/strings/messages/fileExplorer__modified_label/de';
@@ -2830,9 +2923,11 @@ import { fileExplorer__new_file_unlock_to_enable } from '@/strings/messages/file
 import { fileExplorer__new_folder } from '@/strings/messages/fileExplorer__new_folder/de';
 import { fileExplorer__new_folder_unlock_to_enable } from '@/strings/messages/fileExplorer__new_folder_unlock_to_enable/de';
 import { fileExplorer__next_zip } from '@/strings/messages/fileExplorer__next_zip/de';
+import { fileExplorer__no_file_preview } from '@/strings/messages/fileExplorer__no_file_preview/de';
 import { fileExplorer__no_matching_items } from '@/strings/messages/fileExplorer__no_matching_items/de';
 import { fileExplorer__not_changed_yet } from '@/strings/messages/fileExplorer__not_changed_yet/de';
 import { fileExplorer__open } from '@/strings/messages/fileExplorer__open/de';
+import { fileExplorer__open_in_transcription } from '@/strings/messages/fileExplorer__open_in_transcription/de';
 import { fileExplorer__optional } from '@/strings/messages/fileExplorer__optional/de';
 import { fileExplorer__overwrite_count } from '@/strings/messages/fileExplorer__overwrite_count/de';
 import { fileExplorer__paste } from '@/strings/messages/fileExplorer__paste/de';
@@ -2852,7 +2947,11 @@ import { fileExplorer__read_only } from '@/strings/messages/fileExplorer__read_o
 import { fileExplorer__refresh } from '@/strings/messages/fileExplorer__refresh/de';
 import { fileExplorer__relative_path } from '@/strings/messages/fileExplorer__relative_path/de';
 import { fileExplorer__rename } from '@/strings/messages/fileExplorer__rename/de';
+import { fileExplorer__restore_editor_size } from '@/strings/messages/fileExplorer__restore_editor_size/de';
 import { fileExplorer__root_directory_handling } from '@/strings/messages/fileExplorer__root_directory_handling/de';
+import { fileExplorer__save } from '@/strings/messages/fileExplorer__save/de';
+import { fileExplorer__save_as } from '@/strings/messages/fileExplorer__save_as/de';
+import { fileExplorer__save_changes_before_leaving } from '@/strings/messages/fileExplorer__save_changes_before_leaving/de';
 import { fileExplorer__search } from '@/strings/messages/fileExplorer__search/de';
 import { fileExplorer__select_a_file } from '@/strings/messages/fileExplorer__select_a_file/de';
 import { fileExplorer__select_all } from '@/strings/messages/fileExplorer__select_all/de';
@@ -2869,6 +2968,7 @@ import { fileExplorer__unsupported_items_were_skipped } from '@/strings/messages
 import { fileExplorer__upload_files } from '@/strings/messages/fileExplorer__upload_files/de';
 import { fileExplorer__upload_files_unlock_to_enable } from '@/strings/messages/fileExplorer__upload_files_unlock_to_enable/de';
 import { fileExplorer__uploading } from '@/strings/messages/fileExplorer__uploading/de';
+import { fileExplorer__view_source } from '@/strings/messages/fileExplorer__view_source/de';
 import { fileExplorer__zip_archive } from '@/strings/messages/fileExplorer__zip_archive/de';
 import { fileExplorer__zip_cannot_be_extracted } from '@/strings/messages/fileExplorer__zip_cannot_be_extracted/de';
 import { fileExplorer__zip_file_upload } from '@/strings/messages/fileExplorer__zip_file_upload/de';
@@ -4508,6 +4608,7 @@ export const catalog = {
   AudioTranscriptionWorkspace__could_not_auto_copy,
   AudioTranscriptionWorkspace__could_not_copy_select_the_text,
   AudioTranscriptionWorkspace__could_not_open_floating_window,
+  AudioTranscriptionWorkspace__could_not_save_the_transcript,
   AudioTranscriptionWorkspace__drop_audio_or_video_file,
   AudioTranscriptionWorkspace__edit_transcribed_text,
   AudioTranscriptionWorkspace__end_voice_input,
@@ -4533,6 +4634,7 @@ export const catalog = {
   AudioTranscriptionWorkspace__remove_file,
   AudioTranscriptionWorkspace__resume,
   AudioTranscriptionWorkspace__resume_voice_input,
+  AudioTranscriptionWorkspace__save_as_text_file,
   AudioTranscriptionWorkspace__start_voice_input,
   AudioTranscriptionWorkspace__tap_to_resume_auto_copy,
   AudioTranscriptionWorkspace__text,
@@ -5256,6 +5358,34 @@ export const catalog = {
   DevelopmentMetaCspRecovery__development_only_never_for_security,
   DevelopmentMetaCspRecovery__setting_cleared_current_meta_remains,
   DevelopmentMetaCspRecovery__storage_changed_try_again,
+  EditorV4__close_find,
+  EditorV4__document_counts,
+  EditorV4__document_statistics,
+  EditorV4__editor_options,
+  EditorV4__emacs_key_bindings,
+  EditorV4__find_in_document,
+  EditorV4__find_match_position,
+  EditorV4__find_next,
+  EditorV4__find_previous,
+  EditorV4__invalid_regular_expression,
+  EditorV4__line_and_column,
+  EditorV4__line_numbers,
+  EditorV4__match_case,
+  EditorV4__redo,
+  EditorV4__replace_all,
+  EditorV4__replace_current,
+  EditorV4__replace_with,
+  EditorV4__replacement_too_large,
+  EditorV4__search_timed_out,
+  EditorV4__search_unavailable,
+  EditorV4__select_all_occurrences,
+  EditorV4__select_next_occurrence,
+  EditorV4__selected_characters,
+  EditorV4__text_editor,
+  EditorV4__toggle_replace_field,
+  EditorV4__undo,
+  EditorV4__use_regular_expression,
+  EditorV4__word_wrap,
   EndpointPresetButtons__connection_presets,
   ExperimentalFeatureRow__details,
   ExperimentalFeatureRow__details_for,
@@ -5299,6 +5429,57 @@ export const catalog = {
   FeatureFlagsSettings__use_fake_lm_endpoint,
   FeatureFlagsSettings__uses_bundled_fake_lm,
   FeatureFlagsSettings__view_token_counts_and_measurement_intervals,
+  FileExplorerBinaryPreview__first_bytes,
+  FileExplorerBinaryPreview__show_as_text,
+  FileExplorerDelimitedView__could_not_display_as_a_table,
+  FileExplorerDelimitedView__no_complete_rows_to_display,
+  FileExplorerDelimitedView__row_column,
+  FileExplorerDelimitedView__save_table_changes,
+  FileExplorerDelimitedView__show_more_rows,
+  FileExplorerDelimitedView__showing_part_of_the_file,
+  FileExplorerFileContent__save_as_utf8,
+  FileExplorerFileContent__use_one_of_these_file_extensions,
+  FileExplorerFileView__resize_tree,
+  FileExplorerImageView__could_not_load_image,
+  FileExplorerImageView__edit_image,
+  FileExplorerImageView__fit_image,
+  FileExplorerImageView__zoom_in,
+  FileExplorerImageView__zoom_out,
+  FileExplorerModelView__architecture,
+  FileExplorerModelView__copied,
+  FileExplorerModelView__copy_value,
+  FileExplorerModelView__edit_value,
+  FileExplorerModelView__failed_to_copy_value,
+  FileExplorerModelView__failed_to_prepare_metadata_changes,
+  FileExplorerModelView__failed_to_read_metadata_value,
+  FileExplorerModelView__failed_to_read_model,
+  FileExplorerModelView__file_offset,
+  FileExplorerModelView__gguf_version,
+  FileExplorerModelView__metadata,
+  FileExplorerModelView__next_page,
+  FileExplorerModelView__original_shape,
+  FileExplorerModelView__original_value,
+  FileExplorerModelView__overview,
+  FileExplorerModelView__previous_page,
+  FileExplorerModelView__review_and_save,
+  FileExplorerModelView__shard,
+  FileExplorerModelView__tensor_shape,
+  FileExplorerModelView__tensors,
+  FileExplorerModelView__tokenizer,
+  FileExplorerModelView__value,
+  FileExplorerModelView__value_is_not_set,
+  FileExplorerNewFileDialog__an_empty_file_with_this_name_exists,
+  FileExplorerNewFileDialog__paste_one_file_at_a_time,
+  FileExplorerNewFileDialog__paste_text_or_a_file,
+  FileExplorerNewFileDialog__remove_attachment,
+  FileExplorerPatchView__change,
+  FileExplorerPatchView__new_line,
+  FileExplorerPatchView__no_newline_at_end_of_file,
+  FileExplorerPatchView__old_line,
+  FileExplorerPatchView__showing_source,
+  FileExplorerPreviewPanel__resize_preview,
+  FileExplorerPreviewPanel__showing_the_beginning_of_this_file,
+  FileExplorerTextWrapButton__wrap_text,
   GenerationSpeed__always_show_token_count_and_interval,
   GenerationSpeed__could_not_save_display_settings,
   GenerationSpeed__enable_again_in_developer_settings,
@@ -7171,6 +7352,7 @@ export const catalog = {
   fileExplorer__close_preview,
   fileExplorer__column_view,
   fileExplorer__copy,
+  fileExplorer__could_not_save_file,
   fileExplorer__create,
   fileExplorer__creating_archive,
   fileExplorer__cut,
@@ -7179,12 +7361,16 @@ export const catalog = {
   fileExplorer__delete_file,
   fileExplorer__delete_folder,
   fileExplorer__delete_items,
+  fileExplorer__discard_changes,
   fileExplorer__download,
   fileExplorer__download_directory,
+  fileExplorer__edit_as_text,
+  fileExplorer__edit_source,
   fileExplorer__empty,
   fileExplorer__empty_folder,
   fileExplorer__enter_a_name_for_the_new_file,
   fileExplorer__enter_a_name_for_the_new_folder,
+  fileExplorer__enter_the_file_path,
   fileExplorer__entry_info,
   fileExplorer__exclude_items,
   fileExplorer__exclude_items_help,
@@ -7203,7 +7389,12 @@ export const catalog = {
   fileExplorer__failed_to_upload_files,
   fileExplorer__file,
   fileExplorer__file_explorer_opfs,
+  fileExplorer__file_information,
+  fileExplorer__file_is_empty,
   fileExplorer__file_is_too_large_to_preview,
+  fileExplorer__file_saved,
+  fileExplorer__file_tree,
+  fileExplorer__file_view,
   fileExplorer__files,
   fileExplorer__filter_by_name,
   fileExplorer__folder,
@@ -7213,10 +7404,12 @@ export const catalog = {
   fileExplorer__go_back,
   fileExplorer__hide_preview,
   fileExplorer__icon_view,
+  fileExplorer__invalid_file_path,
   fileExplorer__item_count_label,
   fileExplorer__list_view,
   fileExplorer__load_anyway,
   fileExplorer__locked_click_to_unlock,
+  fileExplorer__maximize_editor,
   fileExplorer__merge_count,
   fileExplorer__modified,
   fileExplorer__modified_label,
@@ -7226,9 +7419,11 @@ export const catalog = {
   fileExplorer__new_folder,
   fileExplorer__new_folder_unlock_to_enable,
   fileExplorer__next_zip,
+  fileExplorer__no_file_preview,
   fileExplorer__no_matching_items,
   fileExplorer__not_changed_yet,
   fileExplorer__open,
+  fileExplorer__open_in_transcription,
   fileExplorer__optional,
   fileExplorer__overwrite_count,
   fileExplorer__paste,
@@ -7248,7 +7443,11 @@ export const catalog = {
   fileExplorer__refresh,
   fileExplorer__relative_path,
   fileExplorer__rename,
+  fileExplorer__restore_editor_size,
   fileExplorer__root_directory_handling,
+  fileExplorer__save,
+  fileExplorer__save_as,
+  fileExplorer__save_changes_before_leaving,
   fileExplorer__search,
   fileExplorer__select_a_file,
   fileExplorer__select_all,
@@ -7265,6 +7464,7 @@ export const catalog = {
   fileExplorer__upload_files,
   fileExplorer__upload_files_unlock_to_enable,
   fileExplorer__uploading,
+  fileExplorer__view_source,
   fileExplorer__zip_archive,
   fileExplorer__zip_cannot_be_extracted,
   fileExplorer__zip_file_upload,

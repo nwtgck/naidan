@@ -56,6 +56,8 @@ export const EXTENSION_MIME_MAP: Record<string, MimeCategory> = {
   '.log': 'text',
   '.csv': 'text',
   '.tsv': 'text',
+  '.diff': 'text',
+  '.patch': 'text',
 
   // Images
   '.jpg': 'image',

@@ -19,7 +19,8 @@ export interface ImageClient {
   updatePreview({ settings }: { settings: PreviewSettings }): void;
   inspectEngine(): Promise<ImageEngineInspection>;
   cancel(): void;
-  release({ reason }?: { reason?: ImageReleaseReason }): void;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- The named options object is optional for existing callers.
+  release(options?: { reason?: ImageReleaseReason }): void;
   dispose(): void;
 }
 export const TEST_ONLY = {

@@ -42,6 +42,10 @@ export const STANDALONE_FACADES = [
     standalonePath: 'src/features/advanced-text-editor-v3/worker/client-standalone.ts',
   },
   {
+    facadePath: '@/features/editor-v4/worker/client',
+    standalonePath: 'src/features/editor-v4/worker/client-standalone.ts',
+  },
+  {
     facadePath: '@/features/highlight/worker/client',
     standalonePath: 'src/features/highlight/worker/client-standalone.ts',
   },
@@ -78,6 +82,7 @@ export const STANDALONE_FACADES = [
 export const STANDALONE_WORKER_CLIENT_FACADES = [
   '@/features/llama-cpp-browser/worker/client',
   '@/features/advanced-text-editor-v3/worker/client',
+  '@/features/editor-v4/worker/client',
   '@/features/highlight/worker/client',
   '@/features/wesh/worker/client',
   '@/features/global-search/worker/client',

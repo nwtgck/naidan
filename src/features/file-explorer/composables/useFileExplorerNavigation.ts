@@ -52,6 +52,7 @@ export function useFileExplorerNavigation({
   const isLoading = ref(false);
   const loadError = ref<string | undefined>(undefined);
   const columnPanes = ref<ColumnPaneState[]>([]);
+  let pendingVisibleLoads = 0;
 
   const sortedFilteredEntries = computed(() =>
     filterEntries({
@@ -68,17 +69,20 @@ export function useFileExplorerNavigation({
     errorMode: 'report' | 'silent',
   }): Promise<NavigationResult> {
     const normalizedPath = normalizeExplorerPath({ path });
-    isLoading.value = true;
-    switch (errorMode) {
-    case 'report':
+    const visibleLoad = (() => {
+      switch (errorMode) {
+      case 'report': return true;
+      case 'silent': return false;
+      default: {
+        const _exhaustiveCheck: never = errorMode;
+        throw new Error(`Unhandled directory load error mode: ${_exhaustiveCheck}`);
+      }
+      }
+    })();
+    if (visibleLoad) {
+      pendingVisibleLoads += 1;
+      isLoading.value = true;
       loadError.value = undefined;
-      break;
-    case 'silent':
-      break;
-    default: {
-      const _exhaustiveCheck: never = errorMode;
-      throw new Error(`Unhandled directory load error mode: ${_exhaustiveCheck}`);
-    }
     }
     try {
       const response = await client.readDirectory({ path: normalizedPath });
@@ -90,25 +94,18 @@ export function useFileExplorerNavigation({
       entries.value = response.entries;
       return 'navigated';
     } catch (error) {
-      switch (errorMode) {
-      case 'report':
-        break;
-      case 'silent':
-        if (isFileExplorerNotDirectoryError({ error })) {
-          return 'not-directory';
-        }
-        break;
-      default: {
-        const _exhaustiveCheck: never = errorMode;
-        throw new Error(`Unhandled directory load error mode: ${_exhaustiveCheck}`);
-      }
+      if (!visibleLoad && isFileExplorerNotDirectoryError({ error })) {
+        return 'not-directory';
       }
       loadError.value = await ensureStrings.fileExplorer__failed_to_load_directory({
         errorMessage: await resolveDirectoryLoadError({ error }),
       });
       return 'failed';
     } finally {
-      isLoading.value = false;
+      if (visibleLoad) {
+        pendingVisibleLoads -= 1;
+        isLoading.value = pendingVisibleLoads > 0;
+      }
     }
   }
 
@@ -121,7 +118,7 @@ export function useFileExplorerNavigation({
   }): Promise<void> {
     const panes = [...columnPanes.value];
     const pane = panes[paneIndex];
-    if (!pane) {
+    if (!pane || pane.path !== path) {
       return;
     }
     panes[paneIndex] = { ...pane, isLoading: true };
@@ -130,11 +127,12 @@ export function useFileExplorerNavigation({
     try {
       const response = await client.readDirectory({ path });
       const nextPanes = [...columnPanes.value];
-      if (!nextPanes[paneIndex]) {
+      const target = nextPanes[paneIndex];
+      if (!target || target.path !== path) {
         return;
       }
       nextPanes[paneIndex] = {
-        ...nextPanes[paneIndex]!,
+        ...target,
         path: response.directoryPath,
         name: response.directoryName,
         readOnly: response.readOnly,
@@ -144,11 +142,12 @@ export function useFileExplorerNavigation({
       columnPanes.value = nextPanes;
     } catch {
       const nextPanes = [...columnPanes.value];
-      if (!nextPanes[paneIndex]) {
+      const target = nextPanes[paneIndex];
+      if (!target || target.path !== path) {
         return;
       }
       nextPanes[paneIndex] = {
-        ...nextPanes[paneIndex]!,
+        ...target,
         entries: [],
         isLoading: false,
       };
@@ -218,8 +217,32 @@ export function useFileExplorerNavigation({
   }
 
   async function refresh(): Promise<void> {
-    await loadDirectory({ path: currentDirectoryPath.value, errorMode: 'report' });
-    syncColumnPanesToPath();
+    const result = await loadDirectory({ path: currentDirectoryPath.value, errorMode: 'report' });
+    switch (result) {
+    case 'navigated':
+      columnPanes.value = columnPanes.value.map(pane => pane.path === currentDirectoryPath.value
+        ? { ...pane, entries: entries.value, readOnly: currentDirectoryReadOnly.value }
+        : pane);
+      syncColumnPanesToPath();
+      break;
+    case 'not-directory':
+    case 'failed':
+      break;
+    default: {
+      const _exhaustiveCheck: never = result;
+      throw new Error(`Unhandled navigation result: ${_exhaustiveCheck}`);
+    }
+    }
+  }
+
+  async function refreshColumnPanes({ paths }: { paths: ReadonlySet<string> }): Promise<void> {
+    const current = currentDirectoryPath.value;
+    columnPanes.value = columnPanes.value.map(pane => paths.has(pane.path) && pane.path === current
+      ? { ...pane, entries: entries.value, readOnly: currentDirectoryReadOnly.value }
+      : pane);
+    await Promise.all(columnPanes.value.flatMap((pane, paneIndex) => paths.has(pane.path) && pane.path !== current
+      ? [loadColumnPane({ paneIndex, path: pane.path })]
+      : []));
   }
 
   async function selectColumnEntry({
@@ -274,6 +297,7 @@ export function useFileExplorerNavigation({
     navigateUp,
     jumpToBreadcrumb,
     refresh,
+    refreshColumnPanes,
     selectColumnEntry,
     loadColumnPane,
     ...((__BUILD_MODE_IS_TEST__ && {

@@ -24,6 +24,12 @@ export const FILE_PROTOCOL_STANDALONE_WORKERS = [
     defaultWorkerName: 'naidan-advanced-text-editor-v3-worker',
   },
   {
+    name: 'editor-v4-worker',
+    entry: 'src/features/editor-v4/worker/entry.ts',
+    virtualId: 'virtual:file-protocol-standalone/worker/editor-v4',
+    defaultWorkerName: 'naidan-editor-v4-worker',
+  },
+  {
     name: 'highlight-worker',
     entry: 'src/features/highlight/worker/entry.ts',
     virtualId: 'virtual:file-protocol-standalone/worker/highlight',

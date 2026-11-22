@@ -1,0 +1,1 @@
+export const FileExplorerPatchView__no_newline_at_end_of_file = (): string => '파일 끝에 줄 바꿈이 없습니다';

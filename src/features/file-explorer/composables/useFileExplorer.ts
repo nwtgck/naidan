@@ -11,7 +11,9 @@ import type {
   SortField,
   SelectionAction,
   ContextMenuAction,
+  FileExplorerTreeMenu,
 } from '@/features/file-explorer/logic/types';
+import { getFileViewParentPath, isFileViewPathWithin } from '@/features/file-explorer/logic/file-view';
 import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
 import { useFileExplorerNavigation } from './useFileExplorerNavigation';
 import { useFileExplorerSelection } from './useFileExplorerSelection';
@@ -54,6 +56,7 @@ export async function useFileExplorer({
   const sortConfig = ref<SortConfig>({ field: 'name', direction: 'ascending' });
   const filterQuery = ref('');
   const isLocked = ref(initialLocked);
+  const newFileDirectoryPath = ref<string>();
 
   const nav = useFileExplorerNavigation({
     client,
@@ -67,6 +70,17 @@ export async function useFileExplorer({
     // replacement still go through the model selector's import path.
     return remoteMounts?.some(mount => mount.deletionOnly === true
       && (path === mount.path || path.startsWith(`${mount.path}/`))) ?? false;
+  }
+
+  function canCreateFile({ path }: { path: string }): boolean {
+    return path === nav.currentDirectoryPath.value && !isLocked.value && !nav.currentDirectoryReadOnly.value && !isDeletionOnly({ path });
+  }
+
+  function openNewFile(): void {
+    const path = nav.currentDirectoryPath.value;
+    if (canCreateFile({ path })) {
+      newFileDirectoryPath.value = path;
+    }
   }
 
   const sel = useFileExplorerSelection();
@@ -93,6 +107,7 @@ export async function useFileExplorer({
   });
 
   const preview = useFileExplorerPreview({ client });
+  let latestEntryOpenId = 0;
   const directoryDownload = useFileExplorerDirectoryDownload({ client });
   const upload = useFileExplorerUpload({
     client,
@@ -148,19 +163,27 @@ export async function useFileExplorer({
   }
 
   async function openEntry({ entry }: { entry: FileExplorerEntry }): Promise<void> {
+    const openId = ++latestEntryOpenId;
     switch (entry.kind) {
     case 'directory':
       await nav.navigateToDirectory({ path: entry.path });
       sel.clearSelectionForNewDirectory();
       return;
     case 'file': {
+      const originalDirectory = nav.currentDirectoryPath.value;
+      const originalPreview = preview.previewState.value.entry;
       const result = await nav.tryNavigateToDirectory({ path: entry.path });
       switch (result) {
       case 'navigated':
         sel.clearSelectionForNewDirectory();
         return;
       case 'not-directory':
-        await preview.loadPreview({ entry });
+        if (openId === latestEntryOpenId
+          && nav.currentDirectoryPath.value === originalDirectory
+          && !nav.isLoading.value
+          && (preview.previewState.value.entry === originalPreview || preview.previewState.value.entry?.path === entry.path)) {
+          await preview.loadPreview({ entry });
+        }
         return;
       case 'failed':
         return;
@@ -177,15 +200,49 @@ export async function useFileExplorer({
     }
   }
 
+  async function refresh(): Promise<void> {
+    preview.invalidatePreviewLoad();
+    await nav.refresh();
+  }
+
+  async function refreshAfterTreeMutation({
+    tree,
+    paths,
+    relocations,
+  }: {
+    tree: FileExplorerTreeMenu,
+    paths: readonly string[],
+    relocations: ReadonlyArray<{ sourcePath: string, destinationPath: string | undefined }> | undefined,
+  }): Promise<void> {
+    tree.onMutation({ paths });
+    const currentPath = nav.currentDirectoryPath.value;
+    const relocation = relocations?.find(({ sourcePath }) => isFileViewPathWithin({ path: currentPath, directoryPath: sourcePath }));
+    if (relocation === undefined) {
+      await refresh();
+    } else {
+      const { sourcePath, destinationPath } = relocation;
+      const nextPath = destinationPath === undefined
+        ? getFileViewParentPath({ path: sourcePath })
+        : `${destinationPath}${currentPath.slice(sourcePath.length)}`;
+      await nav.navigateToDirectory({ path: nextPath });
+    }
+    await nav.refreshColumnPanes({ paths: new Set(paths.map(path => getFileViewParentPath({ path }))) });
+  }
+
   async function executeContextAction({ action }: { action: ContextMenuAction }): Promise<void> {
     const targetCtx = ctxMenu.contextMenuState.value.target;
+    const tree = 'tree' in targetCtx ? targetCtx.tree : undefined;
     ctxMenu.hideContextMenu();
 
     switch (action) {
     case 'open':
       switch (targetCtx.kind) {
       case 'entry':
-        await openEntry({ entry: targetCtx.entry });
+        if (tree) {
+          tree.open();
+        } else {
+          await openEntry({ entry: targetCtx.entry });
+        }
         break;
       case 'background':
         break;
@@ -197,9 +254,34 @@ export async function useFileExplorer({
       break;
     case 'rename':
       switch (targetCtx.kind) {
-      case 'entry':
-        ops.startRename({ entry: targetCtx.entry });
+      case 'entry': {
+        const entry = targetCtx.entry;
+        if (!tree) {
+          ops.startRename({ entry });
+          break;
+        }
+        const title = await ensureStrings.fileExplorer__rename();
+        const newName = await showPrompt({ title, confirmButtonText: title, defaultValue: entry.name });
+        if (newName === null || newName.trim() === '' || newName.trim() === entry.name) {
+          break;
+        }
+        const parent = getFileViewParentPath({ path: entry.path });
+        const destinationPath = `${parent === '/' ? '' : parent}/${newName.trim()}`;
+        const paths = [entry.path, destinationPath];
+        await tree.runMutation({
+          paths,
+          mutate: () => ops.renameEntry({
+            entry,
+            newName,
+            onSuccess: () => refreshAfterTreeMutation({
+              tree,
+              paths,
+              relocations: [{ sourcePath: entry.path, destinationPath }],
+            }),
+          }),
+        });
         break;
+      }
       case 'background':
         break;
       default: {
@@ -210,12 +292,28 @@ export async function useFileExplorer({
       break;
     case 'delete':
       switch (targetCtx.kind) {
-      case 'entry':
+      case 'entry': {
         if (targetCtx.selectedEntries.length > 0) {
-          await ops.deleteEntries({ entries: targetCtx.selectedEntries });
-          sel.clearSelectionForNewDirectory();
+          const paths = targetCtx.selectedEntries.map(entry => entry.path);
+          if (tree) {
+            await tree.runMutation({
+              paths,
+              mutate: () => ops.deleteEntries({
+                entries: targetCtx.selectedEntries,
+                onSuccess: () => refreshAfterTreeMutation({
+                  tree,
+                  paths,
+                  relocations: paths.map(sourcePath => ({ sourcePath, destinationPath: undefined })),
+                }),
+              }),
+            });
+          } else {
+            await ops.deleteEntries({ entries: targetCtx.selectedEntries });
+            sel.clearSelectionForNewDirectory();
+          }
         }
         break;
+      }
       case 'background':
         break;
       default: {
@@ -229,7 +327,7 @@ export async function useFileExplorer({
       case 'entry':
         clipboard.clipboardCopy({
           entries: targetCtx.selectedEntries,
-          sourceDirectoryPath: nav.currentDirectoryPath.value,
+          sourceDirectoryPath: tree ? getFileViewParentPath({ path: targetCtx.entry.path }) : nav.currentDirectoryPath.value,
         });
         break;
       case 'background':
@@ -245,7 +343,7 @@ export async function useFileExplorer({
       case 'entry':
         clipboard.clipboardCut({
           entries: targetCtx.selectedEntries,
-          sourceDirectoryPath: nav.currentDirectoryPath.value,
+          sourceDirectoryPath: tree ? getFileViewParentPath({ path: targetCtx.entry.path }) : nav.currentDirectoryPath.value,
         });
         break;
       case 'background':
@@ -257,7 +355,7 @@ export async function useFileExplorer({
       }
       break;
     case 'paste':
-      await clipboardPaste();
+      await pasteIntoDirectory({ targetPath: tree?.directoryPath ?? nav.currentDirectoryPath.value, tree });
       break;
     case 'download':
       switch (targetCtx.kind) {
@@ -295,17 +393,9 @@ export async function useFileExplorer({
       }
       }
       break;
-    case 'newFile': {
-      const name = await showPrompt({
-        title: await ensureStrings.fileExplorer__new_file(),
-        message: await ensureStrings.fileExplorer__enter_a_name_for_the_new_file(),
-        confirmButtonText: await ensureStrings.fileExplorer__create(),
-      });
-      if (name) {
-        await ops.createFile({ name });
-      }
+    case 'newFile':
+      openNewFile();
       break;
-    }
     case 'newFolder': {
       const name = await showPrompt({
         title: await ensureStrings.fileExplorer__new_folder(),
@@ -321,7 +411,7 @@ export async function useFileExplorer({
       switch (targetCtx.kind) {
       case 'entry': {
         const entry = targetCtx.entry;
-        const path = [...nav.pathSegments.value.map(segment => segment.name), entry.name].join(' / ');
+        const path = tree ? entry.path : [...nav.pathSegments.value.map(segment => segment.name), entry.name].join(' / ');
         const sizeStr = entry.size !== undefined ? await ensureStrings.fileExplorer__byte_count({ count: entry.size }) : '—';
         let kind: string;
         switch (entry.kind) {
@@ -368,27 +458,74 @@ export async function useFileExplorer({
   }
 
   async function clipboardPaste(): Promise<void> {
+    await pasteIntoDirectory({ targetPath: nav.currentDirectoryPath.value, tree: undefined });
+  }
+
+  async function pasteIntoDirectory({ targetPath, tree }: { targetPath: string, tree: FileExplorerTreeMenu | undefined }): Promise<void> {
     const clipboardState = clipboard.clipboardState.value;
-    if (!clipboardState.operation || clipboardState.entries.length === 0 || isDeletionOnly({ path: nav.currentDirectoryPath.value })) {
+    const { operation, entries } = clipboardState;
+    if (!operation || entries.length === 0 || isLocked.value
+      || (tree?.directoryReadOnly ?? nav.currentDirectoryReadOnly.value) || isDeletionOnly({ path: targetPath })) {
       return;
     }
 
-    switch (clipboardState.operation) {
-    case 'copy':
-      await ops.copyEntriesToDir({
-        entries: clipboardState.entries,
-        targetPath: nav.currentDirectoryPath.value,
-      });
+    const relocations = entries.map(entry => ({
+      sourcePath: entry.path,
+      destinationPath: `${targetPath === '/' ? '' : targetPath}/${entry.name}`,
+    }));
+    if (relocations.some(({ sourcePath }) => isFileViewPathWithin({ path: targetPath, directoryPath: sourcePath }))) {
+      return;
+    }
+    const destinationPaths = relocations.map(({ destinationPath }) => destinationPath);
+
+    switch (operation) {
+    case 'copy': {
+      if (tree) {
+        const paths = relocations.flatMap(({ sourcePath, destinationPath }) => sourcePath === destinationPath ? [] : [destinationPath]);
+        if (paths.length === 0) {
+          return;
+        }
+        await tree.runMutation({
+          paths,
+          mutate: () => ops.copyEntriesToDir({
+            entries,
+            targetPath,
+            onSuccess: () => refreshAfterTreeMutation({ tree, paths, relocations: undefined }),
+          }),
+        });
+      } else {
+        await ops.copyEntriesToDir({ entries, targetPath });
+      }
       break;
-    case 'cut':
-      await ops.moveEntries({
-        entries: clipboardState.entries,
-        targetPath: nav.currentDirectoryPath.value,
+    }
+    case 'cut': {
+      if (relocations.some(({ sourcePath, destinationPath }) => sourcePath === destinationPath)) {
+        return;
+      }
+      const paths = [...relocations.map(({ sourcePath }) => sourcePath), ...destinationPaths];
+      const move = () => ops.moveEntries({
+        entries,
+        targetPath,
+        onSuccess: async () => {
+          if (clipboard.clipboardState.value === clipboardState) {
+            clipboard.clearClipboard();
+          }
+          if (tree) {
+            await refreshAfterTreeMutation({ tree, paths, relocations });
+          } else {
+            await nav.refresh();
+          }
+        },
       });
-      clipboard.clearClipboard();
+      if (tree) {
+        await tree.runMutation({ paths, mutate: move });
+      } else {
+        await move();
+      }
       break;
+    }
     default: {
-      const _exhaustiveCheck: never = clipboardState.operation;
+      const _exhaustiveCheck: never = operation;
       throw new Error(`Unhandled clipboard operation: ${_exhaustiveCheck}`);
     }
     }
@@ -418,7 +555,7 @@ export async function useFileExplorer({
     navigateToDirectory: nav.navigateToDirectory,
     navigateUp: nav.navigateUp,
     jumpToBreadcrumb: nav.jumpToBreadcrumb,
-    refresh: nav.refresh,
+    refresh,
 
     get entries() {
       return nav.entries.value;
@@ -463,7 +600,17 @@ export async function useFileExplorer({
       });
     },
 
-    createFile: ops.createFile,
+    get newFileDirectoryPath() {
+      return newFileDirectoryPath.value;
+    },
+    openNewFile,
+    closeNewFile() {
+      newFileDirectoryPath.value = undefined;
+    },
+    async createFile({ name, blob }) {
+      const directoryPath = newFileDirectoryPath.value;
+      return directoryPath !== undefined && canCreateFile({ path: directoryPath }) && await ops.createFile({ directoryPath, name, blob });
+    },
     createFolder: ops.createFolder,
     deleteEntries: ops.deleteEntries,
     renameEntry: ops.renameEntry,

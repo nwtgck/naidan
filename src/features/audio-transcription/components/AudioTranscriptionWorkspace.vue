@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, watch } from 'vue';
-import { CheckIcon, ChevronDownIcon, CopyIcon, FileAudioIcon, FileUpIcon, InfoIcon, Loader2Icon, MicIcon, PauseIcon, PictureInPicture2Icon, PlayIcon, SlidersHorizontalIcon, SquareIcon, XIcon } from 'lucide-vue-next';
+import { CheckIcon, ChevronDownIcon, CopyIcon, FileAudioIcon, FileUpIcon, InfoIcon, Loader2Icon, MicIcon, PauseIcon, PictureInPicture2Icon, PlayIcon, SaveIcon, SlidersHorizontalIcon, SquareIcon, XIcon } from 'lucide-vue-next';
 import { useAudioTranscriptionPreferences } from '@/features/audio-transcription/composables/useAudioTranscriptionPreferences';
 import logoUrl from '@/assets/logo.svg?inline';
 import { ensureStrings, lazyStrings } from '@/strings';
@@ -14,7 +14,11 @@ import AudioTranscriptionClipboardNotice from '@/features/audio-transcription/co
 import AudioTranscriptionMicrophoneActivity from '@/features/audio-transcription/components/AudioTranscriptionMicrophoneActivity.vue';
 import { minimumMicrophoneSegmentSeconds, maximumMicrophoneSegmentSeconds } from '@/features/audio-transcription/logic/continuous-transcription';
 
-const props = defineProps<{ source: 'microphone' | 'file' }>();
+const props = defineProps<{
+  source: 'microphone' | 'file',
+  file?: File,
+  saveText?: (({ text }: { text: string }) => Promise<void>) | undefined,
+}>();
 const emit = defineEmits<{ changeSource: [source: 'microphone' | 'file'] }>();
 const preferences = useAudioTranscriptionPreferences();
 const { autoCopy, saving: savingAutoCopy, updateAutoCopy } = preferences;
@@ -22,8 +26,10 @@ const text = ref('');
 const copied = ref(false);
 const notice = ref('');
 const fileInput = ref<HTMLInputElement>();
-const selectedFile = ref<File>();
+const manuallySelectedFile = ref<File>();
+const selectedFile = computed(() => props.file ?? manuallySelectedFile.value);
 const dragging = ref(false);
+const transcriptSaveState = ref<'idle' | 'saving' | 'failed'>('idle');
 // Single-language recognizers do not accept an explicit language override.
 // Start with the model's automatic/default behavior so every catalog model can run.
 const language = computed({
@@ -222,7 +228,10 @@ function clearText(): void {
 }
 
 function chooseFile({ file }: { file: File | undefined }): void {
-  selectedFile.value = file;
+  if (props.file !== undefined) {
+    return;
+  }
+  manuallySelectedFile.value = file;
   notice.value = '';
 }
 
@@ -270,6 +279,21 @@ function copyMainText(): Promise<void> {
   return copyText({ clipboard: navigator.clipboard });
 }
 
+async function saveTranscript(): Promise<void> {
+  const save = props.saveText;
+  const value = text.value;
+  if (save === undefined || value === '' || fileRunning.value || transcriptSaveState.value === 'saving') {
+    return;
+  }
+  transcriptSaveState.value = 'saving';
+  try {
+    await save({ text: value });
+    transcriptSaveState.value = 'idle';
+  } catch {
+    transcriptSaveState.value = 'failed';
+  }
+}
+
 async function openFloatingWindow(): Promise<void> {
   try {
     await floatingWindow.show();
@@ -290,10 +314,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <header tw-class="mb-2.5 flex min-h-9 items-center justify-between gap-3 sm:mb-3">
         <h1 tw-class="min-w-0 text-base font-semibold leading-snug text-gray-800 sm:text-lg dark:text-gray-100">{{ lazyStrings.launcher__audio_transcription() }}</h1>
         <button v-if="source === 'microphone'" type="button" :disabled="!floatingWindow.supported || floatingWindow.opening.value" :title="floatingWindowLabel" :aria-label="floatingWindowLabel" data-testid="audio-transcription-open-floating" @click="openFloatingWindow" tw-class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-40 dark:text-gray-400 dark:hover:bg-gray-800"><PictureInPicture2Icon aria-hidden="true" tw-class="h-4 w-4" /></button>
+        <slot name="header-actions" />
       </header>
 
       <div tw-class="mb-4 flex flex-wrap items-center justify-between gap-x-5 gap-y-2">
-        <div role="group" :aria-label="lazyStrings.AudioTranscriptionWorkspace__audio_source()" tw-class="inline-flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800/70">
+        <div v-if="file === undefined" role="group" :aria-label="lazyStrings.AudioTranscriptionWorkspace__audio_source()" tw-class="inline-flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800/70">
           <button type="button" :aria-pressed="source === 'microphone'" @click="changeSource({ source: 'microphone' })" :tw-class="['flex min-h-9 items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', source === 'microphone' ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200']"><MicIcon aria-hidden="true" tw-class="h-4 w-4" />{{ lazyStrings.AudioTranscriptionWorkspace__microphone() }}</button>
           <button type="button" :aria-pressed="source === 'file'" @click="changeSource({ source: 'file' })" :tw-class="['flex min-h-9 items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', source === 'file' ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200']"><FileAudioIcon aria-hidden="true" tw-class="h-4 w-4" />{{ lazyStrings.AudioTranscriptionWorkspace__file() }}</button>
         </div>
@@ -320,15 +345,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </div>
 
       <section v-if="source === 'file'" tw-class="mb-5">
-        <input ref="fileInput" type="file" accept="audio/*,video/*" :aria-label="lazyStrings.AudioTranscriptionWorkspace__choose_audio_or_video_file()" hidden @change="fileChanged({ event: $event })" />
-        <div @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false" @drop.prevent="dropFile({ event: $event })" :tw-class="['flex min-h-32 flex-col items-start justify-center gap-2.5 rounded-xl border bg-white px-5 py-4 transition-colors dark:bg-gray-900', dragging ? 'border-blue-400 bg-blue-50/40 dark:bg-blue-500/5' : 'border-dashed border-gray-300 dark:border-gray-700']">
+        <input v-if="file === undefined" ref="fileInput" type="file" accept="audio/*,video/*" :aria-label="lazyStrings.AudioTranscriptionWorkspace__choose_audio_or_video_file()" hidden @change="fileChanged({ event: $event })" />
+        <div @dragover.prevent="dragging = file === undefined" @dragleave.prevent="dragging = false" @drop.prevent="dropFile({ event: $event })" :tw-class="['flex flex-col items-start justify-center gap-2.5 rounded-xl border bg-white px-5 py-4 transition-colors dark:bg-gray-900', file === undefined && 'min-h-32', dragging ? 'border-blue-400 bg-blue-50/40 dark:bg-blue-500/5' : 'border-gray-300 dark:border-gray-700', file === undefined && !dragging && 'border-dashed']">
           <template v-if="!selectedFile">
             <p tw-class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><FileUpIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-gray-400" />{{ lazyStrings.AudioTranscriptionWorkspace__drop_audio_or_video_file() }}</p>
             <button type="button" @click="fileInput?.click()" data-testid="audio-transcription-choose-file" tw-class="inline-flex min-h-8 items-center justify-center rounded-md border border-gray-200 px-3 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">{{ lazyStrings.AudioTranscriptionWorkspace__choose_file() }}</button>
           </template>
-          <template v-else><div tw-class="flex max-w-full items-center gap-3"><span tw-class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 dark:bg-blue-500/10"><FileAudioIcon aria-hidden="true" tw-class="h-5 w-5 text-blue-500" /></span><div tw-class="min-w-0 text-left"><p tw-class="truncate text-sm font-medium">{{ selectedFile.name }}</p><p tw-class="mt-1 text-[11px] text-gray-400">{{ fileSize }}<span v-if="selectedFile.type.startsWith('video/')"> · {{ lazyStrings.AudioTranscriptionWorkspace__use_audio_from_video() }}</span></p></div><button type="button" @click="chooseFile({ file: undefined })" data-testid="audio-transcription-remove-file" :aria-label="lazyStrings.AudioTranscriptionWorkspace__remove_file()" tw-class="ml-2 rounded-lg p-2 text-gray-400 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:hover:bg-gray-800"><XIcon aria-hidden="true" tw-class="h-4 w-4" /></button></div></template>
+          <template v-else><div tw-class="flex max-w-full items-center gap-3"><span tw-class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 dark:bg-blue-500/10"><FileAudioIcon aria-hidden="true" tw-class="h-5 w-5 text-blue-500" /></span><div tw-class="min-w-0 text-left"><p data-testid="audio-transcription-file-name" tw-class="truncate text-sm font-medium">{{ selectedFile.name }}</p><p tw-class="mt-1 text-[11px] text-gray-400">{{ fileSize }}<span v-if="selectedFile.type.startsWith('video/')"> · {{ lazyStrings.AudioTranscriptionWorkspace__use_audio_from_video() }}</span></p></div><button v-if="file === undefined" type="button" @click="chooseFile({ file: undefined })" data-testid="audio-transcription-remove-file" :aria-label="lazyStrings.AudioTranscriptionWorkspace__remove_file()" tw-class="ml-2 rounded-lg p-2 text-gray-400 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:hover:bg-gray-800"><XIcon aria-hidden="true" tw-class="h-4 w-4" /></button></div></template>
         </div>
-        <div v-if="selectedFile || fileRunning" tw-class="mt-3 flex items-center justify-end gap-4"><button type="button" @click="fileInput?.click()" tw-class="rounded px-1 py-2 text-xs text-gray-500 hover:text-gray-900 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:text-gray-200">{{ lazyStrings.AudioTranscriptionWorkspace__change_file() }}</button><button type="button" @click="transcribeFile" data-testid="audio-transcription-file-run" tw-class="min-w-28 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">{{ fileRunning ? lazyStrings.AudioTranscriptionWorkspace__cancel() : lazyStrings.AudioTranscriptionWorkspace__transcribe() }}</button></div>
+        <div v-if="selectedFile || fileRunning" tw-class="mt-3 flex items-center justify-end gap-4"><button v-if="file === undefined" type="button" @click="fileInput?.click()" tw-class="rounded px-1 py-2 text-xs text-gray-500 hover:text-gray-900 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:text-gray-200">{{ lazyStrings.AudioTranscriptionWorkspace__change_file() }}</button><button type="button" @click="transcribeFile" data-testid="audio-transcription-file-run" tw-class="min-w-28 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">{{ fileRunning ? lazyStrings.AudioTranscriptionWorkspace__cancel() : lazyStrings.AudioTranscriptionWorkspace__transcribe() }}</button></div>
       </section>
 
       <p v-if="failureDetails" role="alert" tw-class="mb-4 whitespace-pre-wrap break-words rounded-xl border border-red-200 bg-red-50/40 px-4 py-3 text-xs leading-6 text-red-600 dark:border-red-500/30 dark:bg-red-500/5 dark:text-red-400">{{ failureDetails }}</p>
@@ -354,6 +379,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 <span :aria-hidden="!copied" :tw-class="['col-start-1 row-start-1', { invisible: !copied }]">{{ lazyStrings.AudioTranscriptionWorkspace__copied() }}</span>
               </span>
             </button>
+            <button v-if="source === 'file' && (file !== undefined || saveText !== undefined)" type="button" data-testid="audio-transcription-save" :disabled="saveText === undefined || !text || fileRunning || transcriptSaveState === 'saving'" :aria-busy="transcriptSaveState === 'saving'" @click="saveTranscript" tw-class="flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-800">
+              <Loader2Icon v-if="transcriptSaveState === 'saving'" aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
+              <SaveIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0" />
+              {{ lazyStrings.AudioTranscriptionWorkspace__save_as_text_file() }}
+            </button>
           </div>
         </div>
         <AudioTranscriptionEditor v-model="text" :provisional-text="provisionalText" :confirmed-revision="recognitionState.confirmedRevision" :clear-disabled="!hasTranscript || (source === 'file' && fileRunning)" surface="workspace" @clear="clearText">
@@ -375,6 +405,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           {{ inputActionLabel }}
         </button>
       </div>
+      <p v-if="transcriptSaveState === 'failed'" role="alert" data-testid="audio-transcription-save-error" tw-class="mt-3 text-center text-xs text-red-600 dark:text-red-400">{{ lazyStrings.AudioTranscriptionWorkspace__could_not_save_the_transcript() }}</p>
       <p role="status" tw-class="mt-3 min-h-5 text-center text-[11px] leading-5 text-gray-400">{{ notice || (phase === 'finishing' ? lazyStrings.AudioTranscriptionWorkspace__finishing_input() : undefined) }}</p>
     </main>
     <Teleport v-if="floatingDocument" :to="floatingDocument.body">
