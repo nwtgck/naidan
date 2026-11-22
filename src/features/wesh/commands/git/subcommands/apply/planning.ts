@@ -236,13 +236,13 @@ interface PlannedApplyChanges {
   worktreeAbsentPaths: Set<string>,
 }
 
-export async function planIndexChanges({ context, repository, sections, reverse }: {
+export async function planIndexChanges({ context, repository, originalEntries, sections, reverse }: {
   context: WeshCommandContext,
   repository: GitRepository,
+  originalEntries: GitIndexEntry[],
   sections: readonly TextPatchSection[],
   reverse: boolean,
 }): Promise<PlannedApplyChanges> {
-  const originalEntries = await readIndex({ files: context.files, repository });
   const index = singleStageZeroIndex({ entries: originalEntries });
   const states = new Map<string, IndexPatchState>();
   const changes: PlannedIndexChange[] = [];

@@ -1,45 +1,88 @@
-import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
 import type {
-  WeshCommandContext,
-  WeshCommandImplementation,
+  WeshBuiltinCommandContext,
+  WeshShellBuiltinContext,
+  WeshShellBuiltinFunction,
   WeshCommandResult,
   WeshShellOption,
 } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import { SHELL_EXECUTION_OPTION_NAMES, type WeshExecutionOptions } from '@/features/wesh/shell/invocation';
 
-type KnownShellOptionName = WeshShellOption | 'expand_aliases' | 'pipefail';
+type ShoptOptionName = WeshShellOption | 'expand_aliases';
+type ExecutionOptionName = keyof WeshExecutionOptions;
+type KnownShellOptionName = ShoptOptionName | ExecutionOptionName;
 
-const KNOWN_SHOPT_OPTIONS: readonly KnownShellOptionName[] = ['dotglob', 'expand_aliases', 'extglob', 'failglob', 'globstar', 'nullglob'];
-const KNOWN_SET_OPTIONS: readonly KnownShellOptionName[] = ['pipefail'];
+const KNOWN_SHOPT_OPTIONS: readonly ShoptOptionName[] = ['dotglob', 'expand_aliases', 'extglob', 'failglob', 'globstar', 'nullglob'];
 
-function isCoreShellOption(name: KnownShellOptionName): name is WeshShellOption {
-  return name !== 'expand_aliases' && name !== 'pipefail';
+function isExecutionOption(name: KnownShellOptionName): name is ExecutionOptionName {
+  return SHELL_EXECUTION_OPTION_NAMES.some(option => name === option);
+}
+
+function isSupportedShoptOption(name: ShoptOptionName): name is WeshShellOption {
+  return name !== 'expand_aliases';
 }
 
 function getShellOptionEnabled({
-  context,
+  shell,
   name,
 }: {
-  context: WeshCommandContext;
+  shell: Pick<WeshShellBuiltinContext, 'getExecutionOption' | 'getShellOption'>;
   name: KnownShellOptionName;
 }): boolean {
-  return isCoreShellOption(name) && context.getShellOption({ name });
+  return isExecutionOption(name)
+    ? shell.getExecutionOption({ name })
+    : isSupportedShoptOption(name) && shell.getShellOption({ name });
 }
 
-const shoptArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'o', long: undefined, effects: [{ key: 'setOptions', value: true }], help: { summary: 'operate on set -o options', category: 'common' } },
-    { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'print', value: true }], help: { summary: 'print shell option settings', category: 'common' } },
-    { kind: 'flag', short: 'q', long: undefined, effects: [{ key: 'query', value: true }], help: { summary: 'suppress output and use exit status', category: 'common' } },
-    { kind: 'flag', short: 's', long: undefined, effects: [{ key: 'set', value: true }], help: { summary: 'enable shell options', category: 'common' } },
-    { kind: 'flag', short: 'u', long: undefined, effects: [{ key: 'unset', value: true }], help: { summary: 'disable shell options', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const shoptOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'setOptions', value: true }] },
+    forms: [{ kind: 'short', name: 'o', value: { kind: 'none' } }],
+    summary: 'operate on set -o options',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'print', value: true }] },
+    forms: [{ kind: 'short', name: 'p', value: { kind: 'none' } }],
+    summary: 'print shell option settings',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'query', value: true }] },
+    forms: [{ kind: 'short', name: 'q', value: { kind: 'none' } }],
+    summary: 'suppress output and use exit status',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'set', value: true }] },
+    forms: [{ kind: 'short', name: 's', value: { kind: 'none' } }],
+    summary: 'enable shell options',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'unset', value: true }] },
+    forms: [{ kind: 'short', name: 'u', value: { kind: 'none' } }],
+    summary: 'disable shell options',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const shoptArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: shoptOptions,
+  nonExecutableLongOptions: [],
+});
+const shoptArgvHelp = defineArgvHelpPresentation({ catalog: shoptArgvCatalog, rows: shoptOptions });
+const shoptArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'none',
 };
 
 function resolveKnownShellOption({
@@ -55,15 +98,16 @@ function resolveKnownShellOption({
 async function writeShellOption({
   context,
   name,
+  enabled,
   format,
   optionFamily,
 }: {
-  context: WeshCommandContext;
+  context: WeshBuiltinCommandContext;
   name: KnownShellOptionName;
+  enabled: boolean;
   format: 'human-readable' | 'reusable';
   optionFamily: 'set' | 'shopt';
 }): Promise<void> {
-  const enabled = getShellOptionEnabled({ context, name });
   switch (format) {
   case 'human-readable':
     await context.text().print({
@@ -98,7 +142,7 @@ async function writeInvalidOptionName({
   context,
   name,
 }: {
-  context: WeshCommandContext;
+  context: WeshBuiltinCommandContext;
   name: string;
 }): Promise<void> {
   await context.text().error({
@@ -106,11 +150,13 @@ async function writeInvalidOptionName({
   });
 }
 
-export const shoptCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const shoptCommandImplementation = {
+  fn: async ({ context, shell }): Promise<WeshCommandResult> => {
+    const { setExecutionOption, setShellOption } = shell;
     const parsed = parseStandardArgv({
-      args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: shoptArgvSpec }),
-      spec: shoptArgvSpec,
+      args: context.args,
+      catalog: shoptArgvCatalog,
+      policy: shoptArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -119,7 +165,7 @@ export const shoptCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'shopt',
         message: `shopt: ${diagnostic.message}`,
-        argvSpec: shoptArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: shoptArgvHelp }),
       });
       return { exitCode: 2 };
     }
@@ -128,7 +174,7 @@ export const shoptCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'shopt',
-        argvSpec: shoptArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: shoptArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -137,7 +183,7 @@ export const shoptCommandImplementation: WeshCommandImplementation = {
     const knownOptions = (() => {
       switch (optionFamily) {
       case 'set':
-        return KNOWN_SET_OPTIONS;
+        return SHELL_EXECUTION_OPTION_NAMES;
       case 'shopt':
         return KNOWN_SHOPT_OPTIONS;
       default: {
@@ -164,14 +210,15 @@ export const shoptCommandImplementation: WeshCommandImplementation = {
       }
 
       const names = shouldSet
-        ? knownOptions.filter((name) => getShellOptionEnabled({ context, name }))
+        ? knownOptions.filter((name) => getShellOptionEnabled({ shell, name }))
         : shouldUnset
-          ? knownOptions.filter((name) => !getShellOptionEnabled({ context, name }))
+          ? knownOptions.filter((name) => !getShellOptionEnabled({ shell, name }))
           : knownOptions;
       for (const name of names) {
         await writeShellOption({
           context,
           name,
+          enabled: getShellOptionEnabled({ shell, name }),
           format: reusableOutput ? 'reusable' : 'human-readable',
           optionFamily,
         });
@@ -188,14 +235,18 @@ export const shoptCommandImplementation: WeshCommandImplementation = {
           await writeInvalidOptionName({ context, name });
           continue;
         }
-        if (!isCoreShellOption(knownName)) {
+        if (isExecutionOption(knownName)) {
+          setExecutionOption({ name: knownName, enabled: shouldSet });
+          continue;
+        }
+        if (!isSupportedShoptOption(knownName)) {
           hadInvalidName = true;
           await context.text().error({
             text: `shopt: ${knownName}: operation requires Wesh core shell-option support\n`,
           });
           continue;
         }
-        context.setShellOption({ name: knownName, enabled: shouldSet });
+        setShellOption({ name: knownName, enabled: shouldSet });
       }
       let invalidNameExitCode = 0;
       switch (optionFamily) {
@@ -221,7 +272,7 @@ export const shoptCommandImplementation: WeshCommandImplementation = {
           await writeInvalidOptionName({ context, name });
           continue;
         }
-        if (!getShellOptionEnabled({ context, name: knownName })) {
+        if (!getShellOptionEnabled({ shell, name: knownName })) {
           failed = true;
         }
       }
@@ -236,19 +287,21 @@ export const shoptCommandImplementation: WeshCommandImplementation = {
         await writeInvalidOptionName({ context, name });
         continue;
       }
+      const enabled = getShellOptionEnabled({ shell, name: knownName });
       await writeShellOption({
         context,
         name: knownName,
+        enabled,
         format: reusableOutput ? 'reusable' : 'human-readable',
         optionFamily,
       });
-      if (!getShellOptionEnabled({ context, name: knownName })) {
+      if (!enabled) {
         failed = true;
       }
     }
     return { exitCode: failed ? 1 : 0 };
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'getExecutionOption' | 'setExecutionOption' | 'getShellOption' | 'setShellOption'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

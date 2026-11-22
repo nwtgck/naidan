@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition } from '@/features/wesh/types';
+import type { WeshShellBuiltinDefinition } from '@/features/wesh/types';
 
 export const printfCommandDefinition = {
   meta: {
@@ -6,8 +6,8 @@ export const printfCommandDefinition = {
     description: 'Format and print data',
     usage: 'printf [-v var] FORMAT [ARGUMENT]...',
   },
-  load: async () => (await import('./index.ts')).printfCommandImplementation.fn,
-} satisfies WeshCommandDefinition;
+  loadShellBuiltin: async () => (await import('./index.ts')).printfCommandImplementation.fn,
+} satisfies WeshShellBuiltinDefinition;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

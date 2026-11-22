@@ -1,10 +1,14 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import {
-  STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS,
-  standardSemanticIssuePrecedesDiagnostic,
-  stopStandardArgvAtFirstEarlyExit,
-} from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  parseStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+  type StandardArgvRawValue,
+} from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type {
   WeshCommandContext,
   WeshCommandImplementation,
@@ -29,22 +33,114 @@ const CMP_READ_FLAGS: WeshOpenFlags = {
   append: 'preserve',
 };
 
-const cmpArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'b', long: 'print-bytes', effects: [{ key: 'printBytes', value: true }], help: { summary: 'print differing bytes', category: 'common' } },
-    { kind: 'value', short: 'i', long: 'ignore-initial', key: 'ignoreInitial', valueName: 'SKIP', allowAttachedValue: true, parseValue: undefined, help: { summary: 'skip SKIP bytes of both inputs, or SKIP1:SKIP2 separately', valueName: 'SKIP', category: 'common' } },
-    { kind: 'flag', short: 'l', long: 'verbose', effects: [{ key: 'verbose', value: true }], help: { summary: 'output byte numbers and differing byte values', category: 'common' } },
-    { kind: 'value', short: 'n', long: 'bytes', key: 'limit', valueName: 'LIMIT', allowAttachedValue: true, parseValue: undefined, help: { summary: 'compare at most LIMIT bytes', valueName: 'LIMIT', category: 'common' } },
-    { kind: 'flag', short: 's', long: 'quiet', effects: [{ key: 'quiet', value: true }], help: { summary: 'suppress all normal output', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'silent', effects: [{ key: 'quiet', value: true }], help: { summary: 'same as --quiet', category: 'advanced' } },
-    { kind: 'flag', short: 'v', long: 'version', effects: [{ key: 'version', value: true }], help: { summary: 'output version information and exit', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const cmpOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'printBytes', value: true }] },
+    forms: [
+      { kind: 'short', name: 'b', value: { kind: 'none' } },
+      { kind: 'long', name: 'print-bytes', value: { kind: 'none' } },
+    ],
+    summary: 'print differing bytes',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'ignoreInitial' },
+    forms: [
+      { kind: 'short', name: 'i', value: { kind: 'required-attached-or-following', missingValueName: 'SKIP' } },
+      { kind: 'long', name: 'ignore-initial', value: { kind: 'required', missingValueName: 'SKIP' } },
+    ],
+    summary: 'skip SKIP bytes of both inputs, or SKIP1:SKIP2 separately',
+    valueName: 'SKIP',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'verbose' },
+    forms: [
+      { kind: 'short', name: 'l', value: { kind: 'none' } },
+      { kind: 'long', name: 'verbose', value: { kind: 'none' } },
+    ],
+    summary: 'output byte numbers and differing byte values',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'limit' },
+    forms: [
+      { kind: 'short', name: 'n', value: { kind: 'required-attached-or-following', missingValueName: 'LIMIT' } },
+      { kind: 'long', name: 'bytes', value: { kind: 'required', missingValueName: 'LIMIT' } },
+    ],
+    summary: 'compare at most LIMIT bytes',
+    valueName: 'LIMIT',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'quiet' },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'none' } },
+      { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+      { kind: 'long', name: 'silent', value: { kind: 'none' } },
+    ],
+    summary: 'suppress all normal output',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'version' },
+    forms: [
+      { kind: 'short', name: 'v', value: { kind: 'none' } },
+      { kind: 'long', name: 'version', value: { kind: 'none' } },
+    ],
+    summary: 'output version information and exit',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'help' },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+type CmpArgvTag = Extract<(typeof cmpOptions)[number]['semantic'], { kind: 'deferred' }>['tag'];
+
+const cmpArgvCatalog = defineArgvCatalog<StandardArgvAction<CmpArgvTag>>({
+  definitions: cmpOptions,
+  nonExecutableLongOptions: [],
+});
+const cmpArgvHelp = defineArgvHelpPresentation({ catalog: cmpArgvCatalog, rows: cmpOptions });
+const cmpArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
+
+function readCmpOptionValue({ value }: { value: StandardArgvRawValue }): string {
+  switch (value.kind) {
+  case 'inline':
+  case 'next-argv':
+    return value.rawValue;
+  case 'none':
+    throw new Error('Missing parsed cmp option value');
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled cmp option value: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+  }
+  }
+}
+
+async function writeCmpUsageError({
+  context,
+  message,
+}: {
+  context: WeshCommandContext,
+  message: string,
+}): Promise<WeshCommandResult> {
+  await writeCommandUsageError({
+    context,
+    command: 'cmp',
+    message,
+    usageSummary: formatArgvUsageSummary({ presentation: cmpArgvHelp }),
+  });
+  return { exitCode: 2 };
+}
 
 type CmpInput = {
   stream: ReadableStream<Uint8Array>,
@@ -235,73 +331,36 @@ function processWasInterrupted({
 
 export const cmpCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
+    const parsed = parseStandardArgv({
       args: context.args,
-      spec: cmpArgvSpec,
-      earlyExitOptions: STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS,
+      catalog: cmpArgvCatalog,
+      policy: cmpArgvPolicy,
     });
-    const parsed = parseStandardArgv({ args: parsedArgs, spec: cmpArgvSpec });
 
     const diagnostic = parsed.diagnostics[0];
-    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
-      args: parsedArgs,
-      spec: cmpArgvSpec,
-      parsed,
-      findSemanticIssue: ({ parsed: candidate }) => {
-        for (const occurrence of candidate.occurrences) {
-          if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') {
-            continue;
-          }
-          if (occurrence.key === 'limit') {
-            const result = parseCmpByteCount({ value: occurrence.value, option: '--bytes' });
-            if (!result.ok) {
-              return result.message;
-            }
-          }
-          if (occurrence.key === 'ignoreInitial') {
-            const result = parseCmpIgnoreInitial({ value: occurrence.value });
-            if (!result.ok) {
-              return result.message;
-            }
-          }
-        }
-        return undefined;
-      },
-    });
-    if (diagnostic !== undefined && !semanticIssuePrecedesDiagnostic) {
-      await writeCommandUsageError({
-        context,
-        command: 'cmp',
-        message: `cmp: ${diagnostic.message}`,
-        argvSpec: cmpArgvSpec,
-      });
-      return { exitCode: 2 };
-    }
-
-    // GNU cmp keeps the smallest repeated byte limit and the greatest skip
-    // specified for each input across repeated options and positional operands.
     let limit: bigint | undefined;
     let leftSkip = 0n;
     let rightSkip = 0n;
-    for (const occurrence of parsed.occurrences) {
-      if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') {
-        continue;
+    let verbose = false;
+    let quiet = false;
+
+    // cmp interprets byte counts, flag conflicts, and terminal options in
+    // source order. A diagnostic within a short bundle can come after -v.
+    for (const occurrence of parsed.deferred) {
+      if (diagnostic !== undefined && (
+        diagnostic.argvIndex < occurrence.argvIndex
+        || (diagnostic.argvIndex === occurrence.argvIndex && diagnostic.tokenOffset <= occurrence.tokenStart)
+      )) {
+        break;
       }
 
-      switch (occurrence.key) {
+      const tag = occurrence.semantic.tag;
+      switch (tag) {
       case 'limit': {
-        const parsedLimit = parseCmpByteCount({
-          value: occurrence.value,
-          option: '--bytes',
-        });
+        const value = readCmpOptionValue({ value: occurrence.value });
+        const parsedLimit = parseCmpByteCount({ value, option: '--bytes' });
         if (!parsedLimit.ok) {
-          await writeCommandUsageError({
-            context,
-            command: 'cmp',
-            message: parsedLimit.message,
-            argvSpec: cmpArgvSpec,
-          });
-          return { exitCode: 2 };
+          return writeCmpUsageError({ context, message: parsedLimit.message });
         }
         if (limit === undefined || parsedLimit.value < limit) {
           limit = parsedLimit.value;
@@ -309,73 +368,57 @@ export const cmpCommandImplementation: WeshCommandImplementation = {
         break;
       }
       case 'ignoreInitial': {
-        const parsedIgnoreInitial = parseCmpIgnoreInitial({ value: occurrence.value });
-        if (!parsedIgnoreInitial.ok) {
-          await writeCommandUsageError({
-            context,
-            command: 'cmp',
-            message: parsedIgnoreInitial.message,
-            argvSpec: cmpArgvSpec,
-          });
-          return { exitCode: 2 };
+        const value = readCmpOptionValue({ value: occurrence.value });
+        const skip = parseCmpIgnoreInitial({ value });
+        if (!skip.ok) {
+          return writeCmpUsageError({ context, message: skip.message });
         }
-        if (parsedIgnoreInitial.left > leftSkip) {
-          leftSkip = parsedIgnoreInitial.left;
+        if (skip.left > leftSkip) {
+          leftSkip = skip.left;
         }
-        if (parsedIgnoreInitial.right > rightSkip) {
-          rightSkip = parsedIgnoreInitial.right;
+        if (skip.right > rightSkip) {
+          rightSkip = skip.right;
         }
         break;
       }
-      default:
+      case 'verbose':
+        verbose = true;
         break;
+      case 'quiet':
+        quiet = true;
+        break;
+      case 'help':
+        await writeCommandHelp({
+          context,
+          command: 'cmp',
+          optionLines: formatArgvOptionHelp({ presentation: cmpArgvHelp }),
+        });
+        return { exitCode: 0 };
+      case 'version':
+        await context.text().print({ text: 'cmp (wesh)\n' });
+        return { exitCode: 0 };
+      default: {
+        const _ex: never = tag;
+        throw new Error(`Unhandled cmp option: ${_ex}`);
+      }
+      }
+
+      if (verbose && quiet) {
+        return writeCmpUsageError({ context, message: 'cmp: options -l and -s are incompatible' });
       }
     }
 
-
-    if (parsed.optionValues.help === true) {
-      await writeCommandHelp({
-        context,
-        command: 'cmp',
-        argvSpec: cmpArgvSpec,
-      });
-      return { exitCode: 0 };
+    if (diagnostic !== undefined) {
+      return writeCmpUsageError({ context, message: `cmp: ${diagnostic.message}` });
     }
-
-    if (parsed.optionValues.version === true) {
-      await context.text().print({ text: 'cmp (wesh)\n' });
-      return { exitCode: 0 };
-    }
-
     if (parsed.positionals.length < 1) {
-      await writeCommandUsageError({
-        context,
-        command: 'cmp',
-        message: 'cmp: missing operand',
-        argvSpec: cmpArgvSpec,
-      });
-      return { exitCode: 2 };
+      return writeCmpUsageError({ context, message: 'cmp: missing operand' });
     }
     if (parsed.positionals.length > 4) {
-      await writeCommandUsageError({
+      return writeCmpUsageError({
         context,
-        command: 'cmp',
         message: `cmp: extra operand '${parsed.positionals[4] ?? ''}'`,
-        argvSpec: cmpArgvSpec,
       });
-      return { exitCode: 2 };
-    }
-
-    const verbose = parsed.optionValues.verbose === true;
-    const quiet = parsed.optionValues.quiet === true;
-    if (verbose && quiet) {
-      await writeCommandUsageError({
-        context,
-        command: 'cmp',
-        message: 'cmp: options -l and -s are incompatible',
-        argvSpec: cmpArgvSpec,
-      });
-      return { exitCode: 2 };
     }
 
     const rawLeftSkip = parsed.positionals[2];
@@ -385,13 +428,7 @@ export const cmpCommandImplementation: WeshCommandImplementation = {
         option: '--ignore-initial',
       });
       if (!parsedLeftSkip.ok) {
-        await writeCommandUsageError({
-          context,
-          command: 'cmp',
-          message: parsedLeftSkip.message,
-          argvSpec: cmpArgvSpec,
-        });
-        return { exitCode: 2 };
+        return writeCmpUsageError({ context, message: parsedLeftSkip.message });
       }
       if (parsedLeftSkip.value > leftSkip) {
         leftSkip = parsedLeftSkip.value;
@@ -405,13 +442,7 @@ export const cmpCommandImplementation: WeshCommandImplementation = {
         option: '--ignore-initial',
       });
       if (!parsedRightSkip.ok) {
-        await writeCommandUsageError({
-          context,
-          command: 'cmp',
-          message: parsedRightSkip.message,
-          argvSpec: cmpArgvSpec,
-        });
-        return { exitCode: 2 };
+        return writeCmpUsageError({ context, message: parsedRightSkip.message });
       }
       if (parsedRightSkip.value > rightSkip) {
         rightSkip = parsedRightSkip.value;

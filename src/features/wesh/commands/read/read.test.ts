@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -7,6 +7,11 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+import { readCommandDefinition } from './definition';
+
+beforeAll(async () => {
+  await readCommandDefinition.loadShellBuiltin();
+});
 
 describe('wesh read', () => {
   let wesh: Wesh;
@@ -516,6 +521,21 @@ printf '<%s>|<%s>|%s\n' "$first" "$second" "$first_status"`,
 
     expect(stdout.text).toBe('<>|<next>|1\n');
     expect(stderr.text).toContain('read: nope: invalid number');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('reports a missing descriptor argument and reads the next record after --', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+read -u
+first_status=$?
+read -r -- value
+printf '<%s>|%s|%s\\n' "$value" "$first_status" "$?"`,
+      stdinText: 'next\n',
+    });
+
+    expect(stdout.text).toBe('<next>|1|0\n');
+    expect(stderr.text).toContain('read: -u requires a value for fd');
     expect(result.exitCode).toBe(0);
   });
 

@@ -1,17 +1,21 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv-v2';
 import { iterateNullTerminatedPathnames } from '@/features/wesh/commands/_shared/files0-from';
 import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshStat } from '@/features/wesh/types';
 import { getWeshCodePointDisplayWidth } from '@/features/wesh/utils/display-width';
 import { openHandleReadStream, openFileReadStream } from '@/features/wesh/utils/fs';
-import {
-  findFirstStandardSemanticIssue,
-  STANDARD_HELP_EARLY_EXIT_OPTIONS,
-  standardSemanticIssuePrecedesDiagnostic,
-  stopStandardArgvAtFirstEarlyExit,
-} from '@/features/wesh/commands/_shared/argv';
 
 type WcField = 'lines' | 'words' | 'bytes' | 'chars' | 'maxLineLength';
 type WcTotalMode = 'auto' | 'always' | 'only' | 'never';
@@ -70,21 +74,83 @@ function resolveInputPath({
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
-const wcArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'flag', short: 'l', long: 'lines', effects: [{ key: 'lines', value: true }], help: { summary: 'print newline counts', category: 'common' } },
-    { kind: 'flag', short: 'w', long: 'words', effects: [{ key: 'words', value: true }], help: { summary: 'print word counts', category: 'common' } },
-    { kind: 'flag', short: 'c', long: 'bytes', effects: [{ key: 'bytes', value: true }], help: { summary: 'print byte counts', category: 'common' } },
-    { kind: 'flag', short: 'm', long: 'chars', effects: [{ key: 'chars', value: true }], help: { summary: 'print character counts', category: 'common' } },
-    { kind: 'flag', short: 'L', long: 'max-line-length', effects: [{ key: 'maxLineLength', value: true }], help: { summary: 'print the maximum line length', category: 'advanced' } },
-    { kind: 'value', short: undefined, long: 'files0-from', key: 'files0From', valueName: 'FILE', allowAttachedValue: false, parseValue: undefined, help: { summary: 'read input from NUL-terminated file names in FILE', valueName: 'FILE', category: 'advanced' } },
-    { kind: 'value', short: undefined, long: 'total', key: 'totalMode', valueName: 'WHEN', allowAttachedValue: false, parseValue: undefined, help: { summary: 'print totals according to WHEN: auto, always, only, or never', valueName: 'WHEN', category: 'advanced' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const wcOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'lines', value: true }] },
+    forms: [
+      { kind: 'short', name: 'l', value: { kind: 'none' } },
+      { kind: 'long', name: 'lines', value: { kind: 'none' } },
+    ],
+    summary: 'print newline counts',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'words', value: true }] },
+    forms: [
+      { kind: 'short', name: 'w', value: { kind: 'none' } },
+      { kind: 'long', name: 'words', value: { kind: 'none' } },
+    ],
+    summary: 'print word counts',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'bytes', value: true }] },
+    forms: [
+      { kind: 'short', name: 'c', value: { kind: 'none' } },
+      { kind: 'long', name: 'bytes', value: { kind: 'none' } },
+    ],
+    summary: 'print byte counts',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'chars', value: true }] },
+    forms: [
+      { kind: 'short', name: 'm', value: { kind: 'none' } },
+      { kind: 'long', name: 'chars', value: { kind: 'none' } },
+    ],
+    summary: 'print character counts',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'maxLineLength', value: true }] },
+    forms: [
+      { kind: 'short', name: 'L', value: { kind: 'none' } },
+      { kind: 'long', name: 'max-line-length', value: { kind: 'none' } },
+    ],
+    summary: 'print the maximum line length',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'files0From', parse: undefined },
+    forms: [{ kind: 'long', name: 'files0-from', value: { kind: 'required', missingValueName: 'FILE' } }],
+    summary: 'read input from NUL-terminated file names in FILE',
+    valueName: 'FILE',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'totalMode', parse: parseWcTotalMode },
+    forms: [{ kind: 'long', name: 'total', value: { kind: 'required', missingValueName: 'WHEN' } }],
+    summary: 'print totals according to WHEN: auto, always, only, or never',
+    valueName: 'WHEN',
+    category: 'advanced',
+  },
+] as const;
+
+const wcArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: wcOptions,
+  nonExecutableLongOptions: ['debug', 'version'],
+});
+const wcArgvHelp = defineArgvHelpPresentation({ catalog: wcArgvCatalog, rows: wcOptions });
+const wcArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 function isAsciiWhitespaceByte({ byte }: { byte: number }): boolean {
@@ -131,24 +197,23 @@ function isWcUnicodeWordSeparator({
   );
 }
 
-function parseWcTotalMode({ value }: { value: string }): WcTotalMode | undefined {
-  const matches = WC_TOTAL_MODES.filter(mode => mode.startsWith(value));
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
-function findWcPreHelpSemanticIssue({
-  parsed,
+function parseWcTotalMode({
+  rawValue,
 }: {
-  parsed: ReturnType<typeof parseStandardArgv>,
-}): string | undefined {
-  const value = parsed.optionValues.totalMode;
-  return typeof value === 'string' && parseWcTotalMode({ value }) === undefined ? value : undefined;
+  rawValue: string,
+}): { kind: 'parsed', value: WcTotalMode } | { kind: 'invalid', message: string } {
+  const matches = WC_TOTAL_MODES.filter(mode => mode.startsWith(rawValue));
+  const match = matches.length === 1 ? matches[0] : undefined;
+  if (match === undefined) {
+    return { kind: 'invalid', message: `invalid argument '${rawValue}' for '--total'` };
+  }
+  return { kind: 'parsed', value: match };
 }
 
 function getSelectedFields({
   optionValues,
 }: {
-  optionValues: Record<string, boolean | string | number>,
+  optionValues: Readonly<Record<string, boolean | string | number>>,
 }): WcField[] {
   const fields: WcField[] = [];
   if (optionValues.lines === true) {
@@ -613,63 +678,35 @@ async function readCountsFromStream({
 
 export const wcCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
+    const parsedArgs = stopArgvAtFirstEarlyExit({
       args: context.args,
-      spec: wcArgvSpec,
-      earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+      catalog: wcArgvCatalog,
+      policy: wcArgvPolicy,
+      earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
     });
-    const parsed = parseStandardArgv({ args: parsedArgs, spec: wcArgvSpec });
+    const parsed = parseStandardArgv({ args: parsedArgs, catalog: wcArgvCatalog, policy: wcArgvPolicy });
 
     const diagnostic = parsed.diagnostics[0];
-    const firstPreHelpSemanticIssue = findFirstStandardSemanticIssue({
-      args: parsedArgs,
-      spec: wcArgvSpec,
-      parsed,
-      findSemanticIssue: findWcPreHelpSemanticIssue,
-    });
-    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
-      args: parsedArgs,
-      spec: wcArgvSpec,
-      parsed,
-      findSemanticIssue: findWcPreHelpSemanticIssue,
-    });
-    if (diagnostic !== undefined && !semanticIssuePrecedesDiagnostic) {
+    if (diagnostic !== undefined) {
       await writeCommandUsageError({
         context,
         command: 'wc',
         message: `wc: ${diagnostic.message}`,
-        argvSpec: wcArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: wcArgvHelp }),
       });
       return { exitCode: 1 };
-    }
-
-    if (firstPreHelpSemanticIssue !== undefined) {
-      await writeCommandUsageError({
-        context,
-        command: 'wc',
-        message: `wc: invalid argument '${firstPreHelpSemanticIssue}' for '--total'`,
-        argvSpec: wcArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
-
-    const rawTotalMode = parsed.optionValues.totalMode;
-    const totalMode = typeof rawTotalMode === 'string'
-      ? parseWcTotalMode({ value: rawTotalMode })
-      : 'auto';
-    if (totalMode === undefined) {
-      throw new Error(`wc pre-help validation missed total mode: ${String(rawTotalMode)}`);
     }
 
     if (parsed.optionValues.help === true) {
       await writeCommandHelp({
         context,
         command: 'wc',
-        argvSpec: wcArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: wcArgvHelp }),
       });
       return { exitCode: 0 };
     }
 
+    const totalMode = (parsed.optionValues.totalMode as WcTotalMode | undefined) ?? 'auto';
     const text = context.text();
     const selectedFields = getSelectedFields({ optionValues: parsed.optionValues });
     const characterLocaleMode = resolveCharacterLocaleMode({ env: context.env });
@@ -682,7 +719,7 @@ export const wcCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'wc',
         message: `wc: extra operand '${parsed.positionals[0]}'\nfile operands cannot be combined with --files0-from`,
-        argvSpec: wcArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: wcArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -790,7 +827,7 @@ export const wcCommandImplementation: WeshCommandImplementation = {
 
     const shouldPrintTotal = (() => {
       switch (totalMode) {
-      case 'auto': return requestedInputCount > 1 && entries.length > 0;
+      case 'auto': return requestedInputCount > 1;
       case 'always':
       case 'only':
         return true;

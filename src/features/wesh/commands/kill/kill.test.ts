@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -6,9 +6,14 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+import { killCommandDefinition } from './definition';
 
 describe('wesh kill', () => {
   let wesh: Wesh;
+
+  beforeAll(async () => {
+    await killCommandDefinition.loadShellBuiltin();
+  });
 
   beforeEach(async () => {
     const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
@@ -28,11 +33,31 @@ describe('wesh kill', () => {
     return { result, stdout, stderr };
   }
 
+  function registerParkedCommand() {
+    const started = Promise.withResolvers<number>();
+    const release = Promise.withResolvers<void>();
+    wesh.registerCommand({
+      definition: {
+        meta: { name: 'park', description: 'Wait for the test to release the command', usage: 'park' },
+        load: async () => async ({ context }) => {
+          started.resolve(context.pid);
+          await release.promise;
+          return { exitCode: 0 };
+        },
+      },
+    });
+    return { started: started.promise, release: release.resolve };
+  }
+
   it('supports --help and advertises the supported listing form', async () => {
     const { result, stdout, stderr } = await execute({ script: 'kill --help' });
+    const help = await execute({ script: 'help kill' });
 
     expect(stdout.text).toContain('usage: kill -l [SIGNAL ...]');
     expect(stdout.text).not.toContain('%JOB');
+    expect(help.stdout.text).toBe(stdout.text);
+    expect(help.stderr.text).toBe('');
+    expect(help.result.exitCode).toBe(0);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -56,6 +81,145 @@ describe('wesh kill', () => {
     expect(invalid.stdout.text).toBe('');
     expect(invalid.stderr.text).toContain('invalid signal specification');
     expect(invalid.result.exitCode).toBe(1);
+  });
+
+  it.each(['kill', 'command kill', 'builtin kill'])('runs %s in the current shell', async invocation => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+trap 'printf "caught:%s\\n" "$?"' USR1
+${invocation} -USR1 "$BASHPID"
+printf 'after:%s\\n' "$?"
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+caught:0
+after:0
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('delivers to the PID of a simple background command and continues after a missing target', async () => {
+    const parked = registerParkedCommand();
+    using _release = { [Symbol.dispose]: parked.release };
+    const launched = await execute({ script: 'park & child=$!; printf "%s" "$child"' });
+    const pid = await parked.started;
+    expect(launched.stdout.text).toBe(String(pid));
+    const killed = await execute({ script: 'kill -s TERM -- 999999 "$child"' });
+
+    expect(killed.result.exitCode).toBe(0);
+    expect(killed.stdout.text).toBe('');
+    expect(killed.stderr.text).toBe('kill: 999999: no such process or job\n');
+    expect(wesh.kernel.getWaitStatus({ pid })).toEqual({ kind: 'signaled', signal: 15 });
+
+    parked.release();
+    const waited = await execute({ script: 'wait "$child"' });
+    expect(waited.result.exitCode).toBe(143);
+    expect(wesh.kernel.getProcess({ pid })).toBeUndefined();
+  });
+
+  it('delivers a signal to the members of a different process group', async () => {
+    const parked = registerParkedCommand();
+    using _release = { [Symbol.dispose]: parked.release };
+    const launched = await execute({ script: '{ park; printf late; } & job=$!; printf "%s" "$job"' });
+    const memberPid = await parked.started;
+    const pgid = Number(launched.stdout.text);
+    expect(memberPid).not.toBe(pgid);
+    expect(wesh.kernel.getProcess({ pid: memberPid })?.pgid).toBe(pgid);
+
+    const killed = await execute({ script: 'kill -TERM -"$job"' });
+    expect(killed.result.exitCode).toBe(0);
+    expect(killed.stdout.text).toBe('');
+    expect(killed.stderr.text).toBe('');
+    expect(wesh.kernel.getWaitStatus({ pid: memberPid })).toEqual({ kind: 'signaled', signal: 15 });
+
+    parked.release();
+    const waited = await execute({ script: 'wait "$job"' });
+    expect(waited.result.exitCode).toBe(143);
+    expect(launched.stdout.text).toBe(String(pgid));
+  });
+
+  it('delivers a group signal to both stages of a background pipeline', async () => {
+    const parked = registerParkedCommand();
+    using _release = { [Symbol.dispose]: parked.release };
+    const launched = await execute({ script: 'park | park & job=$!; printf "%s" "$job"' });
+    const pgid = Number(launched.stdout.text);
+    const countParks = () => wesh.kernel.getProcessesByGroup({ pgid }).filter(({ image }) => image === 'park');
+    await expect.poll(() => countParks().length).toBe(2);
+    const stages = countParks();
+
+    const killed = await execute({ script: 'kill -TERM -"$job"' });
+    expect(killed.result.exitCode).toBe(0);
+    expect(killed.stderr.text).toBe('');
+    expect(stages.map(({ waitStatus }) => waitStatus)).toEqual([
+      { kind: 'signaled', signal: 15 },
+      { kind: 'signaled', signal: 15 },
+    ]);
+    parked.release();
+    const waited = await execute({ script: 'wait "$job"' });
+    expect(waited.result.exitCode).toBe(143);
+  });
+
+  it.each(['INT', 'QUIT'])('ignores %s on a simple background command', async signal => {
+    const parked = registerParkedCommand();
+    using _release = { [Symbol.dispose]: parked.release };
+    await execute({ script: 'park & job=$!' });
+    const pid = await parked.started;
+
+    const signalled = await execute({ script: `kill -${signal} "$job"` });
+    expect(signalled.result.exitCode).toBe(0);
+    expect(signalled.stderr.text).toBe('');
+    expect(wesh.kernel.getWaitStatus({ pid })).toBeUndefined();
+
+    parked.release();
+    expect((await execute({ script: 'wait "$job"' })).result.exitCode).toBe(0);
+  });
+
+  it('uses the process running the command when called through env or a pipeline', async () => {
+    const external = await execute({
+      script: `\
+bash -c 'env kill -INT "$BASHPID"; printf "alive:%s\\n" "$?"'
+`,
+    });
+    expect(external.stdout.text).toBe('alive:0\n');
+    expect(external.stderr.text).toBe('');
+    expect(external.result.exitCode).toBe(0);
+
+    const pipeline = await execute({
+      script: `\
+set -o pipefail
+kill -TERM "$BASHPID" | cat
+printf 'pipeline:%s\\n' "$?"
+`,
+    });
+    expect(pipeline.stdout.text).toBe('pipeline:143\n');
+    expect(pipeline.stderr.text).toBe('');
+    expect(pipeline.result.exitCode).toBe(0);
+  });
+
+  it.each([
+    { script: 'kill -TERM 1', diagnostic: 'kill: 1: operation not permitted\n' },
+    { script: 'kill -- -1', diagnostic: 'kill: -1: operation not supported\n' },
+    { script: 'kill -STOP "$BASHPID"', diagnostic: 'operation not supported\n' },
+    { script: 'kill %1', diagnostic: 'kill: %1: job specifications are not supported\n' },
+  ])('rejects an unsupported or forbidden target or signal with $script', async ({ script, diagnostic }) => {
+    const denied = await execute({ script });
+    expect(denied.result.exitCode).toBe(1);
+    expect(denied.stdout.text).toBe('');
+    expect(denied.stderr.text).toContain(diagnostic);
+    expect(wesh.kernel.getProcess({ pid: 1 })?.state).toBe('running');
+  });
+
+  it('accepts signal zero for the current process group, an explicit group, and init', async () => {
+    const probed = await execute({
+      script: `\
+kill -0 0 && kill -0 -"$BASHPID" && kill -0 1
+`,
+    });
+    expect(probed.result.exitCode).toBe(0);
+    expect(probed.stdout.text).toBe('');
+    expect(probed.stderr.text).toBe('');
   });
 
   it('does not normalize non-ASCII lookalikes in signal names', async () => {

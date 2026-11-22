@@ -1,11 +1,10 @@
-import { parseStandardArgv } from '@/features/wesh/argv';
+import { formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { canonicalizeExistingPath, resolvePath } from '@/features/wesh/path';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import { canonicalizeExistingPath, toAbsolutePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
-import { buildSplitOptions, parseSplitOperands, splitArgvSpec, type SplitMode } from './parse';
+import { parseSplitArgv, splitArgvHelp, type SplitMode } from './parse';
 import { createSplitSuffixGenerator, isSuffixExhaustedError } from './suffix';
 import { createSplitOutputController, type SplitOutputController } from './writer';
 
@@ -236,14 +235,14 @@ async function createInputOverwriteGuard({
     return undefined;
   }
 
-  const resolvedInputPath = resolvePath({ cwd: context.cwd, path: input });
+  const resolvedInputPath = toAbsolutePath({ cwd: context.cwd, path: input });
   const canonicalInputPath = await canonicalizeExistingPath({
     context,
     path: resolvedInputPath,
   });
 
   return async ({ path }: { path: string }): Promise<string | undefined> => {
-    const resolvedOutputPath = resolvePath({ cwd: context.cwd, path });
+    const resolvedOutputPath = toAbsolutePath({ cwd: context.cwd, path });
     if (resolvedInputPath === resolvedOutputPath) {
       return `'${path}' would overwrite input; aborting`;
     }
@@ -307,87 +306,32 @@ async function executeSplit({
 
 export const splitCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
-        args: context.args,
-        spec: splitArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
-      }),
-      spec: splitArgvSpec,
-    });
-
-    const diagnostic = parsed.diagnostics[0];
-    if (diagnostic !== undefined) {
+    const parsed = parseSplitArgv({ args: context.args });
+    switch (parsed.kind) {
+    case 'error':
       await writeCommandUsageError({
         context,
         command: 'split',
-        message: `split: ${diagnostic.message}`,
-        argvSpec: splitArgvSpec,
+        message: `split: ${parsed.message}`,
+        usageSummary: formatArgvUsageSummary({ presentation: splitArgvHelp }),
       });
       return { exitCode: 1 };
-    }
-
-    if (parsed.optionValues.help === true) {
+    case 'help':
       await writeCommandHelp({
         context,
         command: 'split',
-        argvSpec: splitArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: splitArgvHelp }),
       });
       return { exitCode: 0 };
+    case 'ok':
+      break;
+    default: {
+      const _ex: never = parsed;
+      throw new Error(`Unhandled split arguments: ${JSON.stringify(_ex)}`);
+    }
     }
 
-    const modeSelections = parsed.occurrences.reduce((counts, occurrence) => {
-      switch (occurrence.kind) {
-      case 'value':
-        return occurrence.key === 'lines' || occurrence.key === 'bytes' || occurrence.key === 'lineBytes'
-          ? { ...counts, modern: counts.modern + 1 }
-          : counts;
-      case 'special':
-        return occurrence.effects.some(effect => effect.key === 'lines')
-          ? { ...counts, legacy: counts.legacy + 1 }
-          : counts;
-      case 'flag':
-        return counts;
-      default: {
-        const _ex: never = occurrence;
-        throw new Error(`Unhandled split option occurrence: ${String(_ex)}`);
-      }
-      }
-    }, { modern: 0, legacy: 0 });
-    if (modeSelections.modern > 1 || (modeSelections.modern > 0 && modeSelections.legacy > 0)) {
-      await writeCommandUsageError({
-        context,
-        command: 'split',
-        message: 'split: cannot split in more than one way',
-        argvSpec: splitArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
-
-    const optionsResult = buildSplitOptions({ optionValues: parsed.optionValues });
-    if (!optionsResult.ok) {
-      await writeCommandUsageError({
-        context,
-        command: 'split',
-        message: `split: ${optionsResult.message}`,
-        argvSpec: splitArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
-
-    const operandsResult = parseSplitOperands({ positionals: parsed.positionals });
-    if (!operandsResult.ok) {
-      await writeCommandUsageError({
-        context,
-        command: 'split',
-        message: `split: ${operandsResult.message}`,
-        argvSpec: splitArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
-
-    const { options } = optionsResult;
-    const { input, prefix } = operandsResult.operands;
+    const { options, operands: { input, prefix } } = parsed;
     const suffixGenerator = createSplitSuffixGenerator({
       prefix,
       suffixLength: options.suffixLength,

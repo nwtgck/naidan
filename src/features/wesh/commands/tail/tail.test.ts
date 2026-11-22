@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/features/wesh';
 import { TEST_ONLY as TAIL_TEST_ONLY } from './index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
@@ -95,6 +95,29 @@ describe('tail command', () => {
 
     return { result, stdout, stderr };
   }
+
+  it('treats a negative count as a value and a name after double dash as a file', async () => {
+    await writeFile({ name: '-2', data: 'named file\n' });
+    const count = await execute({
+      script: 'tail -n -2',
+      stdinText: `\
+first
+second
+third
+`,
+    });
+    const file = await execute({ script: 'tail -- -2', stdinText: undefined });
+
+    expect(count.result.exitCode).toBe(0);
+    expect(count.stdout.text).toBe(`\
+second
+third
+`);
+    expect(count.stderr.text).toBe('');
+    expect(file.result.exitCode).toBe(0);
+    expect(file.stdout.text).toBe('named file\n');
+    expect(file.stderr.text).toBe('');
+  });
 
   it('prints headers for multiple files by default', async () => {
     await writeFile({
@@ -253,7 +276,7 @@ a2
     });
 
     expect(stdout.text).toContain('==> a.txt <==');
-    expect(stderr.text).toBe('tail: missing.txt: No such file or directory\n');
+    expect(stderr.text).toBe("tail: cannot open 'missing.txt' for reading: No such file or directory\n");
     expect(result.exitCode).toBe(1);
   });
 
@@ -267,7 +290,7 @@ a2
     });
 
     const { result, stdout, stderr } = await execute({
-      script: 'tail -n 1 missing.txt a.txt',
+      script: `tail -n 1 "missing's file" a.txt`,
       stdinText: undefined,
     });
 
@@ -275,7 +298,7 @@ a2
 ==> a.txt <==
 a2
 `);
-    expect(stderr.text).toContain('tail: missing.txt:');
+    expect(stderr.text).toBe(`tail: cannot open "missing's file" for reading: No such file or directory\n`);
     expect(result.exitCode).toBe(1);
   });
 
@@ -288,7 +311,31 @@ a2
     });
 
     expect(stdout.text).toBe('');
-    expect(stderr.text).toBe('tail: parent/child: Not a directory\n');
+    expect(stderr.text).toBe("tail: cannot open 'parent/child' for reading: Not a directory\n");
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('omits the header for a file that disappears between lookup and open', async () => {
+    await writeFile({ name: 'vanished', data: 'vanished\n' });
+    await writeFile({ name: 'data', data: 'alpha\n' });
+    const resolveEntry = wesh.vfs.resolveEntry.bind(wesh.vfs);
+    using lookup = vi.spyOn(wesh.vfs, 'resolveEntry');
+    lookup.mockImplementationOnce(async ({ path, finalSymlinkTreatment }) => {
+      const entry = await resolveEntry({ path, finalSymlinkTreatment });
+      await rootHandle.removeEntry('vanished');
+      return entry;
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'tail vanished data',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe(`\
+==> data <==
+alpha
+`);
+    expect(stderr.text).toBe("tail: cannot open 'vanished' for reading: No such file or directory\n");
     expect(result.exitCode).toBe(1);
   });
 
@@ -404,6 +451,20 @@ beta
     expect(lineThenByte.result.exitCode).toBe(0);
   });
 
+  it('validates counts that precede or consume help', async () => {
+    const invalid = await execute({ script: 'tail -n bad -c1 --help', stdinText: undefined });
+    const claimed = await execute({ script: 'tail -n --help', stdinText: undefined });
+    const help = await execute({ script: 'tail --help -n bad', stdinText: undefined });
+
+    expect(invalid.result.exitCode).toBe(1);
+    expect(invalid.stderr.text).toContain("tail: invalid number of lines: 'bad'");
+    expect(claimed.result.exitCode).toBe(1);
+    expect(claimed.stderr.text).toContain("tail: invalid number of lines: '--help'");
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: tail');
+    expect(help.stderr.text).toBe('');
+  });
+
   it('supports a standalone obsolete count but rejects mixed obsolete syntax', async () => {
     const standalone = await execute({
       script: 'tail -1',
@@ -436,6 +497,37 @@ beta
     expect(obsoleteLineThenByte.stdout.text).toBe('');
     expect(obsoleteLineThenByte.stderr.text).toContain('tail: option used in invalid context -- 1');
     expect(obsoleteLineThenByte.result.exitCode).toBe(1);
+  });
+
+  it('reports a misplaced obsolete count at its argument position', async () => {
+    const helpLast = await execute({ script: 'tail -21 --help', stdinText: undefined });
+    const unknownLast = await execute({ script: 'tail -21 --unknown', stdinText: undefined });
+    const helpFirst = await execute({ script: 'tail --help -21', stdinText: undefined });
+    const countFirst = await execute({ script: 'tail -c bad -21 --help', stdinText: undefined });
+
+    for (const execution of [helpLast, unknownLast]) {
+      expect(execution.result.exitCode).toBe(1);
+      expect(execution.stdout.text).toBe('');
+      expect(execution.stderr.text).toBe('tail: option used in invalid context -- 2\n');
+    }
+    expect(helpFirst.result.exitCode).toBe(0);
+    expect(helpFirst.stdout.text).toContain('usage: tail');
+    expect(helpFirst.stderr.text).toBe('');
+    expect(countFirst.result.exitCode).toBe(1);
+    expect(countFirst.stderr.text).toContain("tail: invalid number of bytes: 'bad'");
+  });
+
+  it('recognizes unique long prefixes while unsupported names still affect ambiguity', async () => {
+    const help = await execute({ script: 'tail --he --unknown', stdinText: undefined });
+    const ambiguous = await execute({ script: 'tail --s --help', stdinText: undefined });
+    const unexpectedValue = await execute({ script: 'tail --quiet=yes --help', stdinText: undefined });
+
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: tail');
+    expect(ambiguous.result.exitCode).toBe(1);
+    expect(ambiguous.stderr.text).toContain("option '--s' is ambiguous; possibilities: '--silent' '--sleep-interval'");
+    expect(unexpectedValue.result.exitCode).toBe(1);
+    expect(unexpectedValue.stderr.text).toContain("option '--quiet' doesn't allow an argument");
   });
 
   it('uses leading +N as obsolete syntax only in its one-file context', async () => {
@@ -540,7 +632,7 @@ beta
 ==> data <==
 alpha
 `);
-    expect(stderr.text).toContain('tail: dir:');
+    expect(stderr.text).toBe("tail: error reading 'dir': Is a directory\n");
     expect(result.exitCode).toBe(1);
   });
 
@@ -556,7 +648,7 @@ alpha
     expect(stdout.text).toBe(`\
 ==> dir <==
 `);
-    expect(stderr.text).toContain('tail: dir:');
+    expect(stderr.text).toBe("tail: error reading 'dir': Is a directory\n");
     expect(result.exitCode).toBe(1);
   });
 
@@ -572,7 +664,7 @@ alpha
     expect(stdout.text).toBe(`\
 ==> dir <==
 `);
-    expect(stderr.text).toContain('tail: dir:');
+    expect(stderr.text).toBe("tail: error reading 'dir': Is a directory\n");
     expect(result.exitCode).toBe(1);
   });
 });

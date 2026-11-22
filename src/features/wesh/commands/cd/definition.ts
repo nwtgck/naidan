@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition } from '@/features/wesh/types';
+import type { WeshShellBuiltinDefinition } from '@/features/wesh/types';
 
 export const cdCommandDefinition = {
   meta: {
@@ -6,8 +6,8 @@ export const cdCommandDefinition = {
     description: 'Change current directory',
     usage: 'cd [-LP] [path]',
   },
-  load: async () => (await import('./index.ts')).cdCommandImplementation.fn,
-} satisfies WeshCommandDefinition;
+  loadShellBuiltin: async () => (await import('./index.ts')).cdCommandImplementation.fn,
+} satisfies WeshShellBuiltinDefinition;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

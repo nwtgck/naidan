@@ -1,8 +1,8 @@
 import { uppercaseAscii } from '@/features/wesh/commands/_shared/locale';
-import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
+import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 import type {
-  WeshCommandContext,
-  WeshCommandImplementation,
+  WeshBuiltinCommandContext,
+  WeshShellBuiltinFunction,
   WeshCommandResult,
   WeshTrapDisposition,
 } from '@/features/wesh/types';
@@ -75,7 +75,7 @@ function formatTrap({
   }
 }
 
-async function writeTrapUsage({ context }: { context: WeshCommandContext }): Promise<void> {
+async function writeTrapUsage({ context }: { context: WeshBuiltinCommandContext }): Promise<void> {
   await context.text().error({ text: 'trap: usage: trap [-lp] [[arg] signal_spec ...]\n' });
 }
 
@@ -83,19 +83,19 @@ async function writeInvalidCondition({
   context,
   condition,
 }: {
-  context: WeshCommandContext,
+  context: WeshBuiltinCommandContext,
   condition: string,
 }): Promise<void> {
   await context.text().error({ text: `trap: ${condition}: invalid signal specification\n` });
 }
 
-export const trapCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const trapCommandImplementation = {
+  fn: async ({ context, shell }): Promise<WeshCommandResult> => {
     if (isStandaloneCommandHelpRequest({
       args: context.args,
       acceptedForms: [['--help']],
     })) {
-      await writeCommandHelp({ context, command: 'trap' });
+      await writeCommandHelp({ context, command: 'trap', optionLines: [] });
       return { exitCode: 0 };
     }
 
@@ -137,7 +137,7 @@ export const trapCommandImplementation: WeshCommandImplementation = {
     }
 
     const printConditions = async ({ values }: { values: readonly string[] }): Promise<number> => {
-      const traps = new Map(context.getTraps());
+      const traps = new Map(shell.getTraps());
       const conditions: string[] = [];
       let exitCode = 0;
       if (values.length === 0) {
@@ -176,29 +176,33 @@ export const trapCommandImplementation: WeshCommandImplementation = {
     }
 
     const action = positionals[0] ?? '';
-    let exitCode = 0;
+    const conditions: string[] = [];
+    const invalid: string[] = [];
     for (const value of positionals.slice(1)) {
       const condition = normalizeTrapCondition({ value });
       if (condition === undefined) {
-        await writeInvalidCondition({ context, condition: value });
-        exitCode = 1;
-        continue;
+        invalid.push(value);
+      } else {
+        conditions.push(condition);
       }
-      const disposition: WeshTrapDisposition | undefined = (() => {
-        switch (action) {
-        case '-':
-          return undefined;
-        case '':
-          return { kind: 'ignore' };
-        default:
-          return { kind: 'run', action };
-        }
-      })();
-      context.setTrap({ condition, disposition });
     }
-    return { exitCode };
+    const disposition: WeshTrapDisposition | undefined = (() => {
+      switch (action) {
+      case '-':
+        return undefined;
+      case '':
+        return { kind: 'ignore' };
+      default:
+        return { kind: 'run', action };
+      }
+    })();
+    shell.setTraps({ conditions, disposition });
+    for (const condition of invalid) {
+      await writeInvalidCondition({ context, condition });
+    }
+    return { exitCode: invalid.length === 0 ? 0 : 1 };
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'getTraps' | 'setTraps'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

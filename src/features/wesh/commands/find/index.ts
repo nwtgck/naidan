@@ -1,4 +1,3 @@
-import { parseFindLikeArgv } from '@/features/wesh/argv';
 import { parseDateExpressionMilliseconds } from '@/features/wesh/commands/_shared/date-expression';
 import { dirnamePath } from '@/features/wesh/commands/_shared/path';
 import { parseFilePermissionMode } from '@/features/wesh/commands/_shared/file-mode';
@@ -9,11 +8,7 @@ import {
   compileExtendedRegularExpression,
   translatePosixCharacterClasses,
 } from '@/features/wesh/commands/_shared/posix-regexp';
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
-import {
-  maybeWriteStandaloneCommandHelp,
-  writeCommandUsageError,
-} from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type {
   WeshCommandContext,
   WeshCommandImplementation,
@@ -22,6 +17,7 @@ import type {
   WeshFileType,
 } from '@/features/wesh/types';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
+import { getFindEarlyExitOption, getFindOptionHelp, parseFindArgv, type FindSymlinkMode } from './argv';
 
 type FindRegexSyntax =
   | 'emacs'
@@ -45,8 +41,6 @@ type FindPrintfDirective =
 type FindPrintfToken =
   | { readonly kind: 'literal', readonly value: string }
   | { readonly kind: 'directive', readonly directive: FindPrintfDirective };
-type FindLeadingSymlinkOption = '-P' | '-H' | '-L';
-
 type FindExpression =
   | { kind: 'and', left: FindExpression, right: FindExpression }
   | { kind: 'or', left: FindExpression, right: FindExpression }
@@ -72,6 +66,70 @@ type FindExpression =
   | { kind: 'true' }
   | { kind: 'false' }
   | { kind: 'exec', id: number, mode: 'single' | 'batch', executionDirectory: 'current' | 'entry-parent', command: string, args: string[] };
+
+function matchesFindName({ expr, name }: { expr: Extract<FindExpression, { kind: 'name' }>, name: string }): boolean {
+  return expr.compiledPattern.test(expr.asciiCaseFold ? foldAsciiCase({ value: name }) : name);
+}
+
+function createFindRegularFileFilter({ expr }: {
+  expr: FindExpression,
+}): (({ name }: { name: string }) => boolean) | undefined {
+  const pending = [expr];
+  const nameTests: Extract<FindExpression, { kind: 'name' }>[] = [];
+  collectTests: while (pending.length > 0) {
+    const current = pending.pop()!;
+    switch (current.kind) {
+    case 'and':
+      pending.push(current.right, current.left);
+      break;
+    case 'name':
+      nameTests.push(current);
+      break;
+    case 'type':
+      if (!current.expected.includes('file')) {
+        return () => false;
+      }
+      break;
+    case 'or':
+    case 'comma':
+    case 'not':
+    case 'path':
+    case 'linkName':
+    case 'regex':
+    case 'empty':
+    case 'size':
+    case 'age':
+    case 'perm':
+    case 'newer':
+    case 'newerMtime':
+    case 'print':
+    case 'print0':
+    case 'printf':
+    case 'prune':
+    case 'delete':
+    case 'quit':
+    case 'true':
+    case 'false':
+    case 'exec':
+      break collectTests;
+    default: {
+      const _ex: never = current;
+      throw new Error(`Unhandled find expression: ${_ex}`);
+    }
+    }
+  }
+  if (nameTests.length === 0) {
+    return undefined;
+  }
+  return ({ name }) => {
+    for (const test of nameTests) {
+      if (!matchesFindName({ expr: test, name })) {
+        return false;
+      }
+    }
+    return true;
+  };
+}
 
 interface FindEntry {
   entryRef: WeshEntryRef,
@@ -127,7 +185,7 @@ interface FindTraversalOptions {
   maxDepth: number | undefined,
   minDepth: number,
   depthFirst: boolean,
-  symlinkMode: 'physical' | 'command-line' | 'logical',
+  symlinkMode: FindSymlinkMode,
 }
 
 function canEvaluateWithoutFullStat({
@@ -181,20 +239,6 @@ function canEvaluateWithoutFullStat({
   }
   return true;
 }
-
-const findHelpArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'H', long: undefined, effects: [{ key: 'symlinkMode', value: 'command-line' }], help: { summary: 'follow command-line symbolic links', category: 'advanced' } },
-    { kind: 'flag', short: 'L', long: undefined, effects: [{ key: 'symlinkMode', value: 'logical' }], help: { summary: 'follow symbolic links', category: 'advanced' } },
-    { kind: 'flag', short: 'P', long: undefined, effects: [{ key: 'symlinkMode', value: 'physical' }], help: { summary: 'never follow symbolic links', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'version', effects: [{ key: 'version', value: true }], help: { summary: 'output version information and exit', category: 'advanced' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
-};
 
 function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
   if (path.startsWith('/')) {
@@ -1066,36 +1110,6 @@ function parseFindPerm({
   };
 }
 
-function splitFindLeadingOptions({
-  args,
-}: {
-  args: string[],
-}): {
-  leadingOptions: FindLeadingSymlinkOption[],
-  remainingArgs: string[],
-} {
-  const leadingOptions: FindLeadingSymlinkOption[] = [];
-  let index = 0;
-
-  while (index < args.length) {
-    const token = args[index];
-    if (token === '--') {
-      index += 1;
-      break;
-    }
-    if (token !== '-H' && token !== '-L' && token !== '-P') {
-      break;
-    }
-    leadingOptions.push(token);
-    index += 1;
-  }
-
-  return {
-    leadingOptions,
-    remainingArgs: args.slice(index),
-  };
-}
-
 function findEarlyExitRequest({
   args,
   characterLocaleMode,
@@ -1105,60 +1119,25 @@ function findEarlyExitRequest({
 }): 'help' | 'version' | undefined {
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
-    if (token !== '--help' && token !== '--version') {
+    if (token === undefined) {
       continue;
     }
-
-    const prefix = splitFindLeadingOptions({ args: args.slice(0, index) });
-    const parsedPrefix = parseFindLikeArgv({ args: prefix.remainingArgs });
+    const request = getFindEarlyExitOption({ token });
+    if (request === undefined) {
+      continue;
+    }
+    const prefix = parseFindArgv({ args, endIndex: index });
     const expressionPrefix = tokenizeFindExpression({
-      tokens: parsedPrefix.expressionTokens,
+      tokens: prefix.expressionTokens,
       characterLocaleMode,
-      symlinkMode: resolveFindLeadingSymlinkMode({ leadingOptions: prefix.leadingOptions }),
+      symlinkMode: prefix.symlinkMode,
       dateExpressionBaseTime: Date.now(),
     });
-    if (!expressionPrefix.ok) {
-      continue;
-    }
-
-    switch (token) {
-    case '--help':
-      return 'help';
-    case '--version':
-      return 'version';
-    default: {
-      const _ex: never = token;
-      throw new Error(`Unhandled find early-exit token: ${_ex}`);
-    }
+    if (expressionPrefix.ok) {
+      return request;
     }
   }
   return undefined;
-}
-
-function resolveFindLeadingSymlinkMode({
-  leadingOptions,
-}: {
-  leadingOptions: readonly FindLeadingSymlinkOption[],
-}): FindTraversalOptions['symlinkMode'] {
-  let symlinkMode: FindTraversalOptions['symlinkMode'] = 'physical';
-  for (const option of leadingOptions) {
-    switch (option) {
-    case '-P':
-      symlinkMode = 'physical';
-      break;
-    case '-H':
-      symlinkMode = 'command-line';
-      break;
-    case '-L':
-      symlinkMode = 'logical';
-      break;
-    default: {
-      const _ex: never = option;
-      throw new Error(`Unhandled find leading option: ${_ex}`);
-    }
-    }
-  }
-  return symlinkMode;
 }
 
 function parseFindTypes({
@@ -2250,10 +2229,8 @@ async function evaluateLeafExpression({
   case 'comma':
   case 'not':
     throw new Error(`find composite expression reached leaf evaluator: ${expr.kind}`);
-  case 'name': {
-    const name = expr.asciiCaseFold ? foldAsciiCase({ value: entry.name }) : entry.name;
-    return expr.compiledPattern.test(name) ? EVAL_MATCHED : EVAL_NOT_MATCHED;
-  }
+  case 'name':
+    return matchesFindName({ expr, name: entry.name }) ? EVAL_MATCHED : EVAL_NOT_MATCHED;
   case 'path':
     return expr.compiledPattern.test(entry.displayPath) ? EVAL_MATCHED : EVAL_NOT_MATCHED;
   case 'linkName': {
@@ -2718,16 +2695,12 @@ async function executeFindSubcommand({
   argumentEntryRefs: Array<WeshEntryRef | undefined>,
   cwd?: string,
 }): Promise<WeshCommandResult | undefined> {
-  const originalPwd = context.env.get('PWD');
-  const originalOldPwd = context.env.get('OLDPWD');
   try {
-    if (cwd !== undefined) {
-      context.setCwd({ path: cwd });
-    }
     return await context.executeCommand({
       command,
       args,
       argumentEntryRefs,
+      cwd,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -2738,20 +2711,6 @@ async function executeFindSubcommand({
       text: `find: '${command}': No such file or directory\n`,
     });
     return undefined;
-  } finally {
-    if (cwd !== undefined) {
-      context.setCwd({ path: context.cwd });
-      if (originalPwd === undefined) {
-        context.unsetEnv({ key: 'PWD' });
-      } else {
-        context.setEnv({ key: 'PWD', value: originalPwd });
-      }
-      if (originalOldPwd === undefined) {
-        context.unsetEnv({ key: 'OLDPWD' });
-      } else {
-        context.setEnv({ key: 'OLDPWD', value: originalOldPwd });
-      }
-    }
   }
 }
 
@@ -2919,25 +2878,9 @@ export const findCommandImplementation: WeshCommandImplementation = {
       characterLocaleMode,
     });
     switch (earlyExitRequest) {
-    case 'help': {
-      const helpStatus = await maybeWriteStandaloneCommandHelp({
-        context,
-        command: 'find',
-        argvSpec: findHelpArgvSpec,
-        mode: 'help-requested',
-      });
-      switch (helpStatus) {
-      case 'handled':
-        return { exitCode: 0 };
-      case 'not-handled':
-        break;
-      default: {
-        const _ex: never = helpStatus;
-        throw new Error(`Unhandled help status: ${_ex}`);
-      }
-      }
-      break;
-    }
+    case 'help':
+      await writeCommandHelp({ context, command: 'find', optionLines: getFindOptionHelp() });
+      return { exitCode: 0 };
     case 'version':
       await context.text().print({ text: 'find (Wesh findutils) 1.0\n' });
       return { exitCode: 0 };
@@ -2950,12 +2893,11 @@ export const findCommandImplementation: WeshCommandImplementation = {
     }
 
     const evaluationTime = Date.now();
-    const split = splitFindLeadingOptions({ args: context.args });
-    const parsed = parseFindLikeArgv({ args: split.remainingArgs });
+    const parsed = parseFindArgv({ args: context.args, endIndex: context.args.length });
     const expression = tokenizeFindExpression({
       tokens: parsed.expressionTokens,
       characterLocaleMode,
-      symlinkMode: resolveFindLeadingSymlinkMode({ leadingOptions: split.leadingOptions }),
+      symlinkMode: parsed.symlinkMode,
       dateExpressionBaseTime: evaluationTime,
     });
 
@@ -2964,6 +2906,7 @@ export const findCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'find',
         message: `find: ${expression.message}`,
+        usageSummary: undefined,
       });
       return { exitCode: 1 };
     }
@@ -2977,6 +2920,7 @@ export const findCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'find',
         message: 'find: -delete automatically enables -depth, so -prune is ineffective; pass -depth explicitly to continue',
+        usageSummary: undefined,
       });
       return { exitCode: 1 };
     }
@@ -2989,6 +2933,7 @@ export const findCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'find',
         message: 'find: -execdir requires PATH entries to be absolute and non-empty',
+        usageSummary: undefined,
       });
       return { exitCode: 1 };
     }
@@ -3018,6 +2963,7 @@ export const findCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'find',
         message: `find: ${message}`,
+        usageSummary: undefined,
       });
       return { exitCode: 1 };
     }
@@ -3025,6 +2971,7 @@ export const findCommandImplementation: WeshCommandImplementation = {
     const canSkipFullStat = canEvaluateWithoutFullStat({
       expr: resolvedExpression,
     });
+    const regularFileFilter = canSkipFullStat ? undefined : createFindRegularFileFilter({ expr: resolvedExpression });
     const isNotFoundError = ({ error }: { error: unknown }): boolean => {
       if (error instanceof DOMException) {
         return error.name === 'NotFoundError';
@@ -3239,6 +3186,11 @@ export const findCommandImplementation: WeshCommandImplementation = {
           activeDirectoryPaths.add(directoryEntry.fullPath);
           try {
             for await (const child of context.files.readDirEntry({ entry: directoryEntry })) {
+              // Leading name and type tests can reject a listed file without consulting
+              // its metadata. Directory traversal and symlink resolution are separate.
+              if (regularFileFilter !== undefined && child.type === 'file' && !regularFileFilter({ name: child.name })) {
+                continue;
+              }
               const childDisplayPath = `${displayPathPrefix}/${child.name}`;
               const childOperationPath = child.fullPath;
               const childEntry = traversal.symlinkMode === 'logical' && child.type === 'symlink'

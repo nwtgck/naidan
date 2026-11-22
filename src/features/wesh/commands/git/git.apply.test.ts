@@ -1,6 +1,7 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
+import { WESH_SYSTEM_DIR } from '@/features/wesh/dto';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
@@ -14,14 +15,15 @@ beforeAll(async () => {
 
 describe('wesh git apply', () => {
   let wesh: Wesh;
+  let rootHandle: MockFileSystemDirectoryHandle;
 
   beforeEach(async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
   });
 
-  async function execute({ script, stdinText = '' }: { script: string, stdinText?: string }) {
+  async function execute({ script, stdinText = '', signal }: { script: string, stdinText?: string, signal?: AbortSignal }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
@@ -29,6 +31,7 @@ describe('wesh git apply', () => {
       stdin: createTestReadHandleFromText({ text: stdinText }),
       stdout: stdout.handle,
       stderr: stderr.handle,
+      signal,
     });
     return { result, stdout, stderr };
   }
@@ -52,6 +55,84 @@ diff --git a/f.txt b/f.txt
 +TWO
  three
 `;
+
+  it('preserves the existing worktree file when writing the patched content fails', async () => {
+    const initialized = await execute({ script: setup });
+    expect(initialized.result.exitCode).toBe(0);
+
+    const repoHandle = await rootHandle.getDirectoryHandle('repo');
+    const file = await repoHandle.getFileHandle('f.txt');
+    const createWritable = file.createWritable.bind(file);
+    const replacement = vi.spyOn(file, 'createWritable').mockImplementationOnce(async options => {
+      const writer = await createWritable(options);
+      vi.spyOn(writer, 'write').mockRejectedValueOnce(new DOMException('Replacement write failed', 'QuotaExceededError'));
+      return writer;
+    });
+
+    const { result, stderr } = await execute({
+      script: `\
+cd /repo
+git apply`,
+      stdinText: changeSecondLine,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.text).toBe('error: QuotaExceededError: Replacement write failed\n');
+    expect(replacement).toHaveBeenCalledTimes(1);
+    expect(await (await (await repoHandle.getFileHandle('f.txt')).getFile()).text()).toBe(`\
+one
+two
+three
+`);
+  });
+
+  const changeFileToSymlink = `\
+diff --git a/target b/target
+deleted file mode 100644
+--- a/target
++++ /dev/null
+@@ -1 +0,0 @@
+-original
+diff --git a/target b/target
+new file mode 120000
+--- /dev/null
++++ b/target
+@@ -0,0 +1 @@
++referent
+\\ No newline at end of file
+`;
+
+  it.each([false, true])('preserves the worktree data when preparing a file type change (fail=%s)', async fail => {
+    const initialized = await execute({
+      script: `\
+git init -q repo
+cd repo
+printf 'original\n' > target
+printf 'referent data\n' > referent`,
+    });
+    expect(initialized.result.exitCode).toBe(0);
+
+    const getDirectoryHandle = rootHandle.getDirectoryHandle.bind(rootHandle);
+    using _storage = vi.spyOn(rootHandle, 'getDirectoryHandle').mockImplementation(async (name, options) => {
+      if (fail && name === WESH_SYSTEM_DIR && options?.create === true) {
+        throw new DOMException('Metadata directory could not be created', 'QuotaExceededError');
+      }
+      return getDirectoryHandle(name, options);
+    });
+    const { result, stderr } = await execute({ script: 'cd /repo && git apply', stdinText: changeFileToSymlink });
+    if (fail) {
+      expect(result.exitCode).toBe(1);
+      expect(stderr.text).toContain('Metadata directory could not be created');
+      const repo = await rootHandle.getDirectoryHandle('repo');
+      await expect((await (await repo.getFileHandle('target')).getFile()).text()).resolves.toBe('original\n');
+    } else {
+      expect(stderr.text).toBe('');
+      expect(result.exitCode).toBe(0);
+      await expect(wesh.vfs.readlink({ path: '/repo/target' })).resolves.toBe('referent');
+    }
+    const repo = await rootHandle.getDirectoryHandle('repo');
+    await expect((await (await repo.getFileHandle('referent')).getFile()).text()).resolves.toBe('referent data\n');
+  });
 
   it('applies a patch to the index without changing the worktree', async () => {
     const { result, stdout, stderr } = await execute({
@@ -233,6 +314,143 @@ three
 -two
 +TWO
 `);
+  });
+
+  it('--index leaves the worktree and index untouched when another writer owns the lock', async () => {
+    const initialized = await execute({ script: setup });
+    expect(initialized.result.exitCode).toBe(0);
+
+    const repo = await rootHandle.getDirectoryHandle('repo');
+    const gitDir = await repo.getDirectoryHandle('.git');
+    const lock = await gitDir.getFileHandle('index.lock', { create: true });
+    lock.content = new TextEncoder().encode('another writer');
+    const before = await (await (await gitDir.getFileHandle('index')).getFile()).bytes();
+
+    const checked = await execute({
+      script: `\
+cd /repo
+git apply --index --check`,
+      stdinText: changeSecondLine,
+    });
+    expect(checked.result.exitCode).toBe(0);
+    expect(checked.stderr.text).toBe('');
+
+    const { result, stderr } = await execute({
+      script: `\
+cd /repo
+git apply --index`,
+      stdinText: changeSecondLine,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.text).toContain('File exists: /repo/.git/index.lock');
+    expect(await gitDir.getFileHandle('index.lock')).toBe(lock);
+    expect(await (await lock.getFile()).text()).toBe('another writer');
+    expect(await (await (await gitDir.getFileHandle('index')).getFile()).bytes()).toEqual(before);
+    expect(await (await (await repo.getFileHandle('f.txt')).getFile()).text()).toBe(`\
+one
+two
+three
+`);
+  });
+
+  it('--index holds its lock before reading the index and releases it on Stop', async () => {
+    const initialized = await execute({ script: setup });
+    expect(initialized.result.exitCode).toBe(0);
+
+    const repo = await rootHandle.getDirectoryHandle('repo');
+    const gitDir = await repo.getDirectoryHandle('.git');
+    const index = await gitDir.getFileHandle('index');
+    const readIndex = index.getFile.bind(index);
+    const before = await (await readIndex()).bytes();
+    const reading = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    using _resume = {
+      [Symbol.dispose]() {
+        resume.resolve();
+      },
+    };
+    using _read = vi.spyOn(index, 'getFile').mockImplementationOnce(async () => {
+      reading.resolve();
+      await resume.promise;
+      return readIndex();
+    });
+    const controller = new AbortController();
+    const execution = execute({
+      script: `\
+cd /repo
+git apply --index`,
+      stdinText: changeSecondLine,
+      signal: controller.signal,
+    });
+
+    await reading.promise;
+    await expect(gitDir.getFileHandle('index.lock')).resolves.toBeDefined();
+    controller.abort();
+    await wesh.interruptForeground({ foregroundSignal: controller.signal });
+    resume.resolve();
+
+    const { result } = await execution;
+    expect(result.exitCode).toBe(130);
+    await expect(gitDir.getFileHandle('index.lock')).rejects.toMatchObject({ name: 'NotFoundError' });
+    expect(await (await readIndex()).bytes()).toEqual(before);
+    expect(await (await (await repo.getFileHandle('f.txt')).getFile()).text()).toBe(`\
+one
+two
+three
+`);
+  });
+
+  it('--cached preserves the index when the provider rejects its first read', async () => {
+    const initialized = await execute({ script: setup });
+    expect(initialized.result.exitCode).toBe(0);
+
+    const repo = await rootHandle.getDirectoryHandle('repo');
+    const gitDir = await repo.getDirectoryHandle('.git');
+    const index = await gitDir.getFileHandle('index');
+    const before = await (await index.getFile()).bytes();
+    using _read = vi.spyOn(index, 'getFile').mockRejectedValueOnce(new DOMException('Index could not be read', 'NotAllowedError'));
+    const { result, stderr } = await execute({
+      script: 'cd /repo && git apply --cached',
+      stdinText: `\
+diff --git a/new.txt b/new.txt
+new file mode 100644
+--- /dev/null
++++ b/new.txt
+@@ -0,0 +1 @@
++new
+`,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.text).toContain('Index could not be read');
+    await expect((await (await gitDir.getFileHandle('index')).getFile()).bytes()).resolves.toEqual(before);
+    await expect(gitDir.getFileHandle('index.lock')).rejects.toMatchObject({ name: 'NotFoundError' });
+  });
+
+  it('--cached refuses to overwrite an index replaced while reading the old snapshot', async () => {
+    const initialized = await execute({ script: setup });
+    expect(initialized.result.exitCode).toBe(0);
+
+    const repo = await rootHandle.getDirectoryHandle('repo');
+    const gitDir = await repo.getDirectoryHandle('.git');
+    const index = await gitDir.getFileHandle('index');
+    const snapshot = await index.getFile();
+    const before = await snapshot.bytes();
+    using _read = vi.spyOn(index, 'getFile').mockImplementationOnce(async () => {
+      await gitDir.removeEntry('index');
+      const replacement = await gitDir.getFileHandle('index', { create: true });
+      replacement.content = new Uint8Array(before);
+      return snapshot;
+    });
+    const { result, stderr } = await execute({ script: 'cd /repo && git apply --cached', stdinText: changeSecondLine });
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.text).toContain('Destination entry changed: /repo/.git/index');
+    const replacement = await gitDir.getFileHandle('index');
+    expect(replacement).not.toBe(index);
+    await expect((await replacement.getFile()).bytes()).resolves.toEqual(before);
+    await expect(gitDir.getFileHandle('index.lock')).rejects.toMatchObject({ name: 'NotFoundError' });
   });
 
   it('--index refuses to overwrite a worktree that does not match the index', async () => {

@@ -1,8 +1,8 @@
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, type ArgvOptionDefinition, type StandardArgvAction } from '@/features/wesh/argv-v2';
 import { encodeCommandDataText } from '@/features/wesh/commands/_shared/data-codec';
 import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import type { WeshShellBuiltinFunction, WeshCommandResult } from '@/features/wesh/types';
 import { writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 
 type PrintfConversionSpec =
@@ -53,15 +53,19 @@ type PrintfFloatConversionToken = Omit<PrintfConversionToken, 'spec'> & {
   spec: PrintfFloatConversionSpec,
 };
 
-const printfArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: false,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
-};
+const printfHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const printfArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [printfHelpOption],
+});
+const printfArgvHelp = defineArgvHelpPresentation({
+  catalog: printfArgvCatalog,
+  rows: [{ forms: printfHelpOption.forms, summary: 'display this help and exit', category: 'common' }],
+});
+const printfUsageSummary = formatArgvUsageSummary({ presentation: printfArgvHelp });
 
 const UTF8_ENCODER = new TextEncoder();
 const PRINTF_MAX_FIELD_WIDTH = 1_000_000;
@@ -1334,13 +1338,14 @@ function isShellIdentifier({ value }: { value: string }): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/u.test(value);
 }
 
-export const printfCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const printfCommandImplementation = {
+  fn: async ({ context, shell }): Promise<WeshCommandResult> => {
+    const { variables } = shell;
     if (context.args.length === 1 && context.args[0] === '--help') {
       await writeCommandHelp({
         context,
         command: 'printf',
-        argvSpec: printfArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: printfArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -1350,7 +1355,7 @@ export const printfCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'printf',
         message: 'printf: missing format operand',
-        argvSpec: printfArgvSpec,
+        usageSummary: printfUsageSummary,
       });
       return { exitCode: 1 };
     }
@@ -1367,7 +1372,7 @@ export const printfCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'printf',
           message: 'printf: -v: option requires an argument',
-          argvSpec: printfArgvSpec,
+          usageSummary: printfUsageSummary,
         });
         return { exitCode: 2 };
       }
@@ -1380,7 +1385,7 @@ export const printfCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'printf',
         message: `printf: ${firstArgument}: invalid option`,
-        argvSpec: printfArgvSpec,
+        usageSummary: printfUsageSummary,
       });
       return { exitCode: 2 };
     }
@@ -1394,7 +1399,7 @@ export const printfCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'printf',
           message: `printf: ${formatCandidate}: invalid option`,
-          argvSpec: printfArgvSpec,
+          usageSummary: printfUsageSummary,
         });
         return { exitCode: 2 };
       }
@@ -1413,13 +1418,13 @@ export const printfCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'printf',
         message: 'printf: missing format operand',
-        argvSpec: printfArgvSpec,
+        usageSummary: printfUsageSummary,
       });
       return { exitCode: variableName === undefined ? 1 : 2 };
     }
 
     if (variableName !== undefined) {
-      context.setEnv({ key: variableName, value: '' });
+      variables.set({ name: variableName, value: '', skipCurrentCommand: true });
     }
 
     const parsed = parsePrintfFormat({ format });
@@ -1428,7 +1433,7 @@ export const printfCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'printf',
         message: parsed.message,
-        argvSpec: printfArgvSpec,
+        usageSummary: printfUsageSummary,
       });
       return { exitCode: 1 };
     }
@@ -1449,7 +1454,7 @@ export const printfCommandImplementation: WeshCommandImplementation = {
     let didRunCycle = false;
     let exitCode = 0;
     let variableOutput = '';
-    const localeMode = resolveCharacterLocaleMode({ env: context.env });
+    const localeMode = resolveCharacterLocaleMode({ env: { get: (name) => variables.get({ name }) } });
 
     const reportNumericStatus = async ({
       ignoredCharacterSuffix,
@@ -1502,7 +1507,7 @@ export const printfCommandImplementation: WeshCommandImplementation = {
 
     const commitVariableOutput = (): void => {
       if (variableName !== undefined) {
-        context.setEnv({ key: variableName, value: variableOutput });
+        variables.set({ name: variableName, value: variableOutput, skipCurrentCommand: true });
       }
     };
 
@@ -1613,7 +1618,7 @@ export const printfCommandImplementation: WeshCommandImplementation = {
     commitVariableOutput();
     return { exitCode };
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'variables'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

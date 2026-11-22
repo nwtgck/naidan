@@ -3,16 +3,16 @@ import { resolveWorktreeContentConfig } from '@/features/wesh/commands/git/confi
 import { commitSubject, createCommit, readCommit } from '@/features/wesh/commands/git/commits';
 import { applyCheckoutTreePlan, planCheckoutTree } from '@/features/wesh/commands/git/checkout';
 import type { GitFiles } from '@/features/wesh/commands/git/files';
-import { pathExists, replaceTextViaLock } from '@/features/wesh/commands/git/files';
+import { pathExists, resolveOptionalEntry, withFileLock } from '@/features/wesh/commands/git/files';
 import { loadIgnoreMatcher } from '@/features/wesh/commands/git/ignore';
 import type { GitIndexEntry } from '@/features/wesh/commands/git/index-file';
 import { readIndex, writeIndex } from '@/features/wesh/commands/git/index-file';
 import { resolveGitReflogIdentity, resolveGitTimestamp } from '@/features/wesh/commands/git/identity';
 import type { GitReflogEntry } from '@/features/wesh/commands/git/reflog';
-import { readReflog } from '@/features/wesh/commands/git/reflog';
+import { readReflog, readReflogFile, ZERO_OBJECT_ID } from '@/features/wesh/commands/git/reflog';
 import { mergeThreeTrees } from '@/features/wesh/commands/git/merge-tree';
 import { sortByGitUtf8StringKey } from '@/features/wesh/commands/git/utf8-order';
-import { branchNameFromHead, deleteRef, readHead, readRef, updateRef } from '@/features/wesh/commands/git/refs';
+import { branchNameFromHead, deleteLockedRef, readDirectRef, readHead, readRef, updateRef } from '@/features/wesh/commands/git/refs';
 import type { GitRepository } from '@/features/wesh/commands/git/repository';
 import { joinPath } from '@/features/wesh/commands/git/repository';
 import { stageWorktreePaths } from '@/features/wesh/commands/git/stage';
@@ -21,6 +21,7 @@ import { readTreeIntoIndex, writeTreeFromIndex } from '@/features/wesh/commands/
 import { listWorktreeEntries, removeWorktreePaths, replaceTrackedWorktree, replaceTrackedWorktreePaths, worktreeAbsolutePath } from '@/features/wesh/commands/git/worktree';
 
 const STASH_REF = 'refs/stash';
+const textEncoder = new TextEncoder();
 
 function stashLogPath({ repository }: { repository: GitRepository }): string {
   return joinPath({ base: repository.commonDirPath, child: 'logs/refs/stash' });
@@ -67,7 +68,7 @@ export async function createStash({ files, repository, config, env, message, inc
   files: GitFiles,
   repository: GitRepository,
   config: GitConfig,
-  env: Map<string, string>,
+  env: ReadonlyMap<string, string>,
   message: string | undefined,
   includeUntracked: boolean,
 }): Promise<GitCreatedStash | undefined> {
@@ -195,15 +196,45 @@ export interface GitStashEntry {
   message: string,
 }
 
+interface GitStashSnapshot {
+  refObjectId: string,
+  logText: string,
+}
+
+function stashHistoryPositions({ entries, refObjectId }: {
+  entries: readonly GitReflogEntry[],
+  refObjectId: string,
+}): number[] {
+  // Follow the current ref backward, skipping unpublished entries and stopping at a fresh stash ref.
+  const positions: number[] = [];
+  let objectId = refObjectId;
+  for (let position = entries.length - 1; position >= 0; position--) {
+    const entry = entries[position]!;
+    if (entry.newObjectId !== objectId) {
+      continue;
+    }
+    positions.push(position);
+    if (entry.oldObjectId === ZERO_OBJECT_ID) {
+      break;
+    }
+    objectId = entry.oldObjectId;
+  }
+  return positions;
+}
+
 export async function listStashes({ files, repository }: {
   files: GitFiles,
   repository: GitRepository,
 }): Promise<GitStashEntry[]> {
+  const refObjectId = await readRef({ files, repository, refName: STASH_REF });
+  if (refObjectId === undefined) {
+    return [];
+  }
   const entries = await readReflog({ files, path: stashLogPath({ repository }) });
-  return [...entries].reverse().map((entry, index) => ({
+  return stashHistoryPositions({ entries, refObjectId }).map((position, index) => ({
     index,
-    objectId: entry.newObjectId,
-    message: entry.message,
+    objectId: entries[position]!.newObjectId,
+    message: entries[position]!.message,
   }));
 }
 
@@ -222,55 +253,139 @@ export async function resolveStash({ files, repository, expression }: {
   files: GitFiles,
   repository: GitRepository,
   expression: string | undefined,
-}): Promise<GitStashEntry> {
+}): Promise<{ stash: GitStashEntry, snapshot: GitStashSnapshot } | undefined> {
   const index = parseStashIndex({ expression });
-  const stashes = await listStashes({ files, repository });
-  const entry = stashes[index];
-  if (entry === undefined) {
-    throw new Error(`log for 'refs/stash' only has ${stashes.length} entries`);
+  const refObjectId = await readRef({ files, repository, refName: STASH_REF });
+  if (refObjectId === undefined) {
+    return undefined;
   }
-  return entry;
+  const { entries, text } = await readReflogFile({ files, path: stashLogPath({ repository }) });
+  const positions = stashHistoryPositions({ entries, refObjectId });
+  const position = positions[index];
+  if (position === undefined) {
+    throw new Error(`log for 'refs/stash' only has ${positions.length} entries`);
+  }
+  const entry = entries[position]!;
+  return {
+    stash: { index, objectId: entry.newObjectId, message: entry.message },
+    snapshot: { refObjectId, logText: text },
+  };
 }
 
 function renderReflogEntry({ entry }: { entry: GitReflogEntry }): string {
   return `${entry.oldObjectId} ${entry.newObjectId} ${entry.identity} ${entry.timestamp}\t${entry.message}\n`;
 }
 
-export async function dropStash({ files, repository, index }: {
+export async function dropStash({ files, repository, index, expected }: {
   files: GitFiles,
   repository: GitRepository,
   index: number,
-}): Promise<GitStashEntry> {
+  expected?: GitStashSnapshot,
+}): Promise<GitStashEntry | undefined> {
   const path = stashLogPath({ repository });
-  const chronological = await readReflog({ files, path });
-  const chronologicalIndex = chronological.length - 1 - index;
-  const dropped = chronological[chronologicalIndex];
-  if (dropped === undefined) {
-    throw new Error(`log for 'refs/stash' only has ${chronological.length} entries`);
+  const refPath = joinPath({ base: repository.commonDirPath, child: STASH_REF });
+  if (await readRef({ files, repository, refName: STASH_REF }) === undefined) {
+    return undefined;
   }
-  chronological.splice(chronologicalIndex, 1);
-  if (chronological.length === 0) {
-    await deleteRef({ files, repository, refName: STASH_REF });
-    if (await pathExists({ files, path })) {
-      await files.unlink({ path });
-    }
-  } else {
-    const newest = chronological[chronological.length - 1]!;
-    await updateRef({ files, repository, refName: STASH_REF, objectId: newest.newObjectId, reflog: undefined });
-    await replaceTextViaLock({ files, path, text: chronological.map(entry => renderReflogEntry({ entry })).join('') });
-  }
-  return { index, objectId: dropped.newObjectId, message: dropped.message };
+  return withFileLock({
+    files,
+    path: refPath,
+    operation: async ({ replace: replaceRef, verify: verifyRefLock }) => {
+      const ref = await readDirectRef({ files, repository, refName: STASH_REF });
+      if (ref.objectId === undefined || await resolveOptionalEntry({ files, path }) === undefined) {
+        return undefined;
+      }
+      const refObjectId = ref.objectId;
+      return withFileLock({
+        files,
+        path,
+        operation: async ({ replace: replaceLog, verify: verifyLogLock }) => {
+          const { entry: log, entries, text } = await readReflogFile({ files, path });
+          if (log === undefined || entries.length === 0) {
+            return undefined;
+          }
+          if (expected !== undefined && (refObjectId !== expected.refObjectId || text !== expected.logText)) {
+            return undefined;
+          }
+          const positions = stashHistoryPositions({ entries, refObjectId });
+          const position = positions[index];
+          if (position === undefined) {
+            throw new Error(`log for 'refs/stash' only has ${positions.length} entries`);
+          }
+          const dropped = entries[position]!;
+          const newestPosition = positions[index === 0 ? 1 : 0];
+          if (newestPosition === undefined) {
+            // Leave the raw reflog as recovery data when it also contains unreachable entries.
+            await deleteLockedRef({
+              files,
+              repository,
+              refName: STASH_REF,
+              loose: ref.entry,
+              reflog: entries.length === 1 ? log : undefined,
+              verify: async () => {
+                await verifyRefLock();
+                await verifyLogLock();
+              },
+            });
+          } else {
+            const newest = entries[newestPosition]!;
+            let oldObjectId = ZERO_OBJECT_ID;
+            for (const offset of positions.toReversed()) {
+              if (offset !== position) {
+                const entry = entries[offset]!;
+                entry.oldObjectId = oldObjectId;
+                oldObjectId = entry.newObjectId;
+              }
+            }
+            entries.splice(position, 1);
+            const logText = entries.map(entry => renderReflogEntry({ entry })).join('');
+            await replaceLog({
+              replacement: {
+                bytes: textEncoder.encode(logText),
+                expectedDestination: { entry: log },
+                publish: async ({ rename: logChange }) => {
+                  if (ref.entry !== undefined && newest.newObjectId === refObjectId) {
+                    await verifyRefLock();
+                    await files.publishEntries({ changes: [logChange] });
+                    return;
+                  }
+                  // Keep the previous history available if the shorter log cannot be installed.
+                  await replaceRef({
+                    replacement: {
+                      bytes: textEncoder.encode(`${newest.newObjectId}\n`),
+                      expectedDestination: { entry: ref.entry },
+                      publish: ({ rename: refChange }) => files.publishEntries({ changes: [refChange, logChange] }),
+                    },
+                  });
+                },
+              },
+            });
+          }
+          return { index, objectId: dropped.newObjectId, message: dropped.message };
+        },
+      });
+    },
+  });
 }
 
 export async function clearStashes({ files, repository }: {
   files: GitFiles,
   repository: GitRepository,
 }): Promise<void> {
-  await deleteRef({ files, repository, refName: STASH_REF });
-  const path = stashLogPath({ repository });
-  if (await pathExists({ files, path })) {
-    await files.unlink({ path });
+  if (await readRef({ files, repository, refName: STASH_REF }) === undefined) {
+    return;
   }
+  await withFileLock({
+    files,
+    path: joinPath({ base: repository.commonDirPath, child: STASH_REF }),
+    operation: async ({ verify }) => {
+      const ref = await readDirectRef({ files, repository, refName: STASH_REF });
+      if (ref.objectId !== undefined) {
+        const reflog = await resolveOptionalEntry({ files, path: stashLogPath({ repository }) });
+        await deleteLockedRef({ files, repository, refName: STASH_REF, loose: ref.entry, reflog, verify });
+      }
+    },
+  });
 }
 
 function entryMap({ entries }: { entries: readonly GitIndexEntry[] }): Map<string, GitIndexEntry> {
@@ -375,15 +490,14 @@ async function assertUntrackedCanMaterialize({ files, repository, entries }: {
   }
 }
 
-export async function applyStash({ files, repository, expression, restoreIndex, contentConfig }: {
+export async function applyStash({ files, repository, objectId, restoreIndex, contentConfig }: {
   files: GitFiles,
   repository: GitRepository,
-  expression: string | undefined,
+  objectId: string,
   restoreIndex: boolean,
   contentConfig: GitWorktreeContentConfig,
-}): Promise<GitStashEntry> {
-  const stashEntry = await resolveStash({ files, repository, expression });
-  const stashCommit = await readCommit({ files, repository, objectId: stashEntry.objectId });
+}): Promise<void> {
+  const stashCommit = await readCommit({ files, repository, objectId });
   const baseObjectId = stashCommit.parentObjectIds[0];
   const indexObjectId = stashCommit.parentObjectIds[1];
   if (baseObjectId === undefined || indexObjectId === undefined) {
@@ -455,7 +569,6 @@ export async function applyStash({ files, repository, expression, restoreIndex, 
       contentConfig,
     });
   }
-  return stashEntry;
 }
 
 export async function currentStashRef({ files, repository }: {

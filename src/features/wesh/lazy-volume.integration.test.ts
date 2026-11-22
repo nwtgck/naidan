@@ -117,6 +117,10 @@ describe('managed volumes through the real Wesh filesystem', () => {
     }
     expect(new Set(h.root.children.keys())).toEqual(new Set(['link', '.wesh-system']));
 
+    await vfs.mount({ path: '/alias', handle: second.handle, readOnly: false });
+    await expect(vfs.rename({ oldPath: '/source/a.txt', newPath: '/alias/a.txt' })).rejects.toThrow('across filesystem grants');
+    expect((await other.stat({ path: '/source/a.txt' })).size).toBe(8);
+
     await vfs.rename({ oldPath: '/source/a.txt', newPath: '/source/renamed.txt' });
     await expect(other.stat({ path: '/source/a.txt' })).rejects.toMatchObject({ name: 'NotFoundError' });
     const renamed = await other.open({ path: '/source/renamed.txt', flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' } });

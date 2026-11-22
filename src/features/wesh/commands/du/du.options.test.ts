@@ -54,6 +54,11 @@ describe('wesh du options', () => {
       script: 'du --help --block-size=bogus',
       stdin: '',
     });
+    const flagWithValueThenHelp = await executeDuTest({
+      wesh: testContext.wesh,
+      script: 'du --all=extra --help',
+      stdin: '',
+    });
 
     expect(unknownThenHelp.stdout.text).toContain('Estimate logical file size usage');
     expect(unknownThenHelp.stderr.text).toContain("du: unrecognized option '--definitely-invalid-option'");
@@ -67,6 +72,9 @@ describe('wesh du options', () => {
     expect(helpBeforeInvalid.stdout.text).toContain('Estimate logical file size usage');
     expect(helpBeforeInvalid.stderr.text).toBe('');
     expect(helpBeforeInvalid.result.exitCode).toBe(0);
+    expect(flagWithValueThenHelp.stdout.text).toContain('Estimate logical file size usage');
+    expect(flagWithValueThenHelp.stderr.text).toBe("du: option '--all' doesn't allow an argument\n");
+    expect(flagWithValueThenHelp.result.exitCode).toBe(0);
   });
 
   it('suppresses runtime warnings when help wins', async () => {
@@ -87,6 +95,23 @@ describe('wesh du options', () => {
     expect(inodes.result.exitCode).toBe(0);
     expect(inodes.stdout.text).toContain('Estimate logical file size usage');
     expect(inodes.stderr.text).toBe('');
+  });
+
+  it.each([
+    { args: '-tbogus --invalid', error: "invalid -t argument 'bogus'" },
+    { args: '--invalid -tbogus', error: "unrecognized option '--invalid'" },
+    { args: '-t --help', error: "invalid -t argument '--help'" },
+    { args: '--help=extra', error: "option '--help' doesn't allow an argument" },
+  ])('reports the first error in $args', async ({ args, error }) => {
+    const { result, stdout, stderr } = await executeDuTest({
+      wesh: testContext.wesh,
+      script: `du ${args}`,
+      stdin: '',
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text.split('\n')[0]).toBe(`du: ${error}`);
   });
 
   it('lets help bypass post-parse conflicts while retaining pre-help exclude-file diagnostics', async () => {

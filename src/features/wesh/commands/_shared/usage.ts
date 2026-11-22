@@ -1,6 +1,10 @@
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import { formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv';
-import type { WeshCommandContext } from '@/features/wesh/types';
+import {
+  writeCommandHelp as writeHelp,
+  writeCommandUsageError as writeUsageError,
+  type WeshCommandUsageContext,
+} from './usage-output';
 
 export async function writeCommandUsageError({
   context,
@@ -8,16 +12,17 @@ export async function writeCommandUsageError({
   message,
   argvSpec,
 }: {
-  context: WeshCommandContext,
+  context: WeshCommandUsageContext,
   command: string,
   message: string,
   argvSpec?: StandardArgvParserSpec,
 }): Promise<void> {
-  const meta = context.getWeshCommandMeta({ name: command });
-  const usageLine = meta === undefined ? undefined : `usage: ${meta.usage}`;
-  const summaryLine = argvSpec === undefined ? undefined : formatArgvUsageSummary({ spec: argvSpec });
-  const text = [message, usageLine, summaryLine].filter((line) => line !== undefined).join('\n') + '\n';
-  await context.text().error({ text });
+  await writeUsageError({
+    context,
+    command,
+    message,
+    usageSummary: argvSpec === undefined ? undefined : formatArgvUsageSummary({ spec: argvSpec }),
+  });
 }
 
 export async function writeCommandHelp({
@@ -25,21 +30,15 @@ export async function writeCommandHelp({
   command,
   argvSpec,
 }: {
-  context: WeshCommandContext,
+  context: WeshCommandUsageContext,
   command: string,
   argvSpec?: StandardArgvParserSpec,
 }): Promise<void> {
-  const meta = context.getWeshCommandMeta({ name: command });
-  const usageLine = meta === undefined ? undefined : `usage: ${meta.usage}`;
-  const descriptionLine = meta?.description;
-  const optionLines = argvSpec === undefined ? [] : formatArgvOptionHelp({ spec: argvSpec });
-  const text = [
-    descriptionLine,
-    usageLine,
-    optionLines.length > 0 ? 'options:' : undefined,
-    ...optionLines,
-  ].filter((line) => line !== undefined).join('\n') + '\n';
-  await context.text().print({ text });
+  await writeHelp({
+    context,
+    command,
+    optionLines: argvSpec === undefined ? [] : formatArgvOptionHelp({ spec: argvSpec }),
+  });
 }
 
 export async function maybeWriteStandaloneCommandHelp({
@@ -48,7 +47,7 @@ export async function maybeWriteStandaloneCommandHelp({
   argvSpec,
   mode,
 }: {
-  context: WeshCommandContext,
+  context: WeshCommandUsageContext,
   command: string,
   argvSpec?: StandardArgvParserSpec,
   mode: 'help-requested' | 'not-requested',
@@ -70,21 +69,7 @@ export async function maybeWriteStandaloneCommandHelp({
   }
 }
 
-export function isStandaloneCommandHelpRequest({
-  args,
-  acceptedForms,
-}: {
-  args: string[],
-  acceptedForms: string[][],
-}): boolean {
-  return acceptedForms.some((acceptedForm) => {
-    if (args.length !== acceptedForm.length) {
-      return false;
-    }
-
-    return acceptedForm.every((token, index) => args[index] === token);
-  });
-}
+export { isStandaloneCommandHelpRequest } from './usage-output';
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

@@ -1,6 +1,13 @@
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
-import type { ArgvSpecialParseResult } from '@/features/wesh/argv';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv-v2';
 
 export type SplitMode =
   | { kind: 'lines', count: number }
@@ -71,50 +78,51 @@ function parseNonNegativeInteger({
 }
 
 export function parseLineCount({
-  value,
+  rawValue: value,
 }: {
-  value: string,
-}): { ok: true, value: number } | { ok: false, message: string } {
-  return parsePositiveInteger({ value, label: 'number of lines' });
+  rawValue: string,
+}): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
+  const parsed = parsePositiveInteger({ value, label: 'number of lines' });
+  return parsed.ok ? { kind: 'parsed', value: parsed.value } : { kind: 'invalid', message: parsed.message };
 }
 
 export function parseSuffixLength({
-  value,
+  rawValue: value,
 }: {
-  value: string,
-}): { ok: true, value: number } | { ok: false, message: string } {
+  rawValue: string,
+}): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
   const parsed = parsePositiveInteger({ value, label: 'suffix length' });
   if (!parsed.ok) {
-    return parsed;
+    return { kind: 'invalid', message: parsed.message };
   }
 
   if (parsed.value > MAX_SAFE_SUFFIX_LENGTH) {
-    return { ok: false, message: `invalid suffix length: '${value}'` };
+    return { kind: 'invalid', message: `invalid suffix length: '${value}'` };
   }
 
-  return parsed;
+  return { kind: 'parsed', value: parsed.value };
 }
 
 export function parseByteSize({
-  value,
+  rawValue: value,
 }: {
-  value: string,
-}): { ok: true, value: number } | { ok: false, message: string } {
+  rawValue: string,
+}): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
   const numericText = stripLeadingCLocaleWhitespace({ value });
   const match = /^(\+?\d+)([A-Za-z]*)$/u.exec(numericText);
   if (match === null) {
-    return { ok: false, message: `invalid number of bytes: '${value}'` };
+    return { kind: 'invalid', message: `invalid number of bytes: '${value}'` };
   }
 
   const numberText = match[1];
   const suffix = match[2];
   if (numberText === undefined || suffix === undefined) {
-    return { ok: false, message: `invalid number of bytes: '${value}'` };
+    return { kind: 'invalid', message: `invalid number of bytes: '${value}'` };
   }
 
   const parsed = Number.parseInt(numberText, 10);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    return { ok: false, message: `invalid number of bytes: '${value}'` };
+    return { kind: 'invalid', message: `invalid number of bytes: '${value}'` };
   }
 
   const multiplier = (() => {
@@ -144,247 +152,127 @@ export function parseByteSize({
   })();
 
   if (multiplier === undefined) {
-    return { ok: false, message: `invalid number of bytes: '${value}'` };
+    return { kind: 'invalid', message: `invalid number of bytes: '${value}'` };
   }
 
   const size = parsed * multiplier;
   if (!Number.isSafeInteger(size) || size <= 0) {
-    return { ok: false, message: `invalid number of bytes: '${value}'` };
+    return { kind: 'invalid', message: `invalid number of bytes: '${value}'` };
   }
 
-  return { ok: true, value: size };
+  return { kind: 'parsed', value: size };
 }
 
 function parseNumericSuffixStart({
-  value,
+  rawValue: value,
 }: {
-  value: string,
-}): { ok: true, value: number } | { ok: false, message: string } {
-  return parseNonNegativeInteger({ value, label: 'numeric suffix start' });
+  rawValue: string,
+}): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
+  const parsed = parseNonNegativeInteger({ value, label: 'numeric suffix start' });
+  return parsed.ok ? { kind: 'parsed', value: parsed.value } : { kind: 'invalid', message: parsed.message };
 }
 
-function parseNumericSuffixToken({
-  token,
-}: {
-  token: string,
-}): ArgvSpecialParseResult | undefined {
-  if (token === '--numeric-suffixes') {
-    return {
-      kind: 'matched',
-      consumeCount: 1,
+const splitArgvOptions = [
+  {
+    semantic: { kind: 'required-value', key: 'lines', parse: parseLineCount },
+    forms: [
+      { kind: 'short', name: 'l', value: { kind: 'required-attached-or-following', missingValueName: 'NUMBER' } },
+      { kind: 'long', name: 'lines', value: { kind: 'required', missingValueName: 'NUMBER' } },
+    ],
+    help: { summary: 'put NUMBER lines per output file', valueName: 'NUMBER', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'bytes', parse: parseByteSize },
+    forms: [
+      { kind: 'short', name: 'b', value: { kind: 'required-attached-or-following', missingValueName: 'SIZE' } },
+      { kind: 'long', name: 'bytes', value: { kind: 'required', missingValueName: 'SIZE' } },
+    ],
+    help: { summary: 'put SIZE bytes per output file', valueName: 'SIZE', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'lineBytes', parse: parseByteSize },
+    forms: [
+      { kind: 'short', name: 'C', value: { kind: 'required-attached-or-following', missingValueName: 'SIZE' } },
+      { kind: 'long', name: 'line-bytes', value: { kind: 'required', missingValueName: 'SIZE' } },
+    ],
+    help: { summary: 'put at most SIZE bytes of records per output file', valueName: 'SIZE', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'suffixLength', parse: parseSuffixLength },
+    forms: [
+      { kind: 'short', name: 'a', value: { kind: 'required-attached-or-following', missingValueName: 'N' } },
+      { kind: 'long', name: 'suffix-length', value: { kind: 'required', missingValueName: 'N' } },
+    ],
+    help: { summary: 'use suffixes of length N', valueName: 'N', category: 'common' },
+  },
+  {
+    semantic: {
+      kind: 'effects',
       effects: [
         { key: 'numericSuffixes', value: true },
         { key: 'numericSuffixAutoExpand', value: true },
       ],
-      occurrences: [
-        {
-          kind: 'special',
-          option: '--numeric-suffixes',
-          effects: [
-            { key: 'numericSuffixes', value: true },
-          ],
-        },
-      ],
-    };
-  }
-
-  const prefix = '--numeric-suffixes=';
-  if (!token.startsWith(prefix)) {
-    return undefined;
-  }
-
-  const rawValue = token.slice(prefix.length);
-  const parsed = parseNumericSuffixStart({ value: rawValue });
-  if (!parsed.ok) {
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [
-        { key: 'numericSuffixes', value: true },
-        { key: 'numericSuffixParseError', value: parsed.message },
-      ],
-      occurrences: [
-        {
-          kind: 'special',
-          option: '--numeric-suffixes',
-          effects: [{ key: 'numericSuffixParseError', value: parsed.message }],
-        },
-      ],
-    };
-  }
-
-  return {
-    kind: 'matched',
-    consumeCount: 1,
-    effects: [
-      { key: 'numericSuffixes', value: true },
-      { key: 'numericSuffixStart', value: parsed.value },
-      { key: 'numericSuffixStartExplicit', value: true },
+    },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'none' } },
     ],
-    occurrences: [
-      {
-        kind: 'special',
-        option: '--numeric-suffixes',
-        effects: [
-          { key: 'numericSuffixes', value: true },
-          { key: 'numericSuffixStart', value: parsed.value },
-          { key: 'numericSuffixStartExplicit', value: true },
-        ],
-      },
+    help: { summary: 'use numeric suffixes starting at 0', category: 'common' },
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'numericSuffixes' },
+    forms: [
+      { kind: 'long', name: 'numeric-suffixes', value: { kind: 'optional-inline' } },
     ],
-  };
-}
-
-
-function parseLegacyLineCountToken({
-  token,
-}: {
-  token: string,
-}): ArgvSpecialParseResult | undefined {
-  const match = /^-(d*)(\d+)$/u.exec(token);
-  if (match === null) {
-    return undefined;
-  }
-
-  const numericSuffixFlags = match[1];
-  const rawValue = match[2];
-  if (numericSuffixFlags === undefined || rawValue === undefined) {
-    return undefined;
-  }
-
-  const parsed = parseLineCount({ value: rawValue });
-  const numericEffects = numericSuffixFlags.length > 0
-    ? [
-      { key: 'numericSuffixes', value: true as const },
-      { key: 'numericSuffixAutoExpand', value: true as const },
-    ]
-    : [];
-
-  if (!parsed.ok) {
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [
-        ...numericEffects,
-        { key: 'legacyLineCountParseError', value: parsed.message },
-      ],
-      occurrences: [{
-        kind: 'special',
-        option: token,
-        effects: [{ key: 'legacyLineCountParseError', value: parsed.message }],
-      }],
-    };
-  }
-
-  return {
-    kind: 'matched',
-    consumeCount: 1,
-    effects: [
-      ...numericEffects,
-      { key: 'lines', value: parsed.value },
+    help: { summary: 'use numeric suffixes, optionally starting at FROM with --numeric-suffixes=FROM', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'additionalSuffix', parse: undefined },
+    forms: [
+      { kind: 'long', name: 'additional-suffix', value: { kind: 'required', missingValueName: 'SUFFIX' } },
     ],
-    occurrences: [{
-      kind: 'special',
-      option: token,
-      effects: [{ key: 'lines', value: parsed.value }],
-    }],
-  };
-}
+    help: { summary: 'append SUFFIX to output file names', valueName: 'SUFFIX', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'verbose', value: true }] },
+    forms: [
+      { kind: 'long', name: 'verbose', value: { kind: 'none' } },
+    ],
+    help: { summary: 'print a diagnostic before each output file is opened', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [
+      { kind: 'long', name: 'help', value: { kind: 'none' } },
+    ],
+    help: { summary: 'display this help and exit', category: 'common' },
+  },
+] as const;
 
-export const splitArgvSpec: StandardArgvParserSpec = {
-  options: [
+type SplitArgvTag = 'numericSuffixes' | 'legacyLineCount';
+const splitArgvCatalog = defineArgvCatalog<StandardArgvAction<SplitArgvTag>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    ...splitArgvOptions,
     {
-      kind: 'value',
-      short: 'l',
-      long: 'lines',
-      key: 'lines',
-      valueName: 'NUMBER',
-      allowAttachedValue: true,
-      parseValue: parseLineCount,
-      help: { summary: 'put NUMBER lines per output file', valueName: 'NUMBER', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'b',
-      long: 'bytes',
-      key: 'bytes',
-      valueName: 'SIZE',
-      allowAttachedValue: true,
-      parseValue: parseByteSize,
-      help: { summary: 'put SIZE bytes per output file', valueName: 'SIZE', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'C',
-      long: 'line-bytes',
-      key: 'lineBytes',
-      valueName: 'SIZE',
-      allowAttachedValue: true,
-      parseValue: parseByteSize,
-      help: { summary: 'put at most SIZE bytes of records per output file', valueName: 'SIZE', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'a',
-      long: 'suffix-length',
-      key: 'suffixLength',
-      valueName: 'N',
-      allowAttachedValue: true,
-      parseValue: parseSuffixLength,
-      help: { summary: 'use suffixes of length N', valueName: 'N', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'd',
-      long: undefined,
-      effects: [
-        { key: 'numericSuffixes', value: true },
-        { key: 'numericSuffixAutoExpand', value: true },
-      ],
-      help: { summary: 'use numeric suffixes starting at 0', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'numeric-suffixes',
-      effects: [
-        { key: 'numericSuffixes', value: true },
-        { key: 'numericSuffixAutoExpand', value: true },
-      ],
-      help: { summary: 'use numeric suffixes, optionally starting at FROM with --numeric-suffixes=FROM', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: undefined,
-      long: 'additional-suffix',
-      key: 'additionalSuffix',
-      valueName: 'SUFFIX',
-      allowAttachedValue: false,
-      parseValue: undefined,
-      help: { summary: 'append SUFFIX to output file names', valueName: 'SUFFIX', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'verbose',
-      effects: [{ key: 'verbose', value: true }],
-      help: { summary: 'print a diagnostic before each output file is opened', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
+      // Number-looking tokens can be option values or operands too. The scanner
+      // owns that distinction, and split checks the obsolete spelling itself.
+      semantic: { kind: 'deferred', tag: 'legacyLineCount' },
+      forms: Array.from({ length: 10 }, (_, digit) => ({
+        kind: 'short',
+        name: String(digit),
+        value: { kind: 'optional-attached' },
+      })),
     },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [
-    ({ token }) => parseNumericSuffixToken({ token }),
-    ({ token }) => parseLegacyLineCountToken({ token }),
-  ],
+});
+export const splitArgvHelp = defineArgvHelpPresentation({
+  catalog: splitArgvCatalog,
+  rows: splitArgvOptions.map(({ forms, help }) => ({ forms, ...help })),
+});
+const splitArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'all',
 };
 
 export function buildSplitOptions({
@@ -392,16 +280,6 @@ export function buildSplitOptions({
 }: {
   optionValues: Record<string, boolean | string | number>,
 }): { ok: true, options: SplitOptions } | { ok: false, message: string } {
-  const numericSuffixError = optionValues.numericSuffixParseError;
-  if (typeof numericSuffixError === 'string') {
-    return { ok: false, message: numericSuffixError };
-  }
-
-  const legacyLineCountError = optionValues.legacyLineCountParseError;
-  if (typeof legacyLineCountError === 'string') {
-    return { ok: false, message: legacyLineCountError };
-  }
-
   const hasLines = typeof optionValues.lines === 'number';
   const hasBytes = typeof optionValues.bytes === 'number';
   const hasLineBytes = typeof optionValues.lineBytes === 'number';
@@ -450,7 +328,7 @@ export function buildSplitOptions({
 export function parseSplitOperands({
   positionals,
 }: {
-  positionals: string[],
+  positionals: readonly string[],
 }): { ok: true, operands: SplitOperands } | { ok: false, message: string } {
   if (positionals.length > 2) {
     return { ok: false, message: `extra operand '${positionals[2]}'` };
@@ -471,6 +349,110 @@ export function parseSplitOperands({
       prefix: positionals[1] ?? 'x',
     },
   };
+}
+
+export function parseSplitArgv({ args }: { args: readonly string[] }):
+  | { kind: 'help' }
+  | { kind: 'error', message: string }
+  | { kind: 'ok', options: SplitOptions, operands: SplitOperands } {
+  const parsed = parseStandardArgv({
+    args: stopArgvAtFirstEarlyExit({
+      args,
+      catalog: splitArgvCatalog,
+      policy: splitArgvPolicy,
+      earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
+    }),
+    catalog: splitArgvCatalog,
+    policy: splitArgvPolicy,
+  });
+
+  const diagnostic = parsed.diagnostics[0];
+  const malformed = parsed.deferred.find(occurrence => occurrence.semantic.tag === 'legacyLineCount'
+    && !/^-d*\d+$/u.test(args[occurrence.argvIndex] ?? ''));
+  if (malformed !== undefined && (diagnostic === undefined || malformed.argvIndex < diagnostic.argvIndex)) {
+    const digit = args[malformed.argvIndex]?.[malformed.tokenStart];
+    return { kind: 'error', message: `invalid option -- '${digit}'` };
+  }
+  if (diagnostic !== undefined) {
+    return { kind: 'error', message: diagnostic.message };
+  }
+  if (parsed.optionValues.help === true) {
+    return { kind: 'help' };
+  }
+
+  const modernModes = (parsed.occurrences ?? []).filter(({ semantic }) => semantic.kind === 'required-value'
+    && (semantic.key === 'lines' || semantic.key === 'bytes' || semantic.key === 'lineBytes')).length;
+  const optionValues = { ...parsed.optionValues };
+  let legacyLineCount: number | undefined;
+  let numericSuffixError: string | undefined;
+  let legacyLineCountError: string | undefined;
+  for (const { semantic, argvIndex, tokenStart, value } of parsed.deferred) {
+    const tag = semantic.tag;
+    switch (tag) {
+    case 'numericSuffixes': {
+      optionValues.numericSuffixes = true;
+      if (!('rawValue' in value)) {
+        optionValues.numericSuffixAutoExpand = true;
+        break;
+      }
+      const start = parseNumericSuffixStart({ rawValue: value.rawValue });
+      switch (start.kind) {
+      case 'invalid':
+        numericSuffixError = start.message;
+        break;
+      case 'parsed':
+        optionValues.numericSuffixStart = start.value;
+        optionValues.numericSuffixStartExplicit = true;
+        break;
+      default: {
+        const _ex: never = start;
+        throw new Error(`Unhandled numeric suffix value: ${JSON.stringify(_ex)}`);
+      }
+      }
+      break;
+    }
+    case 'legacyLineCount': {
+      const count = parseLineCount({ rawValue: args[argvIndex]!.slice(tokenStart) });
+      switch (count.kind) {
+      case 'invalid':
+        legacyLineCountError = count.message;
+        break;
+      case 'parsed':
+        legacyLineCount = count.value;
+        break;
+      default: {
+        const _ex: never = count;
+        throw new Error(`Unhandled obsolete line count: ${JSON.stringify(_ex)}`);
+      }
+      }
+      break;
+    }
+    default: {
+      const _ex: never = tag;
+      throw new Error(`Unhandled split argument: ${_ex}`);
+    }
+    }
+  }
+  if (modernModes > 1 || (modernModes > 0 && legacyLineCount !== undefined)) {
+    return { kind: 'error', message: 'cannot split in more than one way' };
+  }
+  const valueError = numericSuffixError ?? legacyLineCountError;
+  if (valueError !== undefined) {
+    return { kind: 'error', message: valueError };
+  }
+  if (legacyLineCount !== undefined) {
+    optionValues.lines = legacyLineCount;
+  }
+
+  const options = buildSplitOptions({ optionValues });
+  if (!options.ok) {
+    return { kind: 'error', message: options.message };
+  }
+  const operands = parseSplitOperands({ positionals: parsed.positionals });
+  if (!operands.ok) {
+    return { kind: 'error', message: operands.message };
+  }
+  return { kind: 'ok', options: options.options, operands: operands.operands };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

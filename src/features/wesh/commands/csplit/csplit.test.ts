@@ -170,6 +170,18 @@ csplit input.txt`,
     expect(missingPattern.result.exitCode).toBe(1);
   });
 
+  it('treats help as a value when required by the preceding option', async () => {
+    const earlyHelp = await execute({ script: 'csplit --help --definitely-invalid-option' });
+    const consumed = await execute({ script: 'csplit -n --help - 2' });
+
+    expect(earlyHelp.result.exitCode).toBe(0);
+    expect(earlyHelp.stdout.text).toContain('usage: csplit');
+    expect(earlyHelp.stderr.text).toBe('');
+    expect(consumed.result.exitCode).toBe(1);
+    expect(consumed.stdout.text).toBe('');
+    expect(consumed.stderr.text).toContain("number of digits must be a non-negative integer: '--help'");
+  });
+
   it('splits a file before an absolute line number', async () => {
     await writeFile({
       path: 'input.txt',

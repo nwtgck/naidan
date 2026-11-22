@@ -384,4 +384,82 @@ blue
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
   });
+
+  it('distinguishes help from a required option value or an operand after double dash', async () => {
+    const countValue = await execute({ script: 'shuf -n --help' });
+    const outputValue = await execute({ script: 'shuf -o --help --help' });
+    const operand = await execute({ script: 'shuf -e -- --help' });
+    const optionAfterOperand = await execute({ script: 'shuf -e item -n 0' });
+
+    expect(countValue.result.exitCode).toBe(1);
+    expect(countValue.stdout.text).toBe('');
+    expect(countValue.stderr.text).toContain("invalid count '--help'");
+    expect(outputValue.result.exitCode).toBe(0);
+    expect(outputValue.stdout.text).toContain('usage: shuf');
+    expect(outputValue.stderr.text).toBe('');
+    expect(operand.result.exitCode).toBe(0);
+    expect(operand.stdout.text).toBe('--help\n');
+    expect(operand.stderr.text).toBe('');
+    expect(optionAfterOperand.result.exitCode).toBe(0);
+    expect(optionAfterOperand.stdout.text).toBe('');
+    expect(optionAfterOperand.stderr.text).toBe('');
+  });
+
+  it('uses the smallest of repeated head counts', async () => {
+    const smallFirst = await execute({ script: 'shuf -e -n1 --head-count=3 alpha alpha alpha' });
+    const smallLast = await execute({ script: 'shuf -e --head-count=3 -n1 alpha alpha alpha' });
+    const zero = await execute({ script: 'shuf -e -n0 -n3 alpha alpha alpha' });
+
+    for (const execution of [smallFirst, smallLast]) {
+      expect(execution.result.exitCode).toBe(0);
+      expect(execution.stdout.text).toBe('alpha\n');
+      expect(execution.stderr.text).toBe('');
+    }
+    expect(zero.result.exitCode).toBe(0);
+    expect(zero.stdout.text).toBe('');
+    expect(zero.stderr.text).toBe('');
+  });
+
+  it('rejects conflicting input modes and names the first extra range operand', async () => {
+    const modes = await execute({ script: 'shuf -e -i 1-2 first second' });
+    const range = await execute({ script: 'shuf -i 1-2 first second' });
+
+    expect(modes.result.exitCode).toBe(1);
+    expect(modes.stdout.text).toBe('');
+    expect(modes.stderr.text).toContain('cannot combine -e and -i options');
+    expect(range.result.exitCode).toBe(1);
+    expect(range.stdout.text).toBe('');
+    expect(range.stderr.text).toContain("extra operand 'first'");
+  });
+
+  it('diagnoses invalid ranges and conflicting output values in argument order', async () => {
+    const rangeFirst = await execute({ script: 'shuf -i bad -o a -o b --help' });
+    const outputFirst = await execute({ script: 'shuf -o a -o b -i bad --help' });
+    const duplicateRange = await execute({ script: 'shuf -i 1-0 -i bad --help' });
+
+    for (const execution of [rangeFirst, outputFirst, duplicateRange]) {
+      expect(execution.result.exitCode).toBe(1);
+      expect(execution.stdout.text).toBe('');
+    }
+    expect(rangeFirst.stderr.text).toContain("invalid input range 'bad'");
+    expect(outputFirst.stderr.text).toContain('multiple output files specified');
+    expect(duplicateRange.stderr.text).toContain('multiple -i options specified');
+  });
+
+  it('accepts unique long prefixes and rejects ambiguous prefixes and values for flags', async () => {
+    const range = await execute({ script: 'shuf --inp=9-9' });
+    const ambiguousHelp = await execute({ script: 'shuf --he --help' });
+    const ambiguousRepeat = await execute({ script: 'shuf --r --help' });
+    const unexpectedValue = await execute({ script: 'shuf --echo=yes --help' });
+
+    expect(range.result.exitCode).toBe(0);
+    expect(range.stdout.text).toBe('9\n');
+    expect(range.stderr.text).toBe('');
+    expect(ambiguousHelp.result.exitCode).toBe(1);
+    expect(ambiguousHelp.stderr.text).toContain("option '--he' is ambiguous; possibilities: '--head-count' '--help'");
+    expect(ambiguousRepeat.result.exitCode).toBe(1);
+    expect(ambiguousRepeat.stderr.text).toContain("option '--r' is ambiguous; possibilities: '--random-source' '--repeat'");
+    expect(unexpectedValue.result.exitCode).toBe(1);
+    expect(unexpectedValue.stderr.text).toContain("option '--echo' doesn't allow an argument");
+  });
 });

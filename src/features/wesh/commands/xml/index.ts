@@ -1,4 +1,4 @@
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { runXmlSelect } from '@/features/wesh/commands/xml/select';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 
@@ -12,6 +12,7 @@ export const xmlCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'xml',
+        optionLines: [],
       });
       await context.text().print({
         text: `\
@@ -30,6 +31,7 @@ commands:
       await writeCommandUsageError({
         context,
         command: 'xml',
+        usageSummary: undefined,
         message: `xml: unknown command '${subcommand}'`,
       });
       return { exitCode: 1 };

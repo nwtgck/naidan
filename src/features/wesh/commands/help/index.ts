@@ -1,33 +1,25 @@
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
-import { parseStandardArgv } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction } from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
-const helpArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
-};
+const helpOptions = [
+  {
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const helpArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({ definitions: helpOptions, nonExecutableLongOptions: [] });
+const helpArgvHelp = defineArgvHelpPresentation({ catalog: helpArgvCatalog, rows: helpOptions });
 
 export const helpCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardOptionParsingAtFirstPositional({
-        args: context.args,
-        spec: helpArgvSpec,
-      }),
-      spec: helpArgvSpec,
+      args: context.args,
+      catalog: helpArgvCatalog,
+      policy: { longNameMatch: 'exact', optionBoundary: 'first-positional', occurrenceRetention: 'none' },
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -36,7 +28,7 @@ export const helpCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'help',
         message: `help: ${diagnostic.message}`,
-        argvSpec: helpArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: helpArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -45,7 +37,7 @@ export const helpCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'help',
-        argvSpec: helpArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: helpArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -63,6 +55,7 @@ export const helpCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: target,
+        optionLines: [],
       });
       return { exitCode: 0 };
     }

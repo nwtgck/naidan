@@ -1,29 +1,25 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
-import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction } from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import type { WeshShellBuiltinFunction } from '@/features/wesh/types';
 
-const evalArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
-};
+const evalOptions = [
+  {
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
 
-export const evalCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+const evalArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({ definitions: evalOptions, nonExecutableLongOptions: [] });
+const evalArgvHelp = defineArgvHelpPresentation({ catalog: evalArgvCatalog, rows: evalOptions });
+
+export const evalCommandImplementation = {
+  fn: async ({ context, shell }) => {
     const parsed = parseStandardArgv({
-      args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: evalArgvSpec }),
-      spec: evalArgvSpec,
+      args: context.args,
+      catalog: evalArgvCatalog,
+      policy: { longNameMatch: 'exact', optionBoundary: 'first-positional', occurrenceRetention: 'none' },
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -32,7 +28,7 @@ export const evalCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'eval',
         message: `eval: ${diagnostic.message}`,
-        argvSpec: evalArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: evalArgvHelp }),
       });
       return { exitCode: 2 };
     }
@@ -41,7 +37,7 @@ export const evalCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'eval',
-        argvSpec: evalArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: evalArgvHelp }),
       });
       return { exitCode: 2 };
     }
@@ -50,11 +46,9 @@ export const evalCommandImplementation: WeshCommandImplementation = {
       return { exitCode: 0 };
     }
 
-    return context.executeShell({
-      script: parsed.positionals.join(' '),
-    });
+    return shell.evaluateSource({ script: parsed.positionals.join(' ') });
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'evaluateSource'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

@@ -16,22 +16,20 @@ function fixture() {
   const volumeId = toVolumeId({ raw: 'folder' });
   const volume = { id: volumeId, name: 'Explicit folder', type: 'host' as const, createdAt: 1 };
   mocks.resolve.mockResolvedValue({ kind: 'native', volume, handle: fs.root });
+  const cancel = vi.fn();
   const client: WeshWorkerClient = {
-    startExecution: vi.fn(async ({ onEvent }) => {
-      await onEvent?.({ event: { type: 'started' } });
-      await onEvent?.({ event: { type: 'stdout', chunk: new TextEncoder().encode('hello') } });
-      await onEvent?.({ event: { type: 'exit', exitCode: 0 } });
-      return { executionId: 'exec' };
-    }),
-    awaitExecution: vi.fn(async () => ({ exitCode: 0 })),
-    interruptExecution: vi.fn(async () => true),
-    cancelExecution: vi.fn(async () => true),
-    disposeExecution: vi.fn(async () => undefined),
-    execute: vi.fn(async () => ({ exitCode: 0 })),
+    startExecution: vi.fn(({ onEvent }) => ({
+      completion: Promise.resolve().then(async () => {
+        await onEvent?.({ event: { type: 'started' } });
+        await onEvent?.({ event: { type: 'stdout', chunk: new TextEncoder().encode('hello') } });
+        await onEvent?.({ event: { type: 'exit', exitCode: 0 } });
+        return { status: 'exited', exitCode: 0 } as const;
+      }),
+      cancel,
+    })),
     getShellState: vi.fn(async () => ({ cwd: '/', env: {} })),
     listCommands: vi.fn(async () => []),
     listDirectory: vi.fn(async () => []),
-    interrupt: vi.fn(async () => true),
     dispose: vi.fn(async () => undefined),
   };
   mocks.create.mockResolvedValue(client);
@@ -40,6 +38,7 @@ function fixture() {
     volumeId,
     volume,
     client,
+    cancel,
     [Symbol.dispose]() {
       fs[Symbol.dispose]();
     },
@@ -60,7 +59,7 @@ it.each(['read-only', 'read-write'] as const)('mounts only the chosen folder in 
   const result = await shell.execute({ args, signal: new AbortController().signal });
   expect(result.outcome.status).toBe('success');
   expect(result.metadata).toEqual({ exitCode: 0, truncated: false, truncatedStreams: [] });
-  expect(test.client.disposeExecution).toHaveBeenCalledExactlyOnceWith({ request: { executionId: 'exec' } });
+  await expect(vi.mocked(test.client.startExecution).mock.results[0]?.value.completion).resolves.toEqual({ status: 'exited', exitCode: 0 });
   await shell.close();
   await shell.close();
   expect(test.client.dispose).toHaveBeenCalledOnce();
@@ -102,12 +101,14 @@ it('disposes a worker obtained after cancellation without starting a command', a
 
 it('treats a nonzero exit code as an error while retaining the diagnostic output', async () => {
   using test = fixture();
-  vi.mocked(test.client.startExecution).mockImplementation(async ({ onEvent }) => {
-    await onEvent?.({ event: { type: 'stderr', chunk: new TextEncoder().encode('missing input') } });
-    await onEvent?.({ event: { type: 'exit', exitCode: 7 } });
-    return { executionId: 'exec' };
-  });
-  vi.mocked(test.client.awaitExecution).mockResolvedValue({ exitCode: 7 });
+  vi.mocked(test.client.startExecution).mockImplementation(({ onEvent }) => ({
+    completion: Promise.resolve().then(async () => {
+      await onEvent?.({ event: { type: 'stderr', chunk: new TextEncoder().encode('missing input') } });
+      await onEvent?.({ event: { type: 'exit', exitCode: 7 } });
+      return { status: 'exited', exitCode: 7 } as const;
+    }),
+    cancel: test.cancel,
+  }));
   const shell = await openWorkflowShell({ volumeId: test.volumeId, access: 'read-only', signal: new AbortController().signal });
   await using resource = {
     async [Symbol.asyncDispose]() {
@@ -128,13 +129,13 @@ it('never treats truncated output with exit code zero as a complete success', as
   };
   const result = await shell.execute({ args: { ...args, stdout_limit: 3 }, signal: new AbortController().signal });
   expect(result).toMatchObject({ outcome: { status: 'error', message: expect.stringContaining('Output truncated') }, metadata: { exitCode: 0, truncated: true, truncatedStreams: ['stdout'] } });
-  expect(test.client.cancelExecution).toHaveBeenCalledOnce();
+  expect(test.cancel).toHaveBeenCalledOnce();
   void resource;
 });
 
 it('rejects a successful completion without an exit event rather than guessing zero', async () => {
   using test = fixture();
-  vi.mocked(test.client.startExecution).mockResolvedValue({ executionId: 'exec' });
+  vi.mocked(test.client.startExecution).mockReturnValue({ completion: Promise.resolve({ status: 'exited', exitCode: 0 }), cancel: test.cancel });
   const shell = await openWorkflowShell({ volumeId: test.volumeId, access: 'read-only', signal: new AbortController().signal });
   await using resource = {
     async [Symbol.asyncDispose]() {

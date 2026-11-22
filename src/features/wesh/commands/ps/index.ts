@@ -1,10 +1,16 @@
-import { parseStandardArgv, type ArgvOptionOccurrence, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import {
-  STANDARD_HELP_EARLY_EXIT_OPTIONS,
-  standardSemanticIssuePrecedesDiagnostic,
-  stopStandardArgvAtFirstEarlyExit,
-} from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type ParsedStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { getWeshTextDisplayWidth } from '@/features/wesh/utils/display-width';
 import type {
   WeshCommandContext,
@@ -29,105 +35,100 @@ interface PsColumnDefinition {
   getValue({ process }: { process: WeshProcessSnapshot }): string,
 }
 
-const psArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'e',
-      long: 'all',
-      effects: [{ key: 'all', value: true }],
-      help: { summary: 'select all visible processes', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'A',
-      long: undefined,
-      effects: [{ key: 'all', value: true }],
-      help: { summary: 'same as -e', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'p',
-      long: 'pid',
-      key: 'pidList',
-      valueName: 'PIDLIST',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'select by process ID list', valueName: 'PIDLIST', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'q',
-      long: 'quick-pid',
-      key: 'quickPidList',
-      valueName: 'PIDLIST',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'select by process ID list in the given order', valueName: 'PIDLIST', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: undefined,
-      long: 'ppid',
-      key: 'ppidList',
-      valueName: 'PIDLIST',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'select by parent process ID list', valueName: 'PIDLIST', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'no-headers',
-      effects: [{ key: 'noHeaders', value: true }],
-      help: { summary: 'print no header line at all', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'forest',
-      effects: [{ key: 'forest', value: true }],
-      help: { summary: 'show process hierarchy as an ASCII tree', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'o',
-      long: 'format',
-      key: 'format',
-      valueName: 'FORMAT',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'select output columns', valueName: 'FORMAT', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: undefined,
-      long: 'sort',
-      key: 'sort',
-      valueName: 'KEYS',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'sort by existing process metadata', valueName: 'KEYS', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 'f',
-      long: 'full',
-      effects: [{ key: 'full', value: true }],
-      help: { summary: 'use a fuller default output format', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const psArgvOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'all', value: true }] },
+    forms: [
+      { kind: 'short', name: 'e', value: { kind: 'none' } },
+      { kind: 'long', name: 'all', value: { kind: 'none' } },
+    ],
+    help: { summary: 'select all visible processes', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'all', value: true }] },
+    forms: [
+      { kind: 'short', name: 'A', value: { kind: 'none' } },
+    ],
+    help: { summary: 'same as -e', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'pidList', parse: validatePidList },
+    forms: [
+      { kind: 'short', name: 'p', value: { kind: 'required-attached-or-following', missingValueName: 'PIDLIST' } },
+      { kind: 'long', name: 'pid', value: { kind: 'required', missingValueName: 'PIDLIST' } },
+    ],
+    help: { summary: 'select by process ID list', valueName: 'PIDLIST', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'quickPidList', parse: validatePidList },
+    forms: [
+      { kind: 'short', name: 'q', value: { kind: 'required-attached-or-following', missingValueName: 'PIDLIST' } },
+      { kind: 'long', name: 'quick-pid', value: { kind: 'required', missingValueName: 'PIDLIST' } },
+    ],
+    help: { summary: 'select by process ID list in the given order', valueName: 'PIDLIST', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'ppidList', parse: validatePidList },
+    forms: [
+      { kind: 'long', name: 'ppid', value: { kind: 'required', missingValueName: 'PIDLIST' } },
+    ],
+    help: { summary: 'select by parent process ID list', valueName: 'PIDLIST', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'noHeaders', value: true }] },
+    forms: [
+      { kind: 'long', name: 'no-headers', value: { kind: 'none' } },
+    ],
+    help: { summary: 'print no header line at all', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'forest', value: true }] },
+    forms: [
+      { kind: 'long', name: 'forest', value: { kind: 'none' } },
+    ],
+    help: { summary: 'show process hierarchy as an ASCII tree', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'format', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'o', value: { kind: 'required-attached-or-following', missingValueName: 'FORMAT' } },
+      { kind: 'long', name: 'format', value: { kind: 'required', missingValueName: 'FORMAT' } },
+    ],
+    help: { summary: 'select output columns', valueName: 'FORMAT', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'sort', parse: undefined },
+    forms: [
+      { kind: 'long', name: 'sort', value: { kind: 'required', missingValueName: 'KEYS' } },
+    ],
+    help: { summary: 'sort by existing process metadata', valueName: 'KEYS', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'full', value: true }] },
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'none' } },
+      { kind: 'long', name: 'full', value: { kind: 'none' } },
+    ],
+    help: { summary: 'use a fuller default output format', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [
+      { kind: 'long', name: 'help', value: { kind: 'none' } },
+    ],
+    help: { summary: 'display this help and exit', category: 'common' },
+  },
+] as const;
+
+const psArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({ definitions: psArgvOptions, nonExecutableLongOptions: [] });
+const psArgvHelp = defineArgvHelpPresentation({
+  catalog: psArgvCatalog,
+  rows: psArgvOptions.map(({ forms, help }) => ({ forms, ...help })),
+});
+const psArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'all',
 };
 
 const USER_DEFINED_PID_FAMILY_MINIMUM_WIDTH = 7;
@@ -197,7 +198,7 @@ const psColumns: Record<PsColumnKey, PsColumnDefinition> = {
     header: 'COMMAND',
     alignment: 'left',
     minimumWidth: 7,
-    getValue: ({ process }) => process.argv0.split('/').at(-1) ?? process.argv0,
+    getValue: ({ process }) => process.image.split('/').at(-1) ?? process.image,
   },
   cwd: {
     key: 'cwd',
@@ -208,45 +209,40 @@ const psColumns: Record<PsColumnKey, PsColumnDefinition> = {
   },
 };
 
-function isStringValue(value: unknown): value is string {
-  return typeof value === 'string';
-}
-
-function parsePidList({
-  raw,
+function validatePidList({
+  rawValue,
 }: {
-  raw: string,
-}): { kind: 'ok', pids: number[] } | { kind: 'error', message: string } {
-  const tokens = raw.split(',');
-  if (tokens.length === 0 || tokens.some(token => token.length === 0)) {
-    return {
-      kind: 'error',
-      message: 'ps: process ID list cannot be empty',
-    };
+  rawValue: string,
+}): { kind: 'parsed', value: string } | { kind: 'invalid', message: string } {
+  const tokens = rawValue.split(',');
+  if (tokens.some(token => token.length === 0)) {
+    return { kind: 'invalid', message: 'process ID list cannot be empty' };
   }
 
-  const pids: number[] = [];
   for (const token of tokens) {
     if (!/^\+?\d+$/u.test(token)) {
-      return {
-        kind: 'error',
-        message: `ps: invalid process ID: ${token}`,
-      };
+      return { kind: 'invalid', message: `invalid process ID: ${token}` };
     }
     const pid = Number(token);
     if (!Number.isSafeInteger(pid) || pid <= 0) {
-      return {
-        kind: 'error',
-        message: `ps: process ID out of range: ${token}`,
-      };
+      return { kind: 'invalid', message: `process ID out of range: ${token}` };
     }
-    pids.push(pid);
   }
 
-  return {
-    kind: 'ok',
-    pids,
-  };
+  return { kind: 'parsed', value: rawValue };
+}
+
+function readPsOptionValues({ parsed, key }: {
+  parsed: ParsedStandardArgv<never>,
+  key: string,
+}): string[] {
+  const values: string[] = [];
+  for (const { semantic, value } of parsed.occurrences ?? []) {
+    if (semantic.kind === 'required-value' && semantic.key === key && value.kind !== 'none') {
+      values.push(value.rawValue);
+    }
+  }
+  return values;
 }
 
 function parseFormatList({
@@ -607,138 +603,35 @@ function formatProcesses({
 
 export const psCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
-      args: context.args,
-      spec: psArgvSpec,
-      earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+    const parsed = parseStandardArgv({
+      args: stopArgvAtFirstEarlyExit({
+        args: context.args,
+        catalog: psArgvCatalog,
+        policy: psArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
+      }),
+      catalog: psArgvCatalog,
+      policy: psArgvPolicy,
     });
-    const parsed = parseStandardArgv({ args: parsedArgs, spec: psArgvSpec });
 
     const diagnostic = parsed.diagnostics[0];
-    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
-      args: parsedArgs,
-      spec: psArgvSpec,
-      parsed,
-      findSemanticIssue: ({ parsed: candidate }) => candidate.occurrences.find((occurrence) => (
-        occurrence.kind === 'value'
-        && (occurrence.key === 'pidList' || occurrence.key === 'quickPidList' || occurrence.key === 'ppidList')
-        && typeof occurrence.value === 'string'
-        && parsePidList({ raw: occurrence.value }).kind === 'error'
-      )),
-    });
-    if (diagnostic !== undefined && !semanticIssuePrecedesDiagnostic) {
+    if (diagnostic !== undefined) {
       await writeCommandUsageError({
         context,
         command: 'ps',
         message: `ps: ${diagnostic.message}`,
-        argvSpec: psArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: psArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
-    const pidSelections = parsed.occurrences
-      .filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> => (
-        occurrence.kind === 'value' && occurrence.key === 'pidList'
-      ))
-      .map((occurrence) => {
-        if (!isStringValue(occurrence.value)) {
-          throw new Error('ps: internal error: expected string pid list');
-        }
-        return occurrence.value;
-      });
-
-    const quickPidSelections = parsed.occurrences
-      .filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> => (
-        occurrence.kind === 'value' && occurrence.key === 'quickPidList'
-      ))
-      .map((occurrence) => {
-        if (!isStringValue(occurrence.value)) {
-          throw new Error('ps: internal error: expected string quick PID list');
-        }
-        return occurrence.value;
-      });
-
-    const ppidSelections = parsed.occurrences
-      .filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> => (
-        occurrence.kind === 'value' && occurrence.key === 'ppidList'
-      ))
-      .map((occurrence) => {
-        if (!isStringValue(occurrence.value)) {
-          throw new Error('ps: internal error: expected string parent PID list');
-        }
-        return occurrence.value;
-      });
-
-    const selectedPids = new Set<number>();
-    const quickPids: number[] = [];
-    const selectedParentPids = new Set<number>();
-    for (const rawPidList of pidSelections) {
-      const parsedPidList = parsePidList({ raw: rawPidList });
-      switch (parsedPidList.kind) {
-      case 'error':
-        await writeCommandUsageError({
-          context,
-          command: 'ps',
-          message: parsedPidList.message,
-          argvSpec: psArgvSpec,
-        });
-        return { exitCode: 1 };
-      case 'ok':
-        for (const pid of parsedPidList.pids) {
-          selectedPids.add(pid);
-        }
-        break;
-      default: {
-        const _ex: never = parsedPidList;
-        throw new Error(`Unhandled ps pid list parse result: ${JSON.stringify(_ex)}`);
-      }
-      }
-    }
-
-    for (const rawPidList of quickPidSelections) {
-      const parsedPidList = parsePidList({ raw: rawPidList });
-      switch (parsedPidList.kind) {
-      case 'error':
-        await writeCommandUsageError({
-          context,
-          command: 'ps',
-          message: parsedPidList.message,
-          argvSpec: psArgvSpec,
-        });
-        return { exitCode: 1 };
-      case 'ok':
-        quickPids.push(...parsedPidList.pids);
-        break;
-      default: {
-        const _ex: never = parsedPidList;
-        throw new Error(`Unhandled ps quick PID list parse result: ${JSON.stringify(_ex)}`);
-      }
-      }
-    }
-
-    for (const rawPpidList of ppidSelections) {
-      const parsedPpidList = parsePidList({ raw: rawPpidList });
-      switch (parsedPpidList.kind) {
-      case 'error':
-        await writeCommandUsageError({
-          context,
-          command: 'ps',
-          message: parsedPpidList.message,
-          argvSpec: psArgvSpec,
-        });
-        return { exitCode: 1 };
-      case 'ok':
-        for (const ppid of parsedPpidList.pids) {
-          selectedParentPids.add(ppid);
-        }
-        break;
-      default: {
-        const _ex: never = parsedPpidList;
-        throw new Error(`Unhandled ps parent PID list parse result: ${JSON.stringify(_ex)}`);
-      }
-      }
-    }
-
+    // PID list syntax is validated during option parsing, before early help can run.
+    const pidSelections = readPsOptionValues({ parsed, key: 'pidList' });
+    const quickPidSelections = readPsOptionValues({ parsed, key: 'quickPidList' });
+    const ppidSelections = readPsOptionValues({ parsed, key: 'ppidList' });
+    const selectedPids = new Set(pidSelections.flatMap(raw => raw.split(',').map(Number)));
+    const quickPids = quickPidSelections.flatMap(raw => raw.split(',').map(Number));
+    const selectedParentPids = new Set(ppidSelections.flatMap(raw => raw.split(',').map(Number)));
     const quickSelectionActive = quickPidSelections.length > 0;
     if (
       quickSelectionActive
@@ -748,7 +641,7 @@ export const psCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'ps',
         message: 'ps: q/-q/--quick-pid cannot be combined with other selection options',
-        argvSpec: psArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: psArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -757,7 +650,7 @@ export const psCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'ps',
-        argvSpec: psArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: psArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -767,20 +660,17 @@ export const psCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'ps',
         message: 'ps: extra operand',
-        argvSpec: psArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: psArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
     const processes = context.getProcesses().slice().sort((left, right) => left.pid - right.pid);
 
-    const formatOccurrences = parsed.occurrences
-      .filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> => (
-        occurrence.kind === 'value' && occurrence.key === 'format'
-      ));
+    const formatValues = readPsOptionValues({ parsed, key: 'format' });
 
     const columns = (() => {
-      if (formatOccurrences.length === 0) {
+      if (formatValues.length === 0) {
         return {
           kind: 'ok' as const,
           columns: parsed.optionValues.full === true
@@ -790,11 +680,8 @@ export const psCommandImplementation: WeshCommandImplementation = {
       }
 
       const combinedColumns: PsColumnDefinition[] = [];
-      for (const formatOccurrence of formatOccurrences) {
-        if (!isStringValue(formatOccurrence.value)) {
-          throw new Error('ps: internal error: expected string format list');
-        }
-        const parsedFormat = parseFormatList({ raw: formatOccurrence.value });
+      for (const raw of formatValues) {
+        const parsedFormat = parseFormatList({ raw });
         switch (parsedFormat.kind) {
         case 'error':
           return parsedFormat;
@@ -821,7 +708,7 @@ export const psCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'ps',
         message: columns.message,
-        argvSpec: psArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: psArgvHelp }),
       });
       return { exitCode: 1 };
     case 'ok':
@@ -832,23 +719,17 @@ export const psCommandImplementation: WeshCommandImplementation = {
     }
     }
 
-    const sortOccurrences = parsed.occurrences
-      .filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> => (
-        occurrence.kind === 'value' && occurrence.key === 'sort'
-      ));
+    const sortValues = readPsOptionValues({ parsed, key: 'sort' });
     const sortSpecifiers: PsSortSpecifier[] = [];
-    for (const sortOccurrence of sortOccurrences) {
-      if (!isStringValue(sortOccurrence.value)) {
-        throw new Error('ps: internal error: expected string sort list');
-      }
-      const parsedSort = parseSortList({ raw: sortOccurrence.value });
+    for (const raw of sortValues) {
+      const parsedSort = parseSortList({ raw });
       switch (parsedSort.kind) {
       case 'error':
         await writeCommandUsageError({
           context,
           command: 'ps',
           message: parsedSort.message,
-          argvSpec: psArgvSpec,
+          usageSummary: formatArgvUsageSummary({ presentation: psArgvHelp }),
         });
         return { exitCode: 1 };
       case 'ok':
@@ -866,17 +747,17 @@ export const psCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'ps',
         message: 'ps: q/-q/--quick-pid cannot be used together with forest type listings',
-        argvSpec: psArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: psArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
-    if (quickSelectionActive && sortOccurrences.length > 0) {
+    if (quickSelectionActive && sortValues.length > 0) {
       await writeCommandUsageError({
         context,
         command: 'ps',
         message: 'ps: q/-q,--quick-pid cannot be used together with sort options',
-        argvSpec: psArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: psArgvHelp }),
       });
       return { exitCode: 1 };
     }

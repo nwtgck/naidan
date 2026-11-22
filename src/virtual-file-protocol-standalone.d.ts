@@ -33,7 +33,7 @@ declare module 'virtual:file-protocol-standalone/worker/highlight' {
 declare module 'virtual:file-protocol-standalone/worker/wesh' {
   import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
 
-  export function createStandaloneWorker({ name, startupTimeoutMs }?: { readonly name?: StandaloneWorkerCreateOptions['name'], readonly startupTimeoutMs?: StandaloneWorkerCreateOptions['startupTimeoutMs'] }): Promise<Worker>;
+  export function createStandaloneWorker({ name, startupTimeoutMs, signal }?: { readonly name?: StandaloneWorkerCreateOptions['name'], readonly startupTimeoutMs?: StandaloneWorkerCreateOptions['startupTimeoutMs'], readonly signal?: StandaloneWorkerCreateOptions['signal'] }): Promise<Worker>;
   export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
   export function scheduleStandaloneWorkerBootstrapWarmup(): void;
   export function disposeStandaloneWorkerBootstrap(): void;

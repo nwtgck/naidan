@@ -1,13 +1,15 @@
 import { stripLeadingCLocaleAndTrailingBlankWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
+import { writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import {
-  writeCommandUsageError,
-} from '@/features/wesh/commands/_shared/usage';
+  evaluateBinaryFileTest,
+  evaluateUnaryFileTest,
+  type BinaryFileTestOperator,
+  type UnaryFileTestOperator,
+} from '@/features/wesh/shell/file-test';
 import type {
   WeshCommandContext,
   WeshCommandImplementation,
   WeshCommandResult,
-  WeshStat,
 } from '@/features/wesh/types';
 
 type TestCommandName = 'test' | '[';
@@ -21,28 +23,11 @@ type TestTokenResult =
   | { kind: 'tokens', tokens: string[] }
   | { kind: 'syntax_error', message: string };
 
-type UnaryTestOperator =
-  | '-b'
-  | '-c'
-  | '-d'
-  | '-e'
-  | '-f'
-  | '-h'
-  | '-L'
-  | '-n'
-  | '-p'
-  | '-r'
-  | '-s'
-  | '-S'
-  | '-t'
-  | '-w'
-  | '-x'
-  | '-z';
+type UnaryTestOperator = UnaryFileTestOperator | '-n' | '-z';
 
 type BinaryStringOperator = '=' | '!=' | '<' | '>';
 type BinaryIntegerOperator = '-eq' | '-ge' | '-gt' | '-le' | '-lt' | '-ne';
-type BinaryFileOperator = '-ef' | '-nt' | '-ot';
-type BinaryTestOperator = BinaryStringOperator | BinaryIntegerOperator | BinaryFileOperator;
+type BinaryTestOperator = BinaryStringOperator | BinaryIntegerOperator | BinaryFileTestOperator;
 
 type ParsedIntegerOperand =
   | { kind: 'success', value: bigint, nextIndex: number }
@@ -89,7 +74,7 @@ const BINARY_INTEGER_OPERATORS = new Set<BinaryIntegerOperator>([
   '-ne',
 ]);
 
-const BINARY_FILE_OPERATORS = new Set<BinaryFileOperator>([
+const BINARY_FILE_OPERATORS = new Set<BinaryFileTestOperator>([
   '-ef',
   '-nt',
   '-ot',
@@ -102,36 +87,6 @@ const BINARY_STRING_OPERATORS = new Set<BinaryStringOperator>([
   '<',
   '>',
 ]);
-
-const testArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
-};
-
-function resolvePath({
-  cwd,
-  path,
-}: {
-  cwd: string,
-  path: string,
-}): string {
-  if (path.startsWith('/')) {
-    return path;
-  }
-
-  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
-}
 
 function truthy({
   value,
@@ -161,52 +116,6 @@ function negateTestEvaluation({
   }
 }
 
-async function readStat({
-  context,
-  path,
-  followSymlinkMode,
-}: {
-  context: WeshCommandContext,
-  path: string,
-  followSymlinkMode: 'follow' | 'no-follow',
-}): Promise<WeshStat | undefined> {
-  try {
-    switch (followSymlinkMode) {
-    case 'follow':
-      return await context.files.stat({ path });
-    case 'no-follow':
-      return await context.files.lstat({ path });
-    default: {
-      const _ex: never = followSymlinkMode;
-      throw new Error(`Unhandled symlink mode: ${_ex}`);
-    }
-    }
-  } catch {
-    return undefined;
-  }
-}
-
-function hasAccessMode({
-  stat,
-  accessMode,
-}: {
-  stat: WeshStat,
-  accessMode: 'read' | 'write' | 'execute',
-}): boolean {
-  switch (accessMode) {
-  case 'read':
-    return (stat.mode & 0o444) !== 0;
-  case 'write':
-    return (stat.mode & 0o222) !== 0;
-  case 'execute':
-    return (stat.mode & 0o111) !== 0;
-  default: {
-    const _ex: never = accessMode;
-    throw new Error(`Unhandled access mode: ${_ex}`);
-  }
-  }
-}
-
 function isBinaryOperator({
   token,
 }: {
@@ -215,7 +124,7 @@ function isBinaryOperator({
   return token !== undefined &&
     (BINARY_STRING_OPERATORS.has(token as BinaryStringOperator) ||
       BINARY_INTEGER_OPERATORS.has(token as BinaryIntegerOperator) ||
-      BINARY_FILE_OPERATORS.has(token as BinaryFileOperator));
+      BINARY_FILE_OPERATORS.has(token as BinaryFileTestOperator));
 }
 
 async function evaluateUnaryOperator({
@@ -232,78 +141,10 @@ async function evaluateUnaryOperator({
     return truthy({ value: operand.length > 0 });
   case '-z':
     return truthy({ value: operand.length === 0 });
-  case '-h':
-  case '-L': {
-    const stat = await readStat({
-      context,
-      path: resolvePath({ cwd: context.cwd, path: operand }),
-      followSymlinkMode: 'no-follow',
+  default:
+    return truthy({
+      value: await evaluateUnaryFileTest({ operator, operand, cwd: context.cwd, files: context.files }),
     });
-    return truthy({ value: stat?.type === 'symlink' });
-  }
-  case '-e': {
-    const stat = await readStat({
-      context,
-      path: resolvePath({ cwd: context.cwd, path: operand }),
-      followSymlinkMode: 'follow',
-    });
-    return truthy({ value: stat !== undefined });
-  }
-  case '-d':
-  case '-f':
-  case '-p':
-  case '-c':
-  case '-b':
-  case '-s':
-  case '-S':
-  case '-r':
-  case '-w':
-  case '-x': {
-    const stat = await readStat({
-      context,
-      path: resolvePath({ cwd: context.cwd, path: operand }),
-      followSymlinkMode: 'follow',
-    });
-    if (stat === undefined) {
-      return 'false';
-    }
-
-    switch (operator) {
-    case '-d':
-      return truthy({ value: stat.type === 'directory' });
-    case '-f':
-      return truthy({ value: stat.type === 'file' });
-    case '-p':
-      return truthy({ value: stat.type === 'fifo' });
-    case '-c':
-      return truthy({ value: stat.type === 'chardev' });
-    case '-b':
-    case '-S':
-      return 'false';
-    case '-s':
-      return truthy({ value: stat.size > 0 });
-    case '-r':
-      return truthy({ value: hasAccessMode({ stat, accessMode: 'read' }) });
-    case '-w':
-      return truthy({ value: hasAccessMode({ stat, accessMode: 'write' }) });
-    case '-x':
-      return truthy({ value: hasAccessMode({ stat, accessMode: 'execute' }) });
-    default: {
-      const _ex: never = operator;
-      throw new Error(`Unhandled unary operator: ${_ex}`);
-    }
-    }
-  }
-  case '-t': {
-    if (!/^\d+$/.test(operand)) {
-      return 'false';
-    }
-    return truthy({ value: false });
-  }
-  default: {
-    const _ex: never = operator;
-    throw new Error(`Unhandled unary operator: ${_ex}`);
-  }
   }
 }
 
@@ -393,45 +234,12 @@ async function evaluateBinaryOperator({
   case '-ef':
   case '-nt':
   case '-ot':
-    break;
+    return truthy({
+      value: await evaluateBinaryFileTest({ operator, leftOperand, rightOperand, cwd: context.cwd, files: context.files }),
+    });
   default: {
     const _ex: never = operator;
     throw new Error(`Unhandled binary operator: ${_ex}`);
-  }
-  }
-
-  const leftStat = await readStat({
-    context,
-    path: resolvePath({ cwd: context.cwd, path: leftOperand }),
-    followSymlinkMode: 'follow',
-  });
-  const rightStat = await readStat({
-    context,
-    path: resolvePath({ cwd: context.cwd, path: rightOperand }),
-    followSymlinkMode: 'follow',
-  });
-
-  switch (operator) {
-  case '-ef':
-    return truthy({
-      value: leftStat !== undefined
-        && rightStat !== undefined
-        && leftStat.ino === rightStat.ino
-        && leftStat.type === rightStat.type,
-    });
-  case '-nt':
-    return truthy({
-      value: leftStat !== undefined
-        && (rightStat === undefined || leftStat.mtime > rightStat.mtime),
-    });
-  case '-ot':
-    return truthy({
-      value: rightStat !== undefined
-        && (leftStat === undefined || leftStat.mtime < rightStat.mtime),
-    });
-  default: {
-    const _ex: never = operator;
-    throw new Error(`Unhandled file operator: ${_ex}`);
   }
   }
 }
@@ -983,7 +791,7 @@ export function createTestCommandImplementation({
           context,
           command: commandName,
           message: `${commandName}: ${tokenResult.message}`,
-          argvSpec: testArgvSpec,
+          usageSummary: undefined,
         });
         return { exitCode: 2 };
       default: {
@@ -1004,7 +812,7 @@ export function createTestCommandImplementation({
           context,
           command: commandName,
           message: `${commandName}: ${evaluation.message}`,
-          argvSpec: testArgvSpec,
+          usageSummary: undefined,
         });
         return { exitCode: 2 };
       default: {

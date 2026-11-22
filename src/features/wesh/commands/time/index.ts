@@ -1,29 +1,33 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import { isExecCompletion, type WeshBuiltinCommandContext, type WeshShellBuiltinFunction, type WeshShellExecutionResult } from '@/features/wesh/types';
 
-const timeArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'p',
-      long: undefined,
-      effects: [{ key: 'portable', value: true }],
-      help: { summary: 'use the portable output format', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
+const timePortableOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'portable', value: true }] },
+  forms: [{ kind: 'short', name: 'p', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const timeHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+
+const timeArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [timePortableOption, timeHelpOption],
+});
+const timeArgvHelp = defineArgvHelpPresentation({
+  catalog: timeArgvCatalog,
+  rows: [
+    { forms: timePortableOption.forms, summary: 'use the portable output format', category: 'common' },
+    { forms: timeHelpOption.forms, summary: 'display this help and exit', category: 'common' },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+});
+const timeArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'none',
 };
+const timeUsageSummary = formatArgvUsageSummary({ presentation: timeArgvHelp });
 
 function splitTimeArguments({
   args,
@@ -74,7 +78,7 @@ async function writeTimingReport({
   portable,
   elapsedMs,
 }: {
-  context: WeshCommandContext,
+  context: WeshBuiltinCommandContext,
   portable: boolean,
   elapsedMs: number,
 }): Promise<void> {
@@ -91,12 +95,13 @@ async function writeTimingReport({
   });
 }
 
-export const timeCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const timeCommandImplementation = {
+  fn: async ({ context, shell }) => {
     const { optionArgs, commandArgs } = splitTimeArguments({ args: context.args });
     const parsed = parseStandardArgv({
       args: optionArgs,
-      spec: timeArgvSpec,
+      catalog: timeArgvCatalog,
+      policy: timeArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -105,7 +110,7 @@ export const timeCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'time',
         message: `time: ${diagnostic.message}`,
-        argvSpec: timeArgvSpec,
+        usageSummary: timeUsageSummary,
       });
       return { exitCode: 1 };
     }
@@ -114,7 +119,7 @@ export const timeCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'time',
-        argvSpec: timeArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: timeArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -124,22 +129,16 @@ export const timeCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'time',
         message: 'time: missing command operand',
-        argvSpec: timeArgvSpec,
+        usageSummary: timeUsageSummary,
       });
       return { exitCode: 1 };
     }
 
     const command = commandArgs[0]!;
     const startedAt = performance.now();
-    let result: WeshCommandResult;
+    let result: WeshShellExecutionResult;
     try {
-      result = await context.executeCommand({
-        command,
-        args: commandArgs.slice(1),
-        stdin: context.stdin,
-        stdout: context.stdout,
-        stderr: context.stderr,
-      });
+      result = await shell.evaluateCommand({ command, args: commandArgs.slice(1), functionLookup: 'allow' });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       if (message !== `Command not found: ${command}`) {
@@ -149,6 +148,9 @@ export const timeCommandImplementation: WeshCommandImplementation = {
         text: `time: cannot run ${command}: No such file or directory\n`,
       });
       result = { exitCode: 127 };
+    }
+    if (isExecCompletion({ result })) {
+      return result;
     }
     const finishedAt = performance.now();
 
@@ -160,7 +162,7 @@ export const timeCommandImplementation: WeshCommandImplementation = {
 
     return result;
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'evaluateCommand'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

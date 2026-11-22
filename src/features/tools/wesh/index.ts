@@ -78,10 +78,6 @@ export function createWeshTool({
       approvalContext?: ToolApprovalContext,
     }) {
       let abortHandler: (() => void) | undefined;
-      let abortPromiseCleanup: (() => void) | undefined;
-      let executionId: string | undefined;
-      let cancellationPromise: Promise<void> | undefined;
-      let completion: ReturnType<WeshWorkerClient['awaitExecution']> | undefined;
       let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
       try {
         if (signal?.aborted) {
@@ -91,7 +87,7 @@ export function createWeshTool({
 
         let stdoutText = '';
         let stderrText = '';
-        let pendingCancellation = false;
+        let cancelExecution = () => {};
         let cancellationRequested = false;
 
         const streamState: Record<'stdout' | 'stderr', {
@@ -129,26 +125,11 @@ export function createWeshTool({
           }
         };
 
-        const startCancellation = () => {
-          if (!executionId) {
-            return;
-          }
-          cancellationRequested = true;
-          cancellationPromise = client.cancelExecution({ request: { executionId } }).then(() => {});
-          // Observe early failures while a streaming callback is still active.
-          // The original rejection is propagated after execution retirement.
-          void cancellationPromise.catch(() => undefined);
-        };
-
         const requestCancellation = () => {
-          if (cancellationRequested) {
-            return;
+          if (!cancellationRequested) {
+            cancellationRequested = true;
+            cancelExecution();
           }
-          if (executionId) {
-            startCancellation();
-            return;
-          }
-          pendingCancellation = true;
         };
 
         const consumeOutputChunk = async ({ stream, chunk }: {
@@ -162,6 +143,13 @@ export function createWeshTool({
 
           const remaining = Math.max(0, state.limit - state.bytes);
           const acceptedLength = Math.min(chunk.byteLength, remaining);
+          const truncated = acceptedLength < chunk.byteLength;
+          if (truncated) {
+            state.truncated = true;
+            requestCancellation();
+            onOutputLimit?.({ stream });
+          }
+
           if (acceptedLength > 0) {
             const acceptedChunk = chunk.subarray(0, acceptedLength);
             state.bytes += acceptedChunk.byteLength;
@@ -171,15 +159,9 @@ export function createWeshTool({
               await onEvent?.({ event: { type: 'output', stream, text } });
             }
           }
-
-          if (acceptedLength < chunk.byteLength) {
-            state.truncated = true;
-            onOutputLimit?.({ stream });
-            requestCancellation();
-          }
         };
 
-        const flushOutput = async ({ stream }: { stream: 'stdout' | 'stderr' }) => {
+        const flushOutput = ({ stream }: { stream: 'stdout' | 'stderr' }) => {
           const state = streamState[stream];
           const text = state.decoder.decode();
           if (text) {
@@ -190,12 +172,7 @@ export function createWeshTool({
           }
         };
 
-        if (signal) {
-          abortHandler = requestCancellation;
-          signal.addEventListener('abort', abortHandler, { once: true });
-        }
-
-        const started = await client.startExecution({
+        const execution = client.startExecution({
           request: {
             script: validated.shell_script,
           },
@@ -222,57 +199,43 @@ export function createWeshTool({
             }
           },
         });
-        executionId = started.executionId;
-        if (pendingCancellation) {
-          requestCancellation();
+        cancelExecution = () => execution.cancel();
+        if (cancellationRequested || signal?.aborted) {
+          cancellationRequested = true;
+          execution.cancel();
         }
-        if (!executionId) {
-          throw new Error('Wesh execution did not return an execution id');
+        if (signal) {
+          abortHandler = requestCancellation;
+          signal.addEventListener('abort', abortHandler, { once: true });
         }
-        const activeExecutionId = executionId;
-        completion = client.awaitExecution({ request: { executionId: activeExecutionId } });
-        // Its rejection may arrive while cancellation is still in flight.
-        void completion.catch(() => undefined);
-        if (signal?.aborted) {
-          requestCancellation();
-          throw createGenerationAbortedError();
-        }
-
-        const abortPromise = signal ? new Promise<never>((_resolve, reject) => {
-          const onAbort = () => {
-            reject(createGenerationAbortedError());
-          };
-          abortPromiseCleanup = () => {
-            signal.removeEventListener('abort', onAbort);
-          };
-          if (signal.aborted) {
-            onAbort();
-            return;
-          }
-          signal.addEventListener('abort', onAbort, { once: true });
-        }) : undefined;
 
         let timedOut = false;
-        const timeout = new Promise<'timeout'>(resolve => {
-          timeoutHandle = setTimeout(() => resolve('timeout'), validated.timeout_ms);
-        });
-        const raceParticipants: Array<Promise<unknown>> = [completion, timeout];
-        if (abortPromise) {
-          raceParticipants.push(abortPromise);
-        }
-        const outcome = await Promise.race(raceParticipants);
-
-        if (outcome === 'timeout') {
+        timeoutHandle = setTimeout(() => {
           timedOut = true;
           requestCancellation();
-          await cancellationPromise;
+        }, validated.timeout_ms);
+        const result = await execution.completion;
+        if (signal?.aborted) {
+          throw createGenerationAbortedError();
         }
+        flushOutput({ stream: 'stdout' });
+        flushOutput({ stream: 'stderr' });
 
-        const result = await completion;
-        await flushOutput({ stream: 'stdout' });
-        await flushOutput({ stream: 'stderr' });
-
-        let content = `Exit Code: ${result.exitCode}\n`;
+        let content: string;
+        let terminated = false;
+        switch (result.status) {
+        case 'exited':
+          content = `Exit Code: ${result.exitCode}\n`;
+          break;
+        case 'terminated':
+          terminated = true;
+          content = 'Shell worker terminated.\n';
+          break;
+        default: {
+          const exhaustive: never = result;
+          throw new Error(String(exhaustive));
+        }
+        }
 
         if (stdoutText) {
           content += `\nSTDOUT:\n${stdoutText}\n`;
@@ -289,11 +252,18 @@ export function createWeshTool({
           };
         }
 
+        if (terminated) {
+          return { status: 'error', code: 'execution_failed', message: content };
+        }
+
         return {
           status: 'success',
           content,
         };
       } catch (error) {
+        if (signal?.aborted) {
+          throw createGenerationAbortedError();
+        }
         if (error instanceof Error && (error.name === 'AbortError' || error.message === 'Generation aborted')) {
           throw error;
         }
@@ -306,20 +276,8 @@ export function createWeshTool({
         if (timeoutHandle !== undefined) {
           clearTimeout(timeoutHandle);
         }
-        abortPromiseCleanup?.();
         if (signal && abortHandler) {
           signal.removeEventListener('abort', abortHandler);
-        }
-        try {
-          await cancellationPromise;
-        } finally {
-          // A disposed execution record is not proof that the running command
-          // has stopped. Drain the original completion, including after a
-          // worker-client cancellation switches to a replacement runtime.
-          await completion?.catch(() => undefined);
-          if (executionId) {
-            await client.disposeExecution({ request: { executionId } });
-          }
         }
       }
     },

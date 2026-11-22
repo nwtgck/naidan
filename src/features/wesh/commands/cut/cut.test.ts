@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -6,6 +6,11 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+import { cutCommandDefinition } from './definition';
+
+beforeAll(async () => {
+  await cutCommandDefinition.load();
+});
 
 describe('wesh cut', () => {
   let wesh: Wesh;
@@ -187,6 +192,55 @@ single
     expect(charsResult.result.exitCode).toBe(0);
   });
 
+  it('separates adjacent byte ranges and merges overlapping ranges', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: "cut -b6,1-2,2-3,4-5,6 --output-delimiter=':'",
+      stdinText: `\
+abcdef
+a
+
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+abc:de:f
+a
+
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('uses an empty output delimiter as NUL between complemented character ranges', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: "cut -c2,4 --complement --output-delimiter=''",
+      stdinText: 'abcdef\n',
+    });
+
+    expect(Array.from(stdout.buffer)).toEqual([0x61, 0x00, 0x63, 0x00, 0x65, 0x66, 0x0a]);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('writes a multibyte output delimiter between byte ranges in NUL-terminated records', async () => {
+    await writeFile({
+      path: 'input',
+      data: Uint8Array.from([0xff, 0x0a, 0xfe, 0x00, 0x62, 0x00, 0x61, 0x62, 0x63]),
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: "cut -zb1,3 --output-delimiter='あ' input",
+    });
+
+    expect(Array.from(stdout.buffer)).toEqual([
+      0xff, 0xe3, 0x81, 0x82, 0xfe, 0x00,
+      0x62, 0x00,
+      0x61, 0xe3, 0x81, 0x82, 0x63, 0x00,
+    ]);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('matches GNU byte-oriented character selection for multibyte input', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'cut -c1-2',
@@ -323,6 +377,59 @@ f1
     expect(modeConflict.stderr.text).toBe('');
   });
 
+  it('leaves help spellings that are owned by option values', async () => {
+    const outputDelimiter = await execute({
+      script: 'cut --output-delimiter --help -b1,3',
+      stdinText: 'abc\n',
+    });
+    const list = await execute({ script: 'cut -f --help' });
+    const help = await execute({ script: 'cut -f0 --help --unknown' });
+
+    expect(outputDelimiter.result.exitCode).toBe(0);
+    expect(outputDelimiter.stdout.text).toBe('a--helpc\n');
+    expect(outputDelimiter.stderr.text).toBe('');
+    expect(list.result.exitCode).toBe(1);
+    expect(list.stdout.text).toBe('');
+    expect(list.stderr.text).toContain("cut: invalid list: '--help'");
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: cut');
+    expect(help.stderr.text).toBe('');
+  });
+
+  it('reports the first option syntax or delimiter error', async () => {
+    const delimiterFirst = await execute({ script: 'cut -dxx --unknown' });
+    const unknownFirst = await execute({ script: 'cut --unknown -dxx' });
+
+    expect(delimiterFirst.result.exitCode).toBe(1);
+    expect(delimiterFirst.stderr.text).toContain('the delimiter must be a single character');
+    expect(unknownFirst.result.exitCode).toBe(1);
+    expect(unknownFirst.stderr.text).toContain("unrecognized option '--unknown'");
+  });
+
+  it('reports a malformed delimiter or repeated list in argument order', async () => {
+    const delimiterFirst = await execute({ script: 'cut -dxx -b1 -f1 --help' });
+    const listFirst = await execute({ script: 'cut -b1 -f1 -dxx --help' });
+
+    expect(delimiterFirst.result.exitCode).toBe(1);
+    expect(delimiterFirst.stderr.text).toContain('the delimiter must be a single character');
+    expect(listFirst.result.exitCode).toBe(1);
+    expect(listFirst.stderr.text).toContain('only one list may be specified');
+  });
+
+  it('accepts unique long-option prefixes and rejects ambiguous or valued flags', async () => {
+    const help = await execute({ script: 'cut --he --unknown' });
+    const ambiguous = await execute({ script: 'cut --c --help' });
+    const unexpectedValue = await execute({ script: 'cut --only-delimited=yes --help' });
+
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: cut');
+    expect(help.stderr.text).toBe('');
+    expect(ambiguous.result.exitCode).toBe(1);
+    expect(ambiguous.stderr.text).toContain("option '--c' is ambiguous; possibilities: '--characters' '--complement'");
+    expect(unexpectedValue.result.exitCode).toBe(1);
+    expect(unexpectedValue.stderr.text).toContain("option '--only-delimited' doesn't allow an argument");
+  });
+
   it('reports invalid option combinations with usage', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'cut -b1 -f1',
@@ -440,6 +547,16 @@ f1
     expect(suppress.stdout.text).toBe('');
     expect(suppress.stderr.text).toContain('only when operating on fields');
     expect(suppress.result.exitCode).toBe(1);
+  });
+
+  it('diagnoses field-only options before parsing an invalid list in another mode', async () => {
+    const delimiter = await execute({ script: 'cut -b0 -d:' });
+    const suppress = await execute({ script: 'cut -c0 -s' });
+
+    expect(delimiter.result.exitCode).toBe(1);
+    expect(delimiter.stderr.text).toContain('input delimiter may be specified only when operating on fields');
+    expect(suppress.result.exitCode).toBe(1);
+    expect(suppress.stderr.text).toContain('suppressing non-delimited lines makes sense only when operating on fields');
   });
 
   it('preserves arbitrary bytes in selected fields', async () => {

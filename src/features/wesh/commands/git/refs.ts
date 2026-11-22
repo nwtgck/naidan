@@ -1,11 +1,19 @@
-import type { GitFiles } from './files';
-import { pathExists, readFileText, replaceTextViaLock } from './files';
+import type { WeshEntryChange, WeshEntryRef, WeshPreparedRename } from '@/features/wesh/types';
+import { branchRefName } from './branch';
+import { concatBytes } from './bytes';
+import type { GitConfig } from './config';
+import { shouldCreateBranchReflog, withRenamedLocalConfigSection } from './config';
+import type { GitFileLock, GitFilePublisher, GitFiles } from './files';
+import { pathExists, readFileBytes, readFileText, replaceFileViaLock, replaceTextViaLock, resolveOptionalEntry, withFileLock, withFileLocks } from './files';
 import type { GitIdentity } from './identity';
-import { readPackedRefs, removePackedRef } from './packed-refs';
-import { appendReflog } from './reflog';
+import { resolveGitReflogIdentity, resolveGitTimestamp } from './identity';
+import { readPackedRefs, withPackedRefRemoval } from './packed-refs';
+import { appendReflog, formatReflogLine, resolveReflogEntry, ZERO_OBJECT_ID } from './reflog';
 import type { GitRepository } from './repository';
 import { sortByGitUtf8StringKey } from './utf8-order';
 import { joinPath } from './repository';
+
+const textEncoder = new TextEncoder();
 
 export interface GitHeadState {
   symbolicRef: string | undefined,
@@ -60,34 +68,50 @@ async function readRefRecursive({ files, repository, refName, visitedRefNames }:
   const nextVisitedRefNames = new Set(visitedRefNames);
   nextVisitedRefNames.add(refName);
   const path = joinPath({ base: repository.commonDirPath, child: refName });
-  if (await pathExists({ files, path })) {
-    const stat = await files.lstat({ path });
-    switch (stat.type) {
-    case 'directory':
-      break;
-    case 'file': {
-      const value = (await readFileText({ files, path })).trim();
-      if (/^[0-9a-f]{40}$/u.test(value)) {
-        return value;
+  const entry = await resolveOptionalEntry({ files, path });
+  return readRefEntry({ files, repository, refName, entry, visitedRefNames: nextVisitedRefNames, symbolic: 'follow' });
+}
+
+async function readRefEntry({ files, repository, refName, entry, visitedRefNames, symbolic }: {
+  files: GitFiles,
+  repository: GitRepository,
+  refName: string,
+  entry: WeshEntryRef | undefined,
+  visitedRefNames: ReadonlySet<string>,
+  symbolic: 'follow' | 'reject',
+}): Promise<string | undefined> {
+  switch (entry?.type) {
+  case undefined:
+  case 'directory':
+    return (await readPackedRefs({ files, repository })).find(packedEntry => packedEntry.refName === refName)?.objectId;
+  case 'file': {
+    const value = (await readFileText({ files, entry })).trim();
+    if (/^[0-9a-f]{40}$/u.test(value)) {
+      return value;
+    }
+    if (value.startsWith('ref: ')) {
+      switch (symbolic) {
+      case 'reject':
+        throw new Error(`Cannot update through nested symbolic ref ${refName}`);
+      case 'follow':
+        return readRefRecursive({ files, repository, refName: value.slice(5), visitedRefNames });
+      default: {
+        const _ex: never = symbolic;
+        throw new Error(`Unhandled symbolic reference rule: ${_ex}`);
       }
-      if (value.startsWith('ref: ')) {
-        const targetRefName = value.slice(5);
-        assertRefName({ refName: targetRefName });
-        return readRefRecursive({ files, repository, refName: targetRefName, visitedRefNames: nextVisitedRefNames });
       }
-      throw new Error(`invalid ref value in ${refName}`);
     }
-    case 'fifo':
-    case 'chardev':
-    case 'symlink':
-      throw new Error(`invalid ref entry type ${stat.type}: ${refName}`);
-    default: {
-      const _ex: never = stat.type;
-      throw new Error(`Unhandled ref entry type: ${_ex}`);
-    }
-    }
+    throw new Error(`invalid ref value in ${refName}`);
   }
-  return (await readPackedRefs({ files, repository })).find(entry => entry.refName === refName)?.objectId;
+  case 'fifo':
+  case 'chardev':
+  case 'symlink':
+    throw new Error(`invalid ref entry type ${entry.type}: ${refName}`);
+  default: {
+    const _ex: never = entry;
+    throw new Error(`Unhandled ref entry: ${String(_ex)}`);
+  }
+  }
 }
 
 export async function readRef({ files, repository, refName }: {
@@ -106,13 +130,37 @@ export async function writeSymbolicRef({ files, repository, refName, targetRefNa
 }): Promise<void> {
   assertRefName({ refName });
   assertRefName({ refName: targetRefName });
-  const refPath = joinPath({ base: repository.commonDirPath, child: refName });
-  const slashIndex = refPath.lastIndexOf('/');
-  const parent = slashIndex <= 0 ? '/' : refPath.slice(0, slashIndex);
+  await writeLooseRef({ files, repository, refName, text: `ref: ${targetRefName}\n`, prepare: undefined });
+}
+
+async function ensureRefParent({ files, path }: { files: GitFiles, path: string }): Promise<void> {
+  const slashIndex = path.lastIndexOf('/');
+  const parent = slashIndex <= 0 ? '/' : path.slice(0, slashIndex);
   if (!await pathExists({ files, path: parent })) {
     await files.mkdir({ path: parent, recursive: true });
   }
-  await replaceTextViaLock({ files, path: refPath, text: `ref: ${targetRefName}\n` });
+}
+
+async function writeLooseRef({ files, repository, refName, text, prepare }: {
+  files: GitFiles,
+  repository: GitRepository,
+  refName: string,
+  text: string,
+  prepare: (({ entry }: { entry: WeshEntryRef | undefined }) => Promise<GitFilePublisher | undefined>) | undefined,
+}): Promise<void> {
+  const refPath = joinPath({ base: repository.commonDirPath, child: refName });
+  await ensureRefParent({ files, path: refPath });
+  await replaceFileViaLock({
+    files,
+    path: refPath,
+    prepareBytes: async () => {
+      const entry = await resolveOptionalEntry({ files, path: refPath });
+      if (entry !== undefined && entry.type !== 'file') {
+        throw new Error(`invalid ref entry type ${entry.type}: ${refName}`);
+      }
+      return { bytes: textEncoder.encode(text), expectedDestination: { entry }, publish: await prepare?.({ entry }) };
+    },
+  });
 }
 
 export async function writeRef({ files, repository, refName, objectId }: {
@@ -121,79 +169,70 @@ export async function writeRef({ files, repository, refName, objectId }: {
   refName: string,
   objectId: string,
 }): Promise<void> {
+  await publishRef({ files, repository, refName, objectId, create: false, prepare: undefined });
+}
+
+async function publishRef({ files, repository, refName, objectId, create, prepare }: {
+  files: GitFiles,
+  repository: GitRepository,
+  refName: string,
+  objectId: string,
+  create: boolean,
+  prepare: (({ oldObjectId }: { oldObjectId: string | undefined }) => GitFilePublisher | undefined) | undefined,
+}): Promise<void> {
   assertRefName({ refName });
   if (!/^[0-9a-f]{40}$/u.test(objectId)) {
     throw new Error(`invalid object id: ${objectId}`);
   }
-  const refPath = joinPath({ base: repository.commonDirPath, child: refName });
-  const slashIndex = refPath.lastIndexOf('/');
-  const parent = slashIndex <= 0 ? '/' : refPath.slice(0, slashIndex);
-  if (!await pathExists({ files, path: parent })) {
-    await files.mkdir({ path: parent, recursive: true });
-  }
-  await replaceTextViaLock({ files, path: refPath, text: `${objectId}\n` });
+  await writeLooseRef({
+    files,
+    repository,
+    refName,
+    text: `${objectId}\n`,
+    prepare: create || prepare !== undefined ? async ({ entry }) => {
+      if (create && entry !== undefined) {
+        throw new Error(`reference already exists: ${refName}`);
+      }
+      const oldObjectId = await readRefEntry({
+        files,
+        repository,
+        refName,
+        entry,
+        visitedRefNames: new Set([refName]),
+        symbolic: 'reject',
+      });
+      if (create && oldObjectId !== undefined) {
+        throw new Error(`reference already exists: ${refName}`);
+      }
+      return prepare?.({ oldObjectId });
+    } : undefined,
+  });
 }
 
-async function rollbackRefAfterReflogFailure({ files, repository, refName, oldObjectId }: {
+async function writeRefAndReflog({ files, repository, refName, objectId, reflog, create }: {
   files: GitFiles,
   repository: GitRepository,
   refName: string,
-  oldObjectId: string | undefined,
+  objectId: string,
+  reflog: GitReflogUpdate | undefined,
+  create: boolean,
 }): Promise<void> {
-  const refPath = joinPath({ base: repository.commonDirPath, child: refName });
-  if (oldObjectId === undefined) {
-    if (await pathExists({ files, path: refPath })) {
-      await files.unlink({ path: refPath });
-    }
-    return;
-  }
-  await writeRef({ files, repository, refName, objectId: oldObjectId });
-}
-
-interface OptionalTextFileState {
-  path: string,
-  text: string | undefined,
-}
-
-async function captureOptionalTextFile({ files, path }: {
-  files: GitFiles,
-  path: string,
-}): Promise<OptionalTextFileState> {
-  return { path, text: await pathExists({ files, path }) ? await readFileText({ files, path }) : undefined };
-}
-
-async function restoreOptionalTextFile({ files, state }: {
-  files: GitFiles,
-  state: OptionalTextFileState,
-}): Promise<void> {
-  if (state.text === undefined) {
-    if (await pathExists({ files, path: state.path })) {
-      await files.unlink({ path: state.path });
-    }
-    return;
-  }
-  await replaceTextViaLock({ files, path: state.path, text: state.text });
-}
-
-function errorMessage({ error }: { error: unknown }): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-async function rollbackRefOrThrow({ files, repository, refName, oldObjectId, originalError }: {
-  files: GitFiles,
-  repository: GitRepository,
-  refName: string,
-  oldObjectId: string | undefined,
-  originalError: unknown,
-}): Promise<never> {
-  try {
-    await rollbackRefAfterReflogFailure({ files, repository, refName, oldObjectId });
-  } catch (rollbackError) {
-    const originalMessage = errorMessage({ error: originalError });
-    const rollbackMessage = errorMessage({ error: rollbackError });
-    throw new Error(`${originalMessage}; ref rollback also failed: ${rollbackMessage}`);
-  }
-  throw originalError;
+  await publishRef({
+    files,
+    repository,
+    refName,
+    objectId,
+    create,
+    prepare: ({ oldObjectId }) => reflog === undefined ? undefined
+      : ({ rename: ref }) => appendReflog({
+        files,
+        path: joinPath({ base: repository.commonDirPath, child: `logs/${refName}` }),
+        oldObjectId,
+        newObjectId: objectId,
+        ...reflog,
+        publish: ({ rename: log }) => files.publishEntries({ changes: [log, ref] }),
+      }),
+  });
 }
 
 export async function createRef({ files, repository, refName, objectId, reflog }: {
@@ -203,25 +242,7 @@ export async function createRef({ files, repository, refName, objectId, reflog }
   objectId: string,
   reflog?: GitReflogUpdate,
 }): Promise<void> {
-  if (await readRef({ files, repository, refName }) !== undefined) {
-    throw new Error(`reference already exists: ${refName}`);
-  }
-  await writeRef({ files, repository, refName, objectId });
-  if (reflog !== undefined) {
-    try {
-      await appendReflog({
-        files,
-        path: joinPath({ base: repository.commonDirPath, child: `logs/${refName}` }),
-        oldObjectId: undefined,
-        newObjectId: objectId,
-        identity: reflog.identity,
-        timestamp: reflog.timestamp,
-        message: reflog.message,
-      });
-    } catch (error) {
-      await rollbackRefOrThrow({ files, repository, refName, oldObjectId: undefined, originalError: error });
-    }
-  }
+  await writeRefAndReflog({ files, repository, refName, objectId, reflog, create: true });
 }
 
 export async function updateRef({ files, repository, refName, objectId, reflog }: {
@@ -231,23 +252,7 @@ export async function updateRef({ files, repository, refName, objectId, reflog }
   objectId: string,
   reflog: GitReflogUpdate | undefined,
 }): Promise<void> {
-  const oldObjectId = await readRef({ files, repository, refName });
-  await writeRef({ files, repository, refName, objectId });
-  if (reflog !== undefined) {
-    try {
-      await appendReflog({
-        files,
-        path: joinPath({ base: repository.commonDirPath, child: `logs/${refName}` }),
-        oldObjectId,
-        newObjectId: objectId,
-        identity: reflog.identity,
-        timestamp: reflog.timestamp,
-        message: reflog.message,
-      });
-    } catch (error) {
-      await rollbackRefOrThrow({ files, repository, refName, oldObjectId, originalError: error });
-    }
-  }
+  await writeRefAndReflog({ files, repository, refName, objectId, reflog, create: false });
 }
 
 export async function deleteRef({ files, repository, refName }: {
@@ -256,108 +261,53 @@ export async function deleteRef({ files, repository, refName }: {
   refName: string,
 }): Promise<boolean> {
   assertRefName({ refName });
-  const refPath = joinPath({ base: repository.commonDirPath, child: refName });
-  const looseState = await captureOptionalTextFile({ files, path: refPath });
-  let removed = false;
-  if (looseState.text !== undefined) {
-    await files.unlink({ path: refPath });
-    removed = true;
-  }
-  try {
-    if (await removePackedRef({ files, repository, refName })) {
-      removed = true;
-    }
-  } catch (error) {
-    if (looseState.text !== undefined) {
-      try {
-        await restoreOptionalTextFile({ files, state: looseState });
-      } catch (rollbackError) {
-        throw new Error(`${errorMessage({ error })}; loose ref rollback also failed: ${errorMessage({ error: rollbackError })}`);
+  const path = joinPath({ base: repository.commonDirPath, child: refName });
+  await ensureRefParent({ files, path });
+  return withFileLock({
+    files,
+    path,
+    operation: async ({ verify }) => {
+      const loose = await resolveOptionalEntry({ files, path });
+      if (loose !== undefined && loose.type !== 'file') {
+        throw new Error(`invalid ref entry type ${loose.type}: ${refName}`);
       }
-    }
-    throw error;
-  }
-  return removed;
+      return deleteLockedRef({ files, repository, refName, loose, reflog: undefined, verify });
+    },
+  });
 }
 
-
-export async function renameRef({ files, repository, oldRefName, newRefName, reflog }: {
+/** Publish removal while the caller holds the corresponding ref lock. */
+export async function deleteLockedRef({ files, repository, refName, loose, reflog, verify, before }: {
   files: GitFiles,
   repository: GitRepository,
-  oldRefName: string,
-  newRefName: string,
-  reflog: GitReflogUpdate | undefined,
+  refName: string,
+  loose: WeshEntryRef | undefined,
+  reflog: WeshEntryRef | undefined,
+  verify: () => Promise<void>,
+  before?: readonly WeshPreparedRename[],
 }): Promise<boolean> {
-  assertRefName({ refName: oldRefName });
-  assertRefName({ refName: newRefName });
-  if (oldRefName === newRefName) {
-    return true;
-  }
-  if (await readRef({ files, repository, refName: newRefName }) !== undefined) {
-    throw new Error(`reference already exists: ${newRefName}`);
-  }
-  const objectId = await readRef({ files, repository, refName: oldRefName });
-  if (objectId === undefined) {
-    return false;
-  }
-
-  const oldLogPath = joinPath({ base: repository.commonDirPath, child: `logs/${oldRefName}` });
-  const newLogPath = joinPath({ base: repository.commonDirPath, child: `logs/${newRefName}` });
-  const oldLogState = await captureOptionalTextFile({ files, path: oldLogPath });
-  const newLogState = await captureOptionalTextFile({ files, path: newLogPath });
-
-  try {
-    await writeRef({ files, repository, refName: newRefName, objectId });
-    await deleteRef({ files, repository, refName: oldRefName });
-
-    if (oldLogState.text !== undefined) {
-      const slashIndex = newLogPath.lastIndexOf('/');
-      const parent = slashIndex <= 0 ? '/' : newLogPath.slice(0, slashIndex);
-      if (!await pathExists({ files, path: parent })) {
-        await files.mkdir({ path: parent, recursive: true });
+  const removedPacked = await withPackedRefRemoval({
+    files,
+    repository,
+    refName,
+    publish: async ({ rename }) => {
+      const changes: WeshEntryChange[] = before === undefined ? [] : [...before];
+      if (rename !== undefined) {
+        changes.push(rename);
       }
-      await replaceTextViaLock({ files, path: newLogPath, text: oldLogState.text });
-      if (await pathExists({ files, path: oldLogPath })) {
-        await files.unlink({ path: oldLogPath });
+      if (loose !== undefined) {
+        changes.push({ operation: 'unlink', entry: loose });
       }
-    }
-    if (reflog !== undefined) {
-      await appendReflog({
-        files,
-        path: newLogPath,
-        oldObjectId: objectId,
-        newObjectId: objectId,
-        identity: reflog.identity,
-        timestamp: reflog.timestamp,
-        message: reflog.message,
-      });
-    }
-    return true;
-  } catch (error) {
-    const rollbackErrors: string[] = [];
-    try {
-      await writeRef({ files, repository, refName: oldRefName, objectId });
-    } catch (rollbackError) {
-      rollbackErrors.push(`${oldRefName}: ${errorMessage({ error: rollbackError })}`);
-    }
-    try {
-      await rollbackRefAfterReflogFailure({ files, repository, refName: newRefName, oldObjectId: undefined });
-    } catch (rollbackError) {
-      rollbackErrors.push(`${newRefName}: ${errorMessage({ error: rollbackError })}`);
-    }
-    for (const state of [oldLogState, newLogState]) {
-      try {
-        await restoreOptionalTextFile({ files, state });
-      } catch (rollbackError) {
-        rollbackErrors.push(`${state.path}: ${errorMessage({ error: rollbackError })}`);
+      if (reflog !== undefined) {
+        changes.push({ operation: 'unlink', entry: reflog });
       }
-    }
-    if (rollbackErrors.length > 0) {
-      throw new Error(`${errorMessage({ error })}; ref rename rollback also failed: ${rollbackErrors.join('; ')}`);
-    }
-    throw error;
-  }
+      await verify();
+      await files.publishEntries({ changes });
+    },
+  });
+  return removedPacked || loose !== undefined;
 }
+
 
 export interface GitListedRef {
   refName: string,
@@ -434,25 +384,36 @@ export async function listRefs({ files, repository, prefix }: {
   return sortByGitUtf8StringKey({ values: byName.values(), key: ({ value }) => value.refName });
 }
 
+async function readHeadFile({ files, path }: { files: GitFiles, path: string }): Promise<{
+  entry: WeshEntryRef<'file'>,
+  text: string,
+  head: GitHeadState,
+}> {
+  const entry = await resolveOptionalEntry({ files, path });
+  if (entry === undefined || entry.type !== 'file') {
+    throw new Error('invalid HEAD');
+  }
+  const text = (await readFileText({ files, entry })).trim();
+  if (text.startsWith('ref: ')) {
+    const symbolicRef = text.slice(5);
+    assertRefName({ refName: symbolicRef });
+    return { entry, text, head: { symbolicRef, objectId: undefined } };
+  }
+  if (/^[0-9a-f]{40}$/u.test(text)) {
+    return { entry, text, head: { symbolicRef: undefined, objectId: text } };
+  }
+  throw new Error('invalid HEAD');
+}
+
 export async function readHead({ files, repository }: {
   files: GitFiles,
   repository: GitRepository,
 }): Promise<GitHeadState> {
-  const headText = (await readFileText({
-    files,
-    path: joinPath({ base: repository.gitDirPath, child: 'HEAD' }),
-  })).trim();
-  if (headText.startsWith('ref: ')) {
-    const symbolicRef = headText.slice(5);
-    return {
-      symbolicRef,
-      objectId: await readRef({ files, repository, refName: symbolicRef }),
-    };
-  }
-  if (/^[0-9a-f]{40}$/u.test(headText)) {
-    return { symbolicRef: undefined, objectId: headText };
-  }
-  throw new Error('invalid HEAD');
+  const { head } = await readHeadFile({ files, path: joinPath({ base: repository.gitDirPath, child: 'HEAD' }) });
+  return head.symbolicRef === undefined ? head : {
+    symbolicRef: head.symbolicRef,
+    objectId: await readRef({ files, repository, refName: head.symbolicRef }),
+  };
 }
 
 export async function setHeadSymbolic({ files, repository, refName }: {
@@ -468,56 +429,266 @@ export async function setHeadSymbolic({ files, repository, refName }: {
   });
 }
 
-async function appendHeadReflogs({ files, repository, head, newObjectId, update }: {
+async function withRefLocks({ files, repository, refNames, operation }: {
   files: GitFiles,
   repository: GitRepository,
-  head: GitHeadState,
-  newObjectId: string,
-  update: GitReflogUpdate,
+  refNames: readonly string[],
+  operation: ({ locks }: { locks: ReadonlyMap<string, GitFileLock> }) => Promise<void>,
 }): Promise<void> {
-  const branchLogPath = head.symbolicRef === undefined
-    ? undefined
-    : joinPath({ base: repository.commonDirPath, child: `logs/${head.symbolicRef}` });
-  const headLogPath = joinPath({ base: repository.gitDirPath, child: 'logs/HEAD' });
-  const previousLogs = [
-    ...(branchLogPath === undefined ? [] : [await captureOptionalTextFile({ files, path: branchLogPath })]),
-    await captureOptionalTextFile({ files, path: headLogPath }),
-  ];
-  try {
-    if (branchLogPath !== undefined) {
-      await appendReflog({
-        files,
-        path: branchLogPath,
-        oldObjectId: head.objectId,
-        newObjectId,
-        identity: update.identity,
-        timestamp: update.timestamp,
-        message: update.message,
-      });
+  const paths = refNames.map(refName => {
+    assertRefName({ refName });
+    return joinPath({ base: repository.commonDirPath, child: refName });
+  });
+  for (const path of paths) {
+    await ensureRefParent({ files, path });
+  }
+  await withFileLocks({ files, paths, operation });
+}
+
+export async function readDirectRef({ files, repository, refName }: {
+  files: GitFiles,
+  repository: GitRepository,
+  refName: string,
+}): Promise<{ entry: WeshEntryRef<'file'> | undefined, objectId: string | undefined }> {
+  const path = joinPath({ base: repository.commonDirPath, child: refName });
+  const entry = await resolveOptionalEntry({ files, path });
+  if (entry !== undefined && entry.type !== 'file') {
+    throw new Error(`invalid ref entry type ${entry.type}: ${refName}`);
+  }
+  const objectId = await readRefEntry({ files, repository, refName, entry, visitedRefNames: new Set([refName]), symbolic: 'reject' });
+  return { entry, objectId };
+}
+
+interface GitLockedReplacement {
+  lock: GitFileLock,
+  entry: WeshEntryRef | undefined,
+  bytes: Uint8Array,
+}
+
+async function prepareReflogRename({ files, lock, path, append, source }: {
+  files: GitFiles,
+  lock: GitFileLock,
+  path: string,
+  append: string,
+  source: WeshEntryRef<'file'> | undefined,
+}): Promise<GitLockedReplacement> {
+  const entry = await resolveReflogEntry({ files, path });
+  const from = source ?? entry;
+  const newBytes = textEncoder.encode(append);
+  const bytes = from === undefined ? newBytes : concatBytes({ chunks: [await readFileBytes({ files, entry: from }), newBytes] });
+  return { lock, entry, bytes };
+}
+
+async function withPreparedRenames({ replacements, publish }: {
+  replacements: readonly GitLockedReplacement[],
+  publish: ({ renames }: { renames: readonly WeshPreparedRename[] }) => Promise<void>,
+}): Promise<void> {
+  const renames: WeshPreparedRename[] = [];
+  async function prepare({ index }: { index: number }): Promise<void> {
+    const replacement = replacements[index];
+    if (replacement === undefined) {
+      await publish({ renames });
+      return;
     }
-    await appendReflog({
-      files,
-      path: headLogPath,
-      oldObjectId: head.objectId,
-      newObjectId,
-      identity: update.identity,
-      timestamp: update.timestamp,
-      message: update.message,
+    const { lock, entry, bytes } = replacement;
+    await lock.replace({
+      replacement: {
+        bytes,
+        expectedDestination: { entry },
+        publish: ({ rename }) => {
+          renames.push(rename);
+          return prepare({ index: index + 1 });
+        },
+      },
     });
-  } catch (error) {
-    const rollbackErrors: string[] = [];
-    for (const state of [...previousLogs].reverse()) {
-      try {
-        await restoreOptionalTextFile({ files, state });
-      } catch (rollbackError) {
-        rollbackErrors.push(`${state.path}: ${errorMessage({ error: rollbackError })}`);
+  }
+  await prepare({ index: 0 });
+}
+
+async function assertBranchIsNotCheckedOutElsewhere({ files, repository, refName, headEntry }: {
+  files: GitFiles,
+  repository: GitRepository,
+  refName: string,
+  headEntry: WeshEntryRef<'file'>,
+}): Promise<void> {
+  async function checkHead({ gitDir }: { gitDir: string }): Promise<void> {
+    if (gitDir === repository.gitDirPath) {
+      return;
+    }
+    const path = joinPath({ base: gitDir, child: 'HEAD' });
+    const entry = await resolveOptionalEntry({ files, path });
+    if (entry !== undefined && await files.compareEntryIdentity({ first: headEntry, second: entry }) !== 'same'
+      && (await readHeadFile({ files, path })).head.symbolicRef === refName) {
+      throw new Error(`Cannot rename '${refName}' while it is checked out in another worktree`);
+    }
+  }
+
+  await checkHead({ gitDir: repository.commonDirPath });
+  const path = joinPath({ base: repository.commonDirPath, child: 'worktrees' });
+  if (await resolveOptionalEntry({ files, path }) !== undefined) {
+    for await (const entry of files.readDir({ path })) {
+      switch (entry.type) {
+      case 'directory':
+        await checkHead({ gitDir: entry.fullPath });
+        break;
+      case 'file':
+      case 'symlink':
+      case 'fifo':
+      case 'chardev':
+        break;
+      default: {
+        const _ex: never = entry.type;
+        throw new Error(`Unhandled worktree entry type: ${_ex}`);
+      }
       }
     }
-    if (rollbackErrors.length > 0) {
-      throw new Error(`${errorMessage({ error })}; reflog rollback also failed: ${rollbackErrors.join('; ')}`);
-    }
-    throw error;
   }
+}
+
+export async function renameBranch({ files, repository, oldName, newName, config, env }: {
+  files: GitFiles,
+  repository: GitRepository,
+  oldName: string | undefined,
+  newName: string,
+  config: GitConfig,
+  env: ReadonlyMap<string, string>,
+}): Promise<void> {
+  const headPath = joinPath({ base: repository.gitDirPath, child: 'HEAD' });
+  await withFileLock({
+    files,
+    path: headPath,
+    operation: async ({ replace, verify }) => {
+      const headLock = { replace, verify };
+      const { entry: headEntry, head } = await readHeadFile({ files, path: headPath });
+      const sourceName = oldName ?? branchNameFromHead({ head });
+      if (sourceName === undefined) {
+        throw new Error('cannot rename the current branch while not on any branch');
+      }
+      const oldRefName = branchRefName({ name: sourceName });
+      const newRefName = branchRefName({ name: newName });
+      const renamingCurrent = head.symbolicRef === oldRefName;
+      const oldRefPath = joinPath({ base: repository.commonDirPath, child: oldRefName });
+      const newRefPath = joinPath({ base: repository.commonDirPath, child: newRefName });
+      const refNames = [...new Set([oldRefName, newRefName])].sort();
+      await withRefLocks({
+        files,
+        repository,
+        refNames,
+        operation: async ({ locks: refLocks }) => {
+          const oldRef = await readDirectRef({ files, repository, refName: oldRefName });
+          const objectId = oldRef.objectId;
+          if (objectId === undefined && !renamingCurrent) {
+            throw new Error(`branch '${sourceName}' not found`);
+          }
+          if (oldRefName === newRefName) {
+            return;
+          }
+          if ((await readDirectRef({ files, repository, refName: newRefName })).objectId !== undefined) {
+            throw new Error(`a branch named '${newName}' already exists`);
+          }
+          // A checkout in another Wesh worktree also locks this ref before changing its HEAD.
+          await assertBranchIsNotCheckedOutElsewhere({ files, repository, refName: oldRefName, headEntry });
+
+          const oldLogPath = joinPath({ base: repository.commonDirPath, child: `logs/${oldRefName}` });
+          const newLogPath = joinPath({ base: repository.commonDirPath, child: `logs/${newRefName}` });
+          const headLogPath = joinPath({ base: repository.gitDirPath, child: 'logs/HEAD' });
+          const logPaths: string[] = [];
+          if (objectId !== undefined) {
+            const createLog = shouldCreateBranchReflog({ config });
+            const oldLog = await resolveReflogEntry({ files, path: oldLogPath });
+            if (oldLog !== undefined) {
+              logPaths.push(oldLogPath);
+            }
+            if (oldLog !== undefined || createLog) {
+              logPaths.push(newLogPath);
+            }
+            if (renamingCurrent && (createLog || await resolveReflogEntry({ files, path: headLogPath }) !== undefined)) {
+              logPaths.push(headLogPath);
+            }
+          }
+          for (const path of logPaths) {
+            await ensureRefParent({ files, path });
+          }
+          await withFileLocks({
+            files,
+            paths: logPaths,
+            operation: async ({ locks: logLocks }) => {
+              const replacements: GitLockedReplacement[] = [];
+              const oldLogLock = logLocks.get(oldLogPath);
+              const oldLog = oldLogLock === undefined ? undefined : await resolveReflogEntry({ files, path: oldLogPath });
+              const newLogLock = logLocks.get(newLogPath);
+              const headLogLock = logLocks.get(headLogPath);
+              if (objectId !== undefined) {
+                replacements.push({ lock: refLocks.get(newRefPath)!, bytes: textEncoder.encode(`${objectId}\n`), entry: undefined });
+              }
+              if (objectId !== undefined && (newLogLock !== undefined || headLogLock !== undefined)) {
+                const reflog = {
+                  identity: resolveGitReflogIdentity({ env, config }),
+                  timestamp: resolveGitTimestamp({ env, role: 'COMMITTER' }),
+                  message: `Branch: renamed ${oldRefName} to ${newRefName}`,
+                };
+                if (newLogLock !== undefined) {
+                  replacements.push(await prepareReflogRename({
+                    files,
+                    lock: newLogLock,
+                    path: newLogPath,
+                    source: oldLog,
+                    append: formatReflogLine({ oldObjectId: objectId, newObjectId: objectId, ...reflog }),
+                  }));
+                }
+                if (headLogLock !== undefined) {
+                  const away = formatReflogLine({ oldObjectId: objectId, newObjectId: ZERO_OBJECT_ID, ...reflog });
+                  const back = formatReflogLine({ oldObjectId: undefined, newObjectId: objectId, ...reflog });
+                  replacements.push(await prepareReflogRename({ files, lock: headLogLock, path: headLogPath, source: undefined, append: away + back }));
+                }
+              }
+              if (renamingCurrent) {
+                replacements.push({ lock: headLock, bytes: textEncoder.encode(`ref: ${newRefName}\n`), entry: headEntry });
+              }
+              await withPreparedRenames({
+                replacements,
+                publish: async ({ renames }) => {
+                  await withRenamedLocalConfigSection({
+                    files,
+                    repository,
+                    section: 'branch',
+                    oldSubsection: sourceName,
+                    newSubsection: newName,
+                    publish: async ({ rename: configChange }) => {
+                      const changes = configChange === undefined ? renames : [...renames, configChange];
+                      const verify = async () => {
+                        if (!renamingCurrent) {
+                          await headLock.verify();
+                        }
+                        await refLocks.get(oldRefPath)!.verify();
+                        await oldLogLock?.verify();
+                      };
+                      // Keep the old branch until the new ref, HEAD and configuration are durable.
+                      if (objectId === undefined) {
+                        await verify();
+                        await refLocks.get(newRefPath)!.verify();
+                        await files.publishEntries({ changes });
+                      } else {
+                        await deleteLockedRef({
+                          files,
+                          repository,
+                          refName: oldRefName,
+                          loose: oldRef.entry,
+                          reflog: oldLog,
+                          before: changes,
+                          verify,
+                        });
+                      }
+                    },
+                  });
+                },
+              });
+            },
+          });
+        },
+      });
+    },
+  });
 }
 
 export async function moveHeadReference({ files, repository, target, reflog }: {
@@ -526,106 +697,172 @@ export async function moveHeadReference({ files, repository, target, reflog }: {
   target: GitHeadTarget,
   reflog: GitReflogUpdate,
 }): Promise<void> {
-  const oldHead = await readHead({ files, repository });
-  const headPath = joinPath({ base: repository.gitDirPath, child: 'HEAD' });
-  const headLogState = await captureOptionalTextFile({
+  const path = joinPath({ base: repository.gitDirPath, child: 'HEAD' });
+  const newRefName = (() => {
+    switch (target.type) {
+    case 'symbolic':
+      return target.refName;
+    case 'detached':
+      return undefined;
+    default: {
+      const _ex: never = target;
+      throw new Error(`Unhandled HEAD target: ${String(_ex)}`);
+    }
+    }
+  })();
+  if (newRefName !== undefined) {
+    assertRefName({ refName: newRefName });
+  }
+  if (!/^[0-9a-f]{40}$/u.test(target.objectId)) {
+    throw new Error(`invalid object id: ${target.objectId}`);
+  }
+  await withFileLock({
     files,
-    path: joinPath({ base: repository.gitDirPath, child: 'logs/HEAD' }),
-  });
-  switch (target.type) {
-  case 'symbolic':
-    assertRefName({ refName: target.refName });
-    await replaceTextViaLock({ files, path: headPath, text: `ref: ${target.refName}\n` });
-    break;
-  case 'detached':
-    if (!/^[0-9a-f]{40}$/u.test(target.objectId)) {
-      throw new Error(`invalid object id: ${target.objectId}`);
-    }
-    await replaceTextViaLock({ files, path: headPath, text: `${target.objectId}\n` });
-    break;
-  default: {
-    const _ex: never = target;
-    throw new Error(`Unhandled HEAD target: ${String(_ex)}`);
-  }
-  }
-  try {
-    await appendReflog({
-      files,
-      path: headLogState.path,
-      oldObjectId: oldHead.objectId,
-      newObjectId: target.objectId,
-      identity: reflog.identity,
-      timestamp: reflog.timestamp,
-      message: reflog.message,
-    });
-  } catch (error) {
-    const rollbackErrors: string[] = [];
-    try {
-      await restoreOptionalTextFile({ files, state: headLogState });
-    } catch (rollbackError) {
-      rollbackErrors.push(`${headLogState.path}: ${errorMessage({ error: rollbackError })}`);
-    }
-    try {
-      if (oldHead.symbolicRef !== undefined) {
-        await replaceTextViaLock({ files, path: headPath, text: `ref: ${oldHead.symbolicRef}\n` });
-      } else if (oldHead.objectId !== undefined) {
-        await replaceTextViaLock({ files, path: headPath, text: `${oldHead.objectId}\n` });
-      } else {
-        rollbackErrors.push(`${headPath}: previous HEAD target is unavailable`);
+    path,
+    operation: async ({ replace }) => {
+      const { entry, head } = await readHeadFile({ files, path });
+      const refNames = new Set<string>();
+      if (head.symbolicRef !== undefined) {
+        refNames.add(head.symbolicRef);
       }
-    } catch (rollbackError) {
-      rollbackErrors.push(`${headPath}: ${errorMessage({ error: rollbackError })}`);
-    }
-    if (rollbackErrors.length > 0) {
-      throw new Error(`${errorMessage({ error })}; HEAD rollback also failed: ${rollbackErrors.join('; ')}`);
-    }
-    throw error;
-  }
+      if (newRefName !== undefined) {
+        refNames.add(newRefName);
+      }
+      await withRefLocks({
+        files,
+        repository,
+        refNames: [...refNames].sort(),
+        operation: async ({ locks }) => {
+          const oldObjectId = head.symbolicRef === undefined ? head.objectId
+            : (await readDirectRef({ files, repository, refName: head.symbolicRef })).objectId;
+          if (newRefName !== undefined
+            && (await readDirectRef({ files, repository, refName: newRefName })).objectId !== target.objectId) {
+            throw new Error(`Reference changed: ${newRefName}`);
+          }
+          const value = newRefName === undefined ? target.objectId : `ref: ${newRefName}`;
+          await replace({
+            replacement: {
+              bytes: textEncoder.encode(`${value}\n`),
+              expectedDestination: { entry },
+              publish: ({ rename: headRename }) => appendReflog({
+                files,
+                path: joinPath({ base: repository.gitDirPath, child: 'logs/HEAD' }),
+                oldObjectId,
+                newObjectId: target.objectId,
+                ...reflog,
+                publish: async ({ rename: log }) => {
+                  for (const lock of locks.values()) {
+                    await lock.verify();
+                  }
+                  await files.publishEntries({ changes: [log, headRename] });
+                },
+              }),
+            },
+          });
+        },
+      });
+    },
+  });
 }
 
-export async function updateHead({ files, repository, objectId, reflog }: {
+export async function updateHead({ files, repository, objectId, reflog, expected }: {
   files: GitFiles,
   repository: GitRepository,
   objectId: string,
   reflog?: GitReflogUpdate,
+  expected?: GitHeadState,
 }): Promise<void> {
   if (!/^[0-9a-f]{40}$/u.test(objectId)) {
     throw new Error(`invalid object id: ${objectId}`);
   }
-  const head = await readHead({ files, repository });
-  const headPath = joinPath({ base: repository.gitDirPath, child: 'HEAD' });
-  if (head.symbolicRef !== undefined) {
-    await writeRef({ files, repository, refName: head.symbolicRef, objectId });
-  } else {
-    await replaceTextViaLock({ files, path: headPath, text: `${objectId}\n` });
-  }
-  if (reflog !== undefined) {
-    try {
-      await appendHeadReflogs({ files, repository, head, newObjectId: objectId, update: reflog });
-    } catch (error) {
-      const rollbackErrors: string[] = [];
-      try {
-        if (head.symbolicRef !== undefined) {
-          await rollbackRefAfterReflogFailure({
-            files,
-            repository,
-            refName: head.symbolicRef,
-            oldObjectId: head.objectId,
-          });
-        } else if (head.objectId !== undefined) {
-          await replaceTextViaLock({ files, path: headPath, text: `${head.objectId}\n` });
-        } else {
-          rollbackErrors.push(`${headPath}: previous HEAD object id is unavailable`);
+  const path = joinPath({ base: repository.gitDirPath, child: 'HEAD' });
+  await withFileLock({
+    files,
+    path,
+    operation: async ({ replace, verify }) => {
+      const { entry, text, head } = await readHeadFile({ files, path });
+      if (expected !== undefined && expected.symbolicRef !== head.symbolicRef) {
+        throw new Error('HEAD changed while preparing the update');
+      }
+
+      function checkOldObjectId({ oldObjectId }: { oldObjectId: string | undefined }): void {
+        if (expected !== undefined && expected.objectId !== oldObjectId) {
+          throw new Error('HEAD changed while preparing the update');
         }
-      } catch (rollbackError) {
-        rollbackErrors.push(errorMessage({ error: rollbackError }));
       }
-      if (rollbackErrors.length > 0) {
-        throw new Error(`${errorMessage({ error })}; HEAD target rollback also failed: ${rollbackErrors.join('; ')}`);
+
+      async function verifyHead(): Promise<void> {
+        await verify();
+        const current = await readHeadFile({ files, path });
+        if (current.text !== text || await files.compareEntryIdentity({ first: entry, second: current.entry }) !== 'same') {
+          throw new Error('HEAD changed while preparing the update');
+        }
       }
-      throw error;
-    }
-  }
+
+      async function appendHeadLog({ oldObjectId, publish }: {
+        oldObjectId: string | undefined,
+        publish: GitFilePublisher,
+      }): Promise<void> {
+        if (reflog !== undefined) {
+          await appendReflog({
+            files,
+            path: joinPath({ base: repository.gitDirPath, child: 'logs/HEAD' }),
+            oldObjectId,
+            newObjectId: objectId,
+            ...reflog,
+            publish,
+          });
+        }
+      }
+
+      const refName = head.symbolicRef;
+      if (refName === undefined) {
+        checkOldObjectId({ oldObjectId: head.objectId });
+        await replace({
+          replacement: {
+            bytes: textEncoder.encode(`${objectId}\n`),
+            expectedDestination: { entry },
+            publish: reflog === undefined ? undefined : ({ rename: headRename }) => appendHeadLog({
+              oldObjectId: head.objectId,
+              publish: ({ rename: log }) => files.publishEntries({ changes: [log, headRename] }),
+            }),
+          },
+        });
+        return;
+      }
+      await publishRef({
+        files,
+        repository,
+        refName,
+        objectId,
+        create: false,
+        prepare: ({ oldObjectId }) => {
+          checkOldObjectId({ oldObjectId });
+          return async ({ rename: ref }) => {
+            if (reflog === undefined) {
+              await verifyHead();
+              await files.publishEntries({ changes: [ref] });
+              return;
+            }
+            await appendReflog({
+              files,
+              path: joinPath({ base: repository.commonDirPath, child: `logs/${refName}` }),
+              oldObjectId,
+              newObjectId: objectId,
+              ...reflog,
+              publish: ({ rename: branchLog }) => appendHeadLog({
+                oldObjectId,
+                publish: async ({ rename: headLog }) => {
+                  await verifyHead();
+                  await files.publishEntries({ changes: [headLog, branchLog, ref] });
+                },
+              }),
+            });
+          };
+        },
+      });
+    },
+  });
 }
 
 export async function writeOrigHead({ files, repository, objectId }: {

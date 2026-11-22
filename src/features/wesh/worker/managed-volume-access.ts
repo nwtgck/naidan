@@ -21,9 +21,11 @@ export interface ManagedVolumeRemoteAccess {
 
 const pathSchema = z.string().min(1);
 
-export async function createManagedVolumeRemoteAccess({ mounts }: {
+export async function createManagedVolumeRemoteAccess({ mounts, signal }: {
   mounts: readonly (WeshMount | WeshWorkerMount)[],
+  signal?: AbortSignal,
 }): Promise<{ remote: ManagedVolumeRemoteAccess | undefined, dispose(): Promise<void> }> {
+  signal?.throwIfAborted();
   const managedMounts = getEffectiveWeshMounts({ mounts }).filter(mount => mount.type === 'managed_directory');
   if (managedMounts.length === 0) {
     return { remote: undefined, async dispose() {} };
@@ -42,9 +44,9 @@ export async function createManagedVolumeRemoteAccess({ mounts }: {
       return disposal;
     }
     disposed = true;
-    disposal = Promise.resolve().then(async () => {
-      const results = await Promise.allSettled([...connections.values()].map(connection => connection.dispose()));
-      connections.clear();
+    const pending = [...connections.values()].map(connection => Promise.resolve().then(() => connection.dispose()));
+    connections.clear();
+    disposal = Promise.allSettled(pending).then(results => {
       for (const result of results) {
         switch (result.status) {
         case 'fulfilled':
@@ -60,13 +62,25 @@ export async function createManagedVolumeRemoteAccess({ mounts }: {
     });
     return disposal;
   };
+  const release = () => {
+    void dispose().catch(() => undefined);
+  };
+  signal?.addEventListener('abort', release, { once: true });
   try {
     for (const mount of managedMounts) {
-      connections.set(mount.path, await storageService.createManagedVolumeAccess({ reference: mount.reference, readOnly: mount.readOnly }));
+      signal?.throwIfAborted();
+      const connection = await storageService.createManagedVolumeAccess({ reference: mount.reference, readOnly: mount.readOnly });
+      if (signal?.aborted) {
+        void connection.dispose().catch(() => undefined);
+        signal.throwIfAborted();
+      }
+      connections.set(mount.path, connection);
     }
   } catch (error) {
-    await dispose().catch(() => undefined);
+    release();
     throw error;
+  } finally {
+    signal?.removeEventListener('abort', release);
   }
 
   function getConnection({ path }: { path: string }) {
@@ -94,17 +108,21 @@ export async function createManagedVolumeRemoteAccess({ mounts }: {
   };
 }
 
-export function observeManagedVolumeWorker({ worker, connection }: {
+export function observeManagedVolumeWorker({ worker, connection, onFailure }: {
   worker: Worker,
   connection: { remote: ManagedVolumeRemoteAccess | undefined, dispose(): Promise<void> },
+  onFailure?: ({ event }: { event: Event }) => void,
 }): () => void {
-  if (connection.remote === undefined) {
+  if (connection.remote === undefined && onFailure === undefined) {
     return () => {};
   }
-  const failed = (): void => {
-    void connection.dispose().catch(error => {
-      console.error('Failed to release managed volume writers after a worker failure', error);
-    });
+  const failed: EventListener = event => {
+    if (connection.remote !== undefined) {
+      void connection.dispose().catch(error => {
+        console.error('Failed to release managed volume writers after a worker failure', error);
+      });
+    }
+    onFailure?.({ event });
   };
   worker.addEventListener('error', failed);
   worker.addEventListener('messageerror', failed);

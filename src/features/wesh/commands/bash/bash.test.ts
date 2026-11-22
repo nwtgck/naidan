@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/features/wesh';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import { createTextShellSource, type ShellSource } from '@/features/wesh/shell/source';
@@ -9,7 +9,8 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
-import { createBashCommandDefinition, TEST_ONLY } from './index';
+import { createBashCommandDefinition } from './definition';
+import { TEST_ONLY } from './index';
 
 async function readRawShellSourceToText({ source }: {
   source: ShellSource,
@@ -167,7 +168,7 @@ bash -e -u -o pipefail -c 'printf "%s" "$1"' script-name value
   it('imports supported SHELLOPTS and BASHOPTS after command-line option processing', async () => {
     const { result, stderr } = await execute({
       script: `\
-SHELLOPTS=errexit:nounset:noexec:pipefail BASHOPTS=extglob:nullglob bash +e +u +n +o pipefail +O extglob -c 'true'
+SHELLOPTS=allexport:errexit:nounset:noexec:pipefail BASHOPTS=extglob:nullglob bash +a +e +u +n +o pipefail +O extglob -c 'true'
 `,
       stdin: '',
     });
@@ -177,6 +178,7 @@ SHELLOPTS=errexit:nounset:noexec:pipefail BASHOPTS=extglob:nullglob bash +e +u +
     expect(invocations).toHaveLength(1);
     expect(invocations[0]).toMatchObject({
       executionOptions: {
+        allexport: true,
         errexit: true,
         nounset: true,
         pipefail: true,
@@ -369,7 +371,7 @@ bash: line 0: definitely_unknown: invalid option name
     expect(invocations).toHaveLength(1);
     expect(invocations[0]).toMatchObject({
       source: { kind: 'handle' },
-      argv0: 'bash',
+      argv0: undefined,
       positionalArgs: ['one', 'two'],
     });
   });
@@ -411,9 +413,17 @@ printf 'ok\\n'
     expect(invocations).toHaveLength(0);
   });
 
-  it('detects Bash binary prefixes across short positioned reads', async () => {
+  it.each([
+    { scriptStart: 'a', label: 'a regular script' },
+    {
+      scriptStart: `\
+#!/bin/bash
+#`,
+      label: 'the first body line after a shebang',
+    },
+  ])('detects a binary prefix in $label across short positioned reads', async ({ scriptStart }) => {
     const bytes = new Uint8Array([
-      ...new TextEncoder().encode('a'.repeat(78)),
+      ...new TextEncoder().encode(scriptStart.padEnd(78, 'a')),
       0,
       0x0a,
     ]);
@@ -483,8 +493,17 @@ printf 'ok\\n'
     expect(capturedSourceTexts[0]).toBe('echo \0bad\n');
   });
 
-  it('replays a non-binary character-device prefix after sequential probing', async () => {
-    const sourceText = `#${'x'.repeat(100)}\nprintf 'from chardev\\n'\n`;
+  it.each([
+    { prefix: `#${'x'.repeat(100)}\n`, label: 'the first 80 bytes' },
+    {
+      prefix: `\
+#!/bin/bash
+# first body line
+`,
+      label: 'the shebang and first body line',
+    },
+  ])('replays the character-device bytes after checking $label', async ({ prefix }) => {
+    const sourceText = `${prefix}printf 'from chardev\\n'\n`;
     const chardevHandle = createTestCharacterDeviceHandleFromBytes({
       bytes: new TextEncoder().encode(sourceText),
     });
@@ -577,6 +596,67 @@ printf later
     expect((await execute({ script: 'bash /nul-at-byte-80.sh', stdin: '' })).result.exitCode)
       .toBe(23);
     expect(invocations).toHaveLength(2);
+  });
+
+  it.each([
+    { prefix: '#!/bin/bash -e', exitCode: 126 },
+    {
+      prefix: `\
+#!/bin/bash
+# first body line`,
+      exitCode: 126,
+    },
+    {
+      prefix: `\
+#!/bin/bash
+# first body line
+# second body line`,
+      exitCode: 23,
+    },
+    {
+      prefix: `\
+#!/bin/bash
+#`.padEnd(80, 'a'),
+      exitCode: 23,
+    },
+  ])('checks the first body line after a shebang within the 80-byte sample ($exitCode)', async ({ prefix, exitCode }) => {
+    const scriptFile = await rootHandle.getFileHandle('prefix.sh', { create: true });
+    const writable = await scriptFile.createWritable();
+    await writable.write(new TextEncoder().encode(`${prefix}\0\nprintf after\n`));
+    await writable.close();
+
+    const { result, stderr } = await execute({ script: 'bash /prefix.sh', stdin: '' });
+
+    expect(result.exitCode).toBe(exitCode);
+    if (exitCode === 126) {
+      expect(stderr.text).toBe('/prefix.sh: /prefix.sh: cannot execute binary file\n');
+      expect(invocations).toHaveLength(0);
+    } else {
+      expect(stderr.text).toBe('');
+      expect(invocations).toHaveLength(1);
+    }
+  });
+
+  it('closes a prepared script when the interpreter fails', async () => {
+    const handle = createTestReadHandleFromText({ text: 'printf ready\n' });
+    using close = vi.spyOn(handle, 'close');
+    wesh.vfs.registerSpecialFile({ path: '/script.sh', type: 'file', handler: () => handle });
+    const interpreterError = new DOMException('interpreter failed', 'NotFoundError');
+    wesh.registerCommand({
+      definition: createBashCommandDefinition({
+        executeShellInvocation: async ({ invocation }) => {
+          invocations.push(invocation);
+          throw interpreterError;
+        },
+      }),
+    });
+
+    const { result, stderr } = await execute({ script: 'bash /script.sh', stdin: '' });
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.text).toBe('wesh: NotFoundError: interpreter failed\n');
+    expect(invocations).toHaveLength(1);
+    expect(close).toHaveBeenCalledExactlyOnceWith();
   });
 
   it('keeps help handling in the bash command layer', async () => {

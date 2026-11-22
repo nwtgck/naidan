@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -6,6 +6,11 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+import { exportCmdCommandDefinition } from './definition';
+
+beforeAll(async () => {
+  await exportCmdCommandDefinition.loadShellBuiltin();
+});
 
 describe('wesh export', () => {
   let wesh: Wesh;
@@ -112,6 +117,21 @@ printf 'status=%s\n' "$?"
     });
 
     expect(stdout.text).toBe('1|1\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps a value assigned through -- after removing its export attribute', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+export -- KEEP=value
+export -n -- KEEP
+printf '%s\\n' "$KEEP"
+export -p`,
+    });
+
+    expect(stdout.text).toMatch(/^value\n/u);
+    expect(stdout.text).not.toContain('export KEEP');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

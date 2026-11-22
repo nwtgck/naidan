@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { lsCommandDefinition } from './definition';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -10,6 +11,10 @@ import {
 describe('wesh ls', () => {
   let wesh: Wesh;
   let rootHandle: MockFileSystemDirectoryHandle;
+
+  beforeAll(async () => {
+    await lsCommandDefinition.load();
+  });
 
   beforeEach(async () => {
     rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
@@ -390,6 +395,79 @@ ordering/a-dir:
     expect(all.stderr.text).toBe('');
     expect(hidden.result.exitCode).toBe(0);
     expect(all.result.exitCode).toBe(0);
+  });
+
+  it('sorts . and .. with other directory entries, including in reverse order', async () => {
+    for (const name of ['visible', '.hidden', '.!between', '!leading']) {
+      await writeFile({ path: `dir/${name}`, data: name });
+    }
+
+    for (const [options, expected] of [
+      ['-a', `\
+!leading
+.
+.!between
+..
+.hidden
+visible
+`],
+      ['-ar', `\
+visible
+.hidden
+..
+.!between
+.
+!leading
+`],
+      ['-A', `\
+!leading
+.!between
+.hidden
+visible
+`],
+    ] as const) {
+      const { result, stdout, stderr } = await execute({ script: `ls ${options} dir` });
+      expect(stdout.text, options).toBe(expected);
+      expect(stderr.text, options).toBe('');
+      expect(result.exitCode, options).toBe(0);
+    }
+  });
+
+  it('includes . and .. in size sorting', async () => {
+    await writeFile({ path: 'dir/large', data: 'x'.repeat(64 * 1024) });
+    await writeFile({ path: 'dir/.empty', data: '' });
+
+    const { result, stdout, stderr } = await execute({ script: 'ls -aS dir' });
+
+    expect(stdout.text).toBe(`\
+large
+.
+..
+.empty
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('shows the dot entries of a followed directory symlink without recursing into them', async () => {
+    await writeFile({ path: 'target/nested/child', data: 'child' });
+    await wesh.vfs.symlink({ path: '/alias', targetPath: 'target' });
+
+    const { result, stdout, stderr } = await execute({ script: 'ls -aRHF alias' });
+
+    expect(stdout.text).toBe(`\
+alias:
+./
+../
+nested/
+
+alias/nested:
+./
+../
+child
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('accepts canonical GNU long names for common short options', async () => {

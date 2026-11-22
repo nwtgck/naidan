@@ -1,6 +1,6 @@
 import { DEFAULT_FILE_CREATION_MASK, getOptionalCoreMethod } from '@/features/wesh/commands/_shared/core-capability';
 import { parseFilePermissionMode } from '@/features/wesh/commands/_shared/file-mode';
-import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
+import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 import type {
   WeshCommandContext,
   WeshCommandImplementation,
@@ -105,7 +105,7 @@ async function writeUmaskError({
 export const umaskCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     if (isStandaloneCommandHelpRequest({ args: context.args, acceptedForms: [['--help']] })) {
-      await writeCommandHelp({ context, command: 'umask' });
+      await writeCommandHelp({ context, command: 'umask', optionLines: [] });
       return { exitCode: 0 };
     }
     const parsedArguments = parseUmaskArguments({ args: context.args });

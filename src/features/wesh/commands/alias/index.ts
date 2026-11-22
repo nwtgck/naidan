@@ -1,9 +1,12 @@
-import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshBuiltinCommandContext, WeshShellBuiltinFunction, WeshCommandResult } from '@/features/wesh/types';
 import { formatAliasDefinition, isValidAliasName } from '@/features/wesh/commands/_shared/alias';
-import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
+import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 
-async function printAliases({ context }: { context: WeshCommandContext }): Promise<void> {
-  for (const alias of context.getAliases()) {
+async function printAliases({ context, aliases }: {
+  context: WeshBuiltinCommandContext,
+  aliases: readonly { name: string, value: string }[],
+}): Promise<void> {
+  for (const alias of aliases) {
     await context.text().print({
       text: formatAliasDefinition({
         name: alias.name,
@@ -13,13 +16,13 @@ async function printAliases({ context }: { context: WeshCommandContext }): Promi
   }
 }
 
-export const aliasCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const aliasCommandImplementation = {
+  fn: async ({ context, shell }): Promise<WeshCommandResult> => {
     if (isStandaloneCommandHelpRequest({
       args: context.args,
       acceptedForms: [['--help']],
     })) {
-      await writeCommandHelp({ context, command: 'alias' });
+      await writeCommandHelp({ context, command: 'alias', optionLines: [] });
       return { exitCode: 0 };
     }
 
@@ -49,9 +52,9 @@ export const aliasCommandImplementation: WeshCommandImplementation = {
       break;
     }
 
-    const aliasesBeforeOperands = context.getAliases();
+    const aliasesBeforeOperands = shell.getAliases();
     if (printAll) {
-      await printAliases({ context });
+      await printAliases({ context, aliases: aliasesBeforeOperands });
       // Bash skips every remaining operand when `-p` is used with an empty alias table.
       if (aliasesBeforeOperands.length === 0) {
         return { exitCode: 0 };
@@ -61,7 +64,7 @@ export const aliasCommandImplementation: WeshCommandImplementation = {
     const operands = context.args.slice(operandIndex);
     if (operands.length === 0) {
       if (!printAll) {
-        await printAliases({ context });
+        await printAliases({ context, aliases: aliasesBeforeOperands });
       }
       return { exitCode: 0 };
     }
@@ -77,11 +80,11 @@ export const aliasCommandImplementation: WeshCommandImplementation = {
           exitCode = 1;
           continue;
         }
-        context.setAlias({ name, value });
+        shell.setAlias({ name, value });
         continue;
       }
 
-      const existing = context.getAliases().find(entry => entry.name === arg);
+      const existing = shell.getAliases().find(entry => entry.name === arg);
       if (existing === undefined) {
         await context.text().error({ text: `alias: ${arg}: not found\n` });
         exitCode = 1;
@@ -98,7 +101,7 @@ export const aliasCommandImplementation: WeshCommandImplementation = {
 
     return { exitCode };
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'getAliases' | 'setAlias'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

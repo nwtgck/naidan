@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -253,6 +253,64 @@ printf '%s:%s:%s\n' "$(readlink destination/nested/link)" "$(readlink destinatio
     expect(execution.stdout.text).toBe('../../source/file:first:second\n');
     expect(execution.stderr.text).toBe('');
     expect(execution.result.exitCode).toBe(0);
+  });
+
+  it('makes a relative link from the physical parent to the physical target', async () => {
+    const execution = await execute({
+      script: `\
+mkdir -p tree/inner
+printf x > tree/payload
+ln -s tree/inner up
+ln -s tree/payload payload-link
+ln -sr payload-link up/new
+readlink tree/inner/new
+cat up/new
+`,
+    });
+
+    expect(execution.result.exitCode).toBe(0);
+    expect(execution.stderr.text).toBe('');
+    expect(execution.stdout.text).toBe(`\
+../payload
+x`);
+  });
+
+  it('makes a relative link when the target is in an unreadable directory', async () => {
+    await rootHandle.getDirectoryHandle('private', { create: true });
+    await rootHandle.getDirectoryHandle('links', { create: true });
+    const getDirectoryHandle = rootHandle.getDirectoryHandle.bind(rootHandle);
+    using lookup = vi.spyOn(rootHandle, 'getDirectoryHandle').mockImplementation(async (name, options) => {
+      if (name === 'private') {
+        throw new DOMException('Directory cannot be read', 'NotAllowedError');
+      }
+      return getDirectoryHandle(name, options);
+    });
+
+    const execution = await execute({ script: 'ln -sr private/file links/new' });
+    expect(execution.result.exitCode).toBe(0);
+    expect(execution.stderr.text).toBe('');
+    expect(lookup).toHaveBeenCalledWith('private');
+    expect(await wesh.vfs.readlink({ path: '/links/new' })).toBe('../private/file');
+  });
+
+  it('uses the same destination parent for relative calculation and creation', async () => {
+    await wesh.vfs.mkdir({ path: '/first/inner', recursive: true });
+    await wesh.vfs.mkdir({ path: '/second', recursive: true });
+    await wesh.vfs.symlink({ path: '/up', targetPath: 'first/inner' });
+    const resolve = wesh.vfs.resolve.bind(wesh.vfs);
+    using redirect = vi.spyOn(wesh.vfs, 'resolve').mockImplementationOnce(async options => {
+      const result = await resolve(options);
+      await wesh.vfs.unlink({ path: '/up' });
+      await wesh.vfs.symlink({ path: '/up', targetPath: 'second' });
+      return result;
+    });
+
+    const execution = await execute({ script: 'ln -sr target up/new' });
+    expect(execution.result.exitCode).toBe(0);
+    expect(execution.stderr.text).toBe('');
+    expect(redirect).toHaveBeenCalledWith({ path: '/up' });
+    expect(await wesh.vfs.readlink({ path: '/first/inner/new' })).toBe('../../target');
+    await expect(wesh.vfs.lstat({ path: '/second/new' })).rejects.toThrow();
   });
 
   it('continues creating later links after one destination already exists', async () => {

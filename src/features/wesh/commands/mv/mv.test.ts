@@ -1,15 +1,21 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { METADATA_DIR, WESH_SYSTEM_DIR } from '@/features/wesh/dto';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+import { mvCommandDefinition } from './definition';
 
 describe('wesh mv', () => {
   let wesh: Wesh;
   let rootHandle: MockFileSystemDirectoryHandle;
+
+  beforeAll(async () => {
+    await mvCommandDefinition.load();
+  });
 
   beforeEach(async () => {
     rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
@@ -160,6 +166,42 @@ describe('wesh mv', () => {
     expect((await execute({ script: 'cat dest.txt' })).stdout.text).toBe('dest');
   });
 
+  it.each([
+    { options: '-n', exitCode: 0, diagnostic: '' },
+    { options: '--update=none', exitCode: 0, diagnostic: '' },
+    { options: '--update=none-fail', exitCode: 1, diagnostic: "mv: source: not replacing 'dest'\n" },
+    { options: '-i', exitCode: 1, diagnostic: 'mv: source: File exists: /dest\n' },
+    { options: '-b', exitCode: 1, diagnostic: 'mv: source: File exists: /dest\n' },
+  ])('preserves a destination that appears during mv $options', async ({ options, exitCode, diagnostic }) => {
+    await writeFile({ path: 'source', data: 'source data' });
+    const rename = wesh.vfs.rename.bind(wesh.vfs);
+    using createDestination = vi.spyOn(wesh.vfs, 'rename').mockImplementationOnce(async request => {
+      await writeFile({ path: 'dest', data: 'concurrent data' });
+      await rename(request);
+    });
+
+    const moved = await execute({ script: `mv -v ${options} source dest` });
+
+    expect(createDestination).toHaveBeenCalledTimes(1);
+    expect(moved.result.exitCode).toBe(exitCode);
+    expect(moved.stdout.text).toBe('');
+    expect(moved.stderr.text).toBe(diagnostic);
+    await expect(rootHandle.getFileHandle('source').then(handle => handle.getFile()).then(file => file.text())).resolves.toBe('source data');
+    await expect(rootHandle.getFileHandle('dest').then(handle => handle.getFile()).then(file => file.text())).resolves.toBe('concurrent data');
+  });
+
+  it('moves a file with -n when the destination stays free', async () => {
+    await writeFile({ path: 'source', data: 'source data' });
+
+    const moved = await execute({ script: 'mv -nv source dest' });
+
+    expect(moved.result.exitCode).toBe(0);
+    expect(moved.stdout.text).toBe("renamed 'source' -> 'dest'\n");
+    expect(moved.stderr.text).toBe('');
+    await expect(rootHandle.getFileHandle('source')).rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect(rootHandle.getFileHandle('dest').then(handle => handle.getFile()).then(file => file.text())).resolves.toBe('source data');
+  });
+
   it('supports interactive overwrite decisions and returns non-zero when declined', async () => {
     await writeFile({ path: 'source.txt', data: 'source\n' });
     await writeFile({ path: 'dest.txt', data: 'dest\n' });
@@ -177,6 +219,42 @@ describe('wesh mv', () => {
     expect(accepted.stderr.text).toContain('overwrite');
     expect(afterAccept.stdout.text).toBe('source\n');
     expect(afterAccept.result.exitCode).toBe(0);
+  });
+
+  it.each(['source', 'dest'])('preserves a different %s after interactive confirmation', async changedPath => {
+    await writeFile({ path: 'source', data: 'source data' });
+    await writeFile({ path: 'dest', data: 'destination data' });
+    const rename = wesh.vfs.rename.bind(wesh.vfs);
+    using replaceFile = vi.spyOn(wesh.vfs, 'rename').mockImplementationOnce(async request => {
+      await rootHandle.removeEntry(changedPath);
+      await writeFile({ path: changedPath, data: 'concurrent data' });
+      await rename(request);
+    });
+
+    const moved = await execute({ script: 'mv -iv source dest', stdin: 'y\n' });
+
+    expect(replaceFile).toHaveBeenCalledTimes(1);
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stdout.text).toBe('');
+    const role = changedPath === 'source' ? 'Source' : 'Destination';
+    expect(moved.stderr.text).toBe(`mv: overwrite 'dest'? mv: source: ${role} entry changed: /${changedPath}\n`);
+    await expect(rootHandle.getFileHandle('source').then(handle => handle.getFile()).then(file => file.text()))
+      .resolves.toBe(changedPath === 'source' ? 'concurrent data' : 'source data');
+    await expect(rootHandle.getFileHandle('dest').then(handle => handle.getFile()).then(file => file.text()))
+      .resolves.toBe(changedPath === 'dest' ? 'concurrent data' : 'destination data');
+  });
+
+  it('can move a confirmed symbolic link over another symbolic link', async () => {
+    await wesh.vfs.symlink({ path: '/source', targetPath: 'source-target' });
+    await wesh.vfs.symlink({ path: '/dest', targetPath: 'destination-target' });
+
+    const moved = await execute({ script: 'mv -i source dest', stdin: 'y\n' });
+
+    expect(moved.result.exitCode).toBe(0);
+    expect(moved.stdout.text).toBe('');
+    expect(moved.stderr.text).toBe("mv: overwrite 'dest'? ");
+    await expect(wesh.vfs.readlink({ path: '/dest' })).resolves.toBe('source-target');
+    await expect(wesh.vfs.lstat({ path: '/source' })).rejects.toMatchObject({ name: 'NotFoundError' });
   });
 
   it('rejects moving a file onto itself', async () => {
@@ -448,6 +526,285 @@ cat /root-dest.txt`,
     expect(contents.result.exitCode).toBe(0);
   });
 
+  it.each([
+    { options: '-b', sourcePath: '/ro/source', backupName: 'dest~' },
+    { options: '--backup=numbered', sourcePath: '/through/source', backupName: 'dest.~1~' },
+  ])('keeps both destination and backup when $options cannot move $sourcePath', async ({ options, sourcePath, backupName }) => {
+    const readOnlyRoot = new MockFileSystemDirectoryHandle({ name: 'read-only' });
+    const source = await readOnlyRoot.getFileHandle('source', { create: true });
+    const writable = await source.createWritable();
+    await writable.write('new');
+    await writable.close();
+    await wesh.vfs.mount({ path: '/ro', handle: readOnlyRoot, readOnly: true });
+    await wesh.vfs.symlink({ path: '/through', targetPath: '/ro' });
+    await writeFile({ path: 'dest', data: 'old' });
+    await writeFile({ path: backupName, data: 'previous backup' });
+    const destination = await rootHandle.getFileHandle('dest');
+    const backup = await rootHandle.getFileHandle(backupName);
+
+    const moved = await execute({ script: `mv ${options} ${sourcePath} dest` });
+
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stdout.text).toBe('');
+    expect(moved.stderr.text).toBe(`mv: ${sourcePath}: Read-only source: ${sourcePath}\n`);
+    await expect(rootHandle.getFileHandle('dest')).resolves.toBe(destination);
+    await expect(rootHandle.getFileHandle(backupName)).resolves.toBe(backup);
+    await expect((await destination.getFile()).text()).resolves.toBe('old');
+    await expect((await backup.getFile()).text()).resolves.toBe('previous backup');
+    await expect((await source.getFile()).text()).resolves.toBe('new');
+    await expect(rootHandle.getFileHandle('dest.~2~')).rejects.toMatchObject({ name: 'NotFoundError' });
+  });
+
+  it('backs up the destination when moving a writable link to a read-only file', async () => {
+    const readOnlyRoot = new MockFileSystemDirectoryHandle({ name: 'read-only' });
+    await readOnlyRoot.getFileHandle('source', { create: true });
+    await wesh.vfs.mount({ path: '/ro', handle: readOnlyRoot, readOnly: true });
+    await wesh.vfs.symlink({ path: '/link', targetPath: '/ro/source' });
+    await writeFile({ path: 'dest', data: 'old' });
+
+    const moved = await execute({ script: 'mv -b link dest' });
+
+    expect(moved.result.exitCode).toBe(0);
+    expect(moved.stderr.text).toBe('');
+    await expect(wesh.vfs.readlink({ path: '/dest' })).resolves.toBe('/ro/source');
+    await expect(wesh.vfs.lstat({ path: '/link' })).rejects.toMatchObject({ name: 'NotFoundError' });
+    const backup = await rootHandle.getFileHandle('dest~');
+    await expect((await backup.getFile()).text()).resolves.toBe('old');
+  });
+
+  it('keeps an existing backup when publishing its replacement fails', async () => {
+    await writeFile({ path: 'source', data: 'new' });
+    await writeFile({ path: 'dest', data: 'old' });
+    await writeFile({ path: 'dest~', data: 'previous backup' });
+    const backup = await rootHandle.getFileHandle('dest~');
+    using _failBackup = vi.spyOn(backup, 'createWritable').mockRejectedValueOnce(new Error('backup publication failed'));
+
+    const moved = await execute({ script: 'mv -b source dest' });
+
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stderr.text).toContain('backup publication failed');
+    expect(await (await (await rootHandle.getFileHandle('source')).getFile()).text()).toBe('new');
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('old');
+    expect(await (await (await rootHandle.getFileHandle('dest~')).getFile()).text()).toBe('previous backup');
+  });
+
+  it('leaves the destination and backup intact while the source has an active append writer', async () => {
+    await writeFile({ path: 'source', data: 'new' });
+    await writeFile({ path: 'dest', data: 'old' });
+    await writeFile({ path: 'dest~', data: 'previous backup' });
+    const writer = await wesh.vfs.open({
+      path: '/source',
+      flags: { access: 'write', creation: 'never', truncate: 'preserve', append: 'append' },
+    });
+    try {
+      await writer.write({ buffer: new TextEncoder().encode('+pending') });
+
+      const moved = await execute({ script: 'mv -b source dest' });
+
+      expect(moved.result.exitCode).toBe(1);
+      expect(moved.stdout.text).toBe('');
+      expect(moved.stderr.text).toContain('File has an active writer: /source');
+      expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('old');
+      expect(await (await (await rootHandle.getFileHandle('dest~')).getFile()).text()).toBe('previous backup');
+    } finally {
+      await writer.close();
+    }
+    expect(await (await (await rootHandle.getFileHandle('source')).getFile()).text()).toBe('new+pending');
+  });
+
+  it('restores the old destination if installing the source fails', async () => {
+    await writeFile({ path: 'source', data: 'new' });
+    await writeFile({ path: 'dest', data: 'old' });
+    const getFileHandle = rootHandle.getFileHandle.bind(rootHandle);
+    let failedInstallation = false;
+    using _failInstallation = vi.spyOn(rootHandle, 'getFileHandle').mockImplementation(async (name, options) => {
+      if (name === 'dest' && options?.create && !failedInstallation) {
+        failedInstallation = true;
+        throw new Error('source move failed');
+      }
+      return getFileHandle(name, options);
+    });
+
+    const moved = await execute({ script: 'mv -b source dest' });
+
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stderr.text).toContain('source move failed');
+    expect(await (await (await rootHandle.getFileHandle('source')).getFile()).text()).toBe('new');
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('old');
+    await expect(rootHandle.getFileHandle('dest~')).rejects.toMatchObject({ name: 'NotFoundError' });
+  });
+
+  it('preserves a new destination created after the backup step', async () => {
+    await writeFile({ path: 'source', data: 'new' });
+    await writeFile({ path: 'dest', data: 'old' });
+    const removeEntry = rootHandle.removeEntry.bind(rootHandle);
+    using _createDestination = vi.spyOn(rootHandle, 'removeEntry').mockImplementation(async (name, options) => {
+      await removeEntry(name, options);
+      if (name === 'dest') {
+        await writeFile({ path: 'dest', data: 'unrelated' });
+      }
+    });
+
+    const moved = await execute({ script: 'mv -b source dest' });
+
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stderr.text).toContain("Could not replace '/dest' or restore from '/dest~'");
+    expect(await (await (await rootHandle.getFileHandle('source')).getFile()).text()).toBe('new');
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('unrelated');
+    expect(await (await (await rootHandle.getFileHandle('dest~')).getFile()).text()).toBe('old');
+  });
+
+  it('preserves a different source after the source entry was checked', async () => {
+    await writeFile({ path: 'source', data: 'new' });
+    await writeFile({ path: 'dest', data: 'old' });
+    const replaceEntry = wesh.vfs.replaceEntry.bind(wesh.vfs);
+    using _changeSource = vi.spyOn(wesh.vfs, 'replaceEntry').mockImplementationOnce(async options => {
+      await rootHandle.removeEntry('source');
+      await writeFile({ path: 'source', data: 'unrelated' });
+      return replaceEntry(options);
+    });
+
+    const moved = await execute({ script: 'mv -b source dest' });
+
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stderr.text).toContain('Entry changed: /source');
+    expect(await (await (await rootHandle.getFileHandle('source')).getFile()).text()).toBe('unrelated');
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('old');
+    await expect(rootHandle.getFileHandle('dest~')).rejects.toMatchObject({ name: 'NotFoundError' });
+  });
+
+  it('preserves a replaced symlink backing file after the source entry was checked', async () => {
+    await writeFile({ path: 'dest', data: 'old' });
+    await wesh.vfs.symlink({ path: '/source', targetPath: 'payload' });
+    const replaceEntry = wesh.vfs.replaceEntry.bind(wesh.vfs);
+    using _changeSource = vi.spyOn(wesh.vfs, 'replaceEntry').mockImplementationOnce(async options => {
+      await rootHandle.removeEntry('source');
+      await writeFile({ path: 'source', data: 'unrelated' });
+      return replaceEntry(options);
+    });
+
+    const moved = await execute({ script: 'mv -b source dest' });
+
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stderr.text).toContain('Entry changed: /source');
+    expect(await (await (await rootHandle.getFileHandle('source')).getFile()).text()).toBe('unrelated');
+    expect(await wesh.vfs.readlink({ path: '/source' })).toBe('payload');
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('old');
+    await expect(rootHandle.getFileHandle('dest~')).rejects.toMatchObject({ name: 'NotFoundError' });
+  });
+
+  it('keeps a replacement at the backup name after the backup entry was checked', async () => {
+    await writeFile({ path: 'source', data: 'new' });
+    await writeFile({ path: 'dest', data: 'old' });
+    await writeFile({ path: 'dest~', data: 'previous backup' });
+    const replaceEntry = wesh.vfs.replaceEntry.bind(wesh.vfs);
+    using _changeBackup = vi.spyOn(wesh.vfs, 'replaceEntry').mockImplementationOnce(async options => {
+      await rootHandle.removeEntry('dest~');
+      await writeFile({ path: 'dest~', data: 'unrelated' });
+      return replaceEntry(options);
+    });
+
+    const moved = await execute({ script: 'mv -b source dest' });
+
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stderr.text).toContain('Destination entry changed');
+    expect(await (await (await rootHandle.getFileHandle('source')).getFile()).text()).toBe('new');
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('old');
+    expect(await (await (await rootHandle.getFileHandle('dest~')).getFile()).text()).toBe('unrelated');
+  });
+
+  it.each(['source', '/ro'])('leaves the destination and backup in place if directory transfer of %s is unavailable', async sourcePath => {
+    const source = await rootHandle.getDirectoryHandle('source', { create: true });
+    await wesh.vfs.mount({ path: '/ro', handle: source, readOnly: true });
+    await writeFile({ path: 'dest', data: 'old' });
+    await writeFile({ path: 'dest~', data: 'previous backup' });
+
+    const moved = await execute({ script: `mv -bT ${sourcePath} dest` });
+
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stderr.text).toContain('mtime mutation support');
+    expect(await rootHandle.getDirectoryHandle('source')).toBeDefined();
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('old');
+    expect(await (await (await rootHandle.getFileHandle('dest~')).getFile()).text()).toBe('previous backup');
+  });
+
+  const noDirectoryTransfer = 'mv: source: cross-filesystem move requires Wesh core mtime mutation support\n';
+
+  it.each([
+    { description: 'replacing an empty directory', args: '-T source dest', stdin: '', exitCode: 1, diagnostic: noDirectoryTransfer },
+    { description: 'confirming the replacement', args: '-iT source dest', stdin: 'y\n', exitCode: 1, diagnostic: `mv: overwrite 'dest'? ${noDirectoryTransfer}` },
+    { description: 'declining the replacement', args: '-iT source dest', stdin: 'n\n', exitCode: 1, diagnostic: "mv: overwrite 'dest'? " },
+    { description: 'skipping an existing directory', args: '-nT source dest', stdin: '', exitCode: 0, diagnostic: '' },
+    { description: 'moving onto the same directory', args: '-iT source source', stdin: 'y\n', exitCode: 1, diagnostic: "mv: source: 'source' and 'source' are the same file\n" },
+  ])('preserves the original directories when $description', async ({ args, stdin, exitCode, diagnostic }) => {
+    const source = await rootHandle.getDirectoryHandle('source', { create: true });
+    const destination = await rootHandle.getDirectoryHandle('dest', { create: true });
+    await writeFile({ path: 'source/member', data: 'source data' });
+    using removeEntry = vi.spyOn(rootHandle, 'removeEntry');
+
+    const moved = await execute({ script: `mv ${args}`, stdin });
+
+    expect(moved.result.exitCode).toBe(exitCode);
+    expect(moved.stdout.text).toBe('');
+    expect(moved.stderr.text).toBe(diagnostic);
+    expect(removeEntry).not.toHaveBeenCalled();
+    await expect(rootHandle.getDirectoryHandle('dest')).resolves.toBe(destination);
+    await expect(rootHandle.getDirectoryHandle('source')).resolves.toBe(source);
+    await expect(source.getFileHandle('member').then(handle => handle.getFile()).then(file => file.text())).resolves.toBe('source data');
+    await expect(destination.keys().next()).resolves.toMatchObject({ done: true });
+  });
+
+  it('reports a collision with the source or destination through another mount of the same directory', async () => {
+    await wesh.vfs.mount({ path: '/alias', handle: rootHandle as unknown as FileSystemDirectoryHandle, readOnly: false });
+    await writeFile({ path: 'dest', data: 'old' });
+    await writeFile({ path: 'dest~', data: 'source in backup slot' });
+
+    const sameFile = await execute({ script: 'mv -b dest /alias/dest' });
+    const sameBackup = await execute({ script: 'mv -b /alias/dest~ dest' });
+
+    expect(sameFile.result.exitCode).toBe(1);
+    expect(sameFile.stderr.text).toContain('are the same file');
+    expect(sameBackup.result.exitCode).toBe(1);
+    expect(sameBackup.stderr.text).toContain('might destroy source');
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('old');
+    expect(await (await (await rootHandle.getFileHandle('dest~')).getFile()).text()).toBe('source in backup slot');
+  });
+
+  it('uses a valid backup name when the requested suffix contains a slash', async () => {
+    await writeFile({ path: 'source', data: 'new' });
+    await writeFile({ path: 'dest', data: 'old' });
+
+    const moved = await execute({ script: 'mv -b --suffix=/../dest source dest' });
+
+    expect(moved.result.exitCode).toBe(0);
+    expect(moved.stderr.text).toBe('');
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('new');
+    expect(await (await (await rootHandle.getFileHandle('dest~')).getFile()).text()).toBe('old');
+  });
+
+  it('preserves a numbered backup created after confirming its name was free', async () => {
+    await writeFile({ path: 'source', data: 'new' });
+    await writeFile({ path: 'dest', data: 'old' });
+    await writeFile({ path: 'dest.~1~', data: 'previous backup' });
+    const replaceEntry = wesh.vfs.replaceEntry.bind(wesh.vfs);
+    using createBackup = vi.spyOn(wesh.vfs, 'replaceEntry').mockImplementationOnce(async options => {
+      expect(options.backupPath).toBe('/dest.~2~');
+      expect(options.expectedBackup).toEqual({ entry: undefined });
+      await writeFile({ path: 'dest.~2~', data: 'concurrent backup' });
+      return replaceEntry(options);
+    });
+
+    const moved = await execute({ script: 'mv --backup=numbered source dest' });
+
+    expect(createBackup).toHaveBeenCalledTimes(1);
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stderr.text).toContain('File exists');
+    expect(await (await (await rootHandle.getFileHandle('source')).getFile()).text()).toBe('new');
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('old');
+    expect(await (await (await rootHandle.getFileHandle('dest.~1~')).getFile()).text()).toBe('previous backup');
+    expect(await (await (await rootHandle.getFileHandle('dest.~2~')).getFile()).text()).toBe('concurrent backup');
+  });
+
   it('supports GNU backup controls, numbered gaps, and VERSION_CONTROL', async () => {
     await writeFile({ path: 'source-numbered.txt', data: 'new-numbered' });
     await writeFile({ path: 'dest-numbered.txt', data: 'old-numbered' });
@@ -598,19 +955,94 @@ cat /root-dest.txt`,
     expect((await wesh.vfs.lstat({ path: '/fifo-dest~' })).type).toBe('fifo');
   });
 
-  it('preserves GNU symlink behavior when the source aliases the selected backup path', async () => {
+  it.each(['dest~', '/alias/dest~'])('keeps the destination when %s is a symlink at the backup name', async source => {
     await writeFile({ path: 'dest', data: 'OLD' });
     await writeFile({ path: 'payload', data: 'NEW' });
     await wesh.vfs.symlink({ path: '/dest~', targetPath: 'payload' });
+    await wesh.vfs.mount({ path: '/alias', handle: rootHandle as unknown as FileSystemDirectoryHandle, readOnly: false });
 
-    const moved = await execute({ script: 'mv -b dest~ dest' });
+    const destination = await rootHandle.getFileHandle('dest');
+    const moved = await execute({ script: `mv -bv ${source} dest` });
 
-    expect(moved.stdout.text).toBe('');
+    expect(moved.stdout.text).toBe(`renamed '${source}' -> 'dest' (backup: 'dest~')\n`);
     expect(moved.stderr.text).toBe('');
     expect(moved.result.exitCode).toBe(0);
     expect((await execute({ script: 'cat dest' })).stdout.text).toBe('OLD');
     expect((await execute({ script: 'cat payload' })).stdout.text).toBe('NEW');
+    expect(await rootHandle.getFileHandle('dest')).toBe(destination);
     await expect(wesh.vfs.lstat({ path: '/dest~' })).rejects.toThrow();
+  });
+
+  it('keeps the symlink at the backup name when the destination changes', async () => {
+    await writeFile({ path: 'dest', data: 'OLD' });
+    await wesh.vfs.symlink({ path: '/dest~', targetPath: 'payload' });
+    const resolveEntry = wesh.vfs.resolveEntry.bind(wesh.vfs);
+    let backupResolutions = 0;
+    vi.spyOn(wesh.vfs, 'resolveEntry').mockImplementation(async options => {
+      const entry = await resolveEntry(options);
+      if (options.path === '/dest~' && ++backupResolutions === 2) {
+        await rootHandle.removeEntry('dest');
+        await writeFile({ path: 'dest', data: 'unrelated' });
+      }
+      return entry;
+    });
+
+    const moved = await execute({ script: 'mv -b dest~ dest' });
+
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stderr.text).toContain('Destination entry changed');
+    expect(await wesh.vfs.readlink({ path: '/dest~' })).toBe('payload');
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('unrelated');
+  });
+
+  it('keeps the symlink at the backup name when a different rename moves the destination away', async () => {
+    await writeFile({ path: 'dest', data: 'OLD' });
+    await wesh.vfs.symlink({ path: '/dest~', targetPath: 'payload' });
+    const unlink = wesh.vfs.unlink.bind(wesh.vfs);
+    vi.spyOn(wesh.vfs, 'unlink').mockImplementationOnce(async options => {
+      await wesh.vfs.rename({ oldPath: '/dest', newPath: '/moved' });
+      await unlink(options);
+    });
+
+    const moved = await execute({ script: 'mv -b dest~ dest' });
+
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stderr.text).toContain('Destination entry changed');
+    expect(await wesh.vfs.readlink({ path: '/dest~' })).toBe('payload');
+    expect(await (await (await rootHandle.getFileHandle('moved')).getFile()).text()).toBe('OLD');
+  });
+
+  it('keeps a new file created at the backup name after the symlink sidecar is removed', async () => {
+    await writeFile({ path: 'dest', data: 'OLD' });
+    await wesh.vfs.symlink({ path: '/dest~', targetPath: 'payload' });
+    const system = await rootHandle.getDirectoryHandle(WESH_SYSTEM_DIR);
+    const metadata = await system.getDirectoryHandle(METADATA_DIR);
+    const removeEntry = metadata.removeEntry.bind(metadata);
+    vi.spyOn(metadata, 'removeEntry').mockImplementationOnce(async name => {
+      await removeEntry(name);
+      await rootHandle.removeEntry('dest~');
+      await writeFile({ path: 'dest~', data: 'unrelated' });
+    });
+
+    const moved = await execute({ script: 'mv -b dest~ dest' });
+
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stderr.text).toContain('Source backing changed');
+    expect(await (await (await rootHandle.getFileHandle('dest~')).getFile()).text()).toBe('unrelated');
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('OLD');
+  });
+
+  it('keeps the symlink at a backup name reached through a read-only destination mount', async () => {
+    await writeFile({ path: 'dest', data: 'OLD' });
+    await wesh.vfs.symlink({ path: '/dest~', targetPath: 'payload' });
+    await wesh.vfs.mount({ path: '/ro', handle: rootHandle as unknown as FileSystemDirectoryHandle, readOnly: true });
+
+    const moved = await execute({ script: 'mv -b dest~ /ro/dest' });
+
+    expect(moved.result.exitCode).toBe(1);
+    expect(moved.stderr.text).toContain('Read-only destination');
+    expect(await wesh.vfs.readlink({ path: '/dest~' })).toBe('payload');
+    expect(await (await (await rootHandle.getFileHandle('dest')).getFile()).text()).toBe('OLD');
   });
 
   it('prints relative destination paths for verbose target-directory moves', async () => {

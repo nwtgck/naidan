@@ -21,6 +21,7 @@ describe('wesh date', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   async function writeFile({
@@ -300,6 +301,18 @@ describe('wesh date', () => {
     }
   });
 
+  it('parses ASCII-padded ISO dates independently of the host timezone with -u', async () => {
+    vi.stubEnv('TZ', 'Asia/Tokyo');
+
+    const { result, stdout, stderr } = await execute({
+      script: "date -u -d ' 1970-01-01 ' '+%F|%s'",
+    });
+
+    expect(stdout.text).toBe('1970-01-01|0\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('parses an epoch date operand', async () => {
     const { result, stdout, stderr } = await execute({
       script: "date -u -d @0 '+%Y-%m-%dT%H:%M:%S%z'",
@@ -435,6 +448,30 @@ describe('wesh date', () => {
     expect(invalidDate.result.exitCode).toBe(0);
     expect(invalidDate.stdout.text).not.toBe('');
     expect(invalidDate.stderr.text).toBe('');
+  });
+
+  it('keeps the earlier error across invalid options and format selections', async () => {
+    const syntaxFirst = await execute({ script: 'date --unknown -Ibogus' });
+    const precisionFirst = await execute({ script: 'date -Ibogus --unknown' });
+    const conflictWithinBundle = await execute({ script: 'date -RRx' });
+
+    expect(syntaxFirst.result.exitCode).toBe(1);
+    expect(syntaxFirst.stdout.text).toBe('');
+    expect(syntaxFirst.stderr.text).toContain("date: unrecognized option '--unknown'");
+    expect(precisionFirst.result.exitCode).toBe(1);
+    expect(precisionFirst.stdout.text).toBe('');
+    expect(precisionFirst.stderr.text).toBe("date: invalid argument 'bogus' for '--iso-8601'\n");
+    expect(conflictWithinBundle.result.exitCode).toBe(1);
+    expect(conflictWithinBundle.stdout.text).toBe('');
+    expect(conflictWithinBundle.stderr.text).toBe('date: multiple output formats specified\n');
+  });
+
+  it.each(['--utc', '--help'])('rejects a value for the flag %s', async option => {
+    const { result, stdout, stderr } = await execute({ script: 'date ' + option + '=extra' });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("date: option '" + option + "' doesn't allow an argument");
   });
 
   it('preserves fractional epoch nanoseconds in %N formats', async () => {

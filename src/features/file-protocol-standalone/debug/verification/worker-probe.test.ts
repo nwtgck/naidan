@@ -337,7 +337,7 @@ home
 });
 
 describe('Wesh file probe cleanup', () => {
-  it('disposes the execution and remote after a successful real command lifecycle', async () => {
+  it('disposes the remote after a successful command', async () => {
     const events: string[] = [];
     const stdout = new TextEncoder().encode(`\
 bin
@@ -347,17 +347,10 @@ home
       init: vi.fn(async () => {
         events.push('init');
       }),
-      startExecution: vi.fn(async (_request, onEvent) => {
-        events.push('start');
+      execute: vi.fn(async (_request, onEvent) => {
+        events.push('execute');
         await onEvent?.({ type: 'stdout', buffer: stdout });
-        return { executionId: 'execution-1' };
-      }),
-      awaitExecution: vi.fn(async () => {
-        events.push('await');
         return { exitCode: 0 };
-      }),
-      disposeExecution: vi.fn(async () => {
-        events.push('dispose-execution');
       }),
       dispose: vi.fn(async () => {
         events.push('dispose');
@@ -372,24 +365,20 @@ home
 `,
       stderr: '',
     });
-    expect(events).toEqual(['init', 'start', 'await', 'dispose-execution', 'dispose']);
+    expect(events).toEqual(['init', 'execute', 'dispose']);
   });
 
-  it('preserves an await failure while still disposing execution and remote', async () => {
-    const disposeExecution = vi.fn(async () => {});
+  it('preserves a command failure while still disposing the remote', async () => {
     const dispose = vi.fn(async () => {});
     const worker = {
       init: vi.fn(async () => {}),
-      startExecution: vi.fn(async () => ({ executionId: 'execution-2' })),
-      awaitExecution: vi.fn(async () => {
-        throw new Error('synthetic await failure');
+      execute: vi.fn(async () => {
+        throw new Error('synthetic command failure');
       }),
-      disposeExecution,
       dispose,
     } as unknown as IWeshWorker;
 
-    await expect(TEST_ONLY.runWeshCommandProbeWithRemote({ wesh: asRemoteWesh(worker) })).rejects.toThrow('synthetic await failure');
-    expect(disposeExecution).toHaveBeenCalledWith({ request: { executionId: 'execution-2' } });
+    await expect(TEST_ONLY.runWeshCommandProbeWithRemote({ wesh: asRemoteWesh(worker) })).rejects.toThrow('synthetic command failure');
     expect(dispose).toHaveBeenCalledOnce();
   });
 });

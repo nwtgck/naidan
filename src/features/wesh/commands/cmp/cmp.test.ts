@@ -73,6 +73,28 @@ describe('wesh cmp', () => {
     expect(helpFirst.stderr.text).toBe('');
   });
 
+  it('keeps help and version spellings claimed by required option values', async () => {
+    const limit = await execute({ script: 'cmp -n --help' });
+    const skip = await execute({ script: 'cmp -i --version' });
+
+    expect(limit.result.exitCode).toBe(2);
+    expect(limit.stdout.text).toBe('');
+    expect(limit.stderr.text).toContain("cmp: invalid --bytes value '--help'");
+    expect(skip.result.exitCode).toBe(2);
+    expect(skip.stdout.text).toBe('');
+    expect(skip.stderr.text).toContain("cmp: invalid --ignore-initial value '--version'");
+  });
+
+  it('reports the first syntax or byte-count error in argument order', async () => {
+    const limitFirst = await execute({ script: 'cmp -n bad --unknown' });
+    const syntaxFirst = await execute({ script: 'cmp --unknown -i bad' });
+
+    expect(limitFirst.result.exitCode).toBe(2);
+    expect(limitFirst.stderr.text).toContain("cmp: invalid --bytes value 'bad'");
+    expect(syntaxFirst.result.exitCode).toBe(2);
+    expect(syntaxFirst.stderr.text).toContain("cmp: unrecognized option '--unknown'");
+  });
+
   it('prints help and version information', async () => {
     const help = await execute({ script: 'cmp --help' });
     const version = await execute({ script: 'cmp --version' });
@@ -99,6 +121,46 @@ describe('wesh cmp', () => {
     expect(versionThenHelp.stdout.text).toBe('cmp (wesh)\n');
     expect(versionThenHelp.stderr.text).toBe('');
     expect(versionThenHelp.result.exitCode).toBe(0);
+  });
+
+  it('stops within a short bundle at the version option', async () => {
+    const versionFirst = await execute({ script: 'cmp -bvX --unknown' });
+    const invalidFirst = await execute({ script: 'cmp -Xv --help' });
+
+    expect(versionFirst.result.exitCode).toBe(0);
+    expect(versionFirst.stdout.text).toBe('cmp (wesh)\n');
+    expect(versionFirst.stderr.text).toBe('');
+    expect(invalidFirst.result.exitCode).toBe(2);
+    expect(invalidFirst.stdout.text).toBe('');
+    expect(invalidFirst.stderr.text).toContain("cmp: invalid option -- 'X'");
+  });
+
+  it('reports an option conflict before later help or an invalid byte count', async () => {
+    const helpLast = await execute({ script: 'cmp -ls --help' });
+    const limitLast = await execute({ script: 'cmp -ls -n bad' });
+    const limitFirst = await execute({ script: 'cmp -n bad -ls' });
+
+    for (const execution of [helpLast, limitLast]) {
+      expect(execution.result.exitCode).toBe(2);
+      expect(execution.stdout.text).toBe('');
+      expect(execution.stderr.text).toContain('cmp: options -l and -s are incompatible');
+    }
+    expect(limitFirst.result.exitCode).toBe(2);
+    expect(limitFirst.stderr.text).toContain("cmp: invalid --bytes value 'bad'");
+  });
+
+  it('accepts unique long-option prefixes and rejects ambiguous or valued flags', async () => {
+    const help = await execute({ script: 'cmp --he --unknown' });
+    const ambiguous = await execute({ script: 'cmp --ver --help' });
+    const unexpectedValue = await execute({ script: 'cmp --silent=yes --help' });
+
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: cmp');
+    expect(help.stderr.text).toBe('');
+    expect(ambiguous.result.exitCode).toBe(2);
+    expect(ambiguous.stderr.text).toContain("option '--ver' is ambiguous; possibilities: '--verbose' '--version'");
+    expect(unexpectedValue.result.exitCode).toBe(2);
+    expect(unexpectedValue.stderr.text).toContain("option '--silent' doesn't allow an argument");
   });
 
   it('reports usage errors with exit code 2', async () => {

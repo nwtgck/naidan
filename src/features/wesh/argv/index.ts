@@ -1,3 +1,4 @@
+// TODO: Remove the legacy argv parser and its tests. No production entry point reaches it.
 export { parseFindLikeArgv } from './grammar-parser';
 export { formatArgvOptionHelp, formatArgvUsageSummary } from './help';
 export { ArgvScanner } from './scanner';

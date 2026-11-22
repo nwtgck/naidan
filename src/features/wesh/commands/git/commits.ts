@@ -52,7 +52,7 @@ export async function createCommit({ files, repository, config, env, treeObjectI
   files: GitFiles,
   repository: GitRepository,
   config: GitConfig,
-  env: Map<string, string>,
+  env: ReadonlyMap<string, string>,
   treeObjectId: string,
   parentObjectIds: readonly string[],
   message: string,

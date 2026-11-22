@@ -233,6 +233,70 @@ function parseSubstitutionOperator({ rest }: { rest: string }): {
   };
 }
 
+function findSubstringLengthSeparator({ text }: { text: string }): number {
+  let parentheses = 0;
+  let conditions = 0;
+  let quote: '"' | "'" | undefined;
+  for (let index = 1; index < text.length; index++) {
+    const character = text[index];
+    switch (quote) {
+    case "'":
+      if (character === "'") {
+        quote = undefined;
+      }
+      continue;
+    case '"':
+    case undefined:
+      break;
+    default: {
+      const _ex: never = quote;
+      throw new Error(`Unexpected arithmetic quote: ${_ex}`);
+    }
+    }
+    if (character === '\\') {
+      index++;
+      continue;
+    }
+    const constructEnd = findShellWordConstructEnd({ text, startIndex: index });
+    if (constructEnd !== undefined) {
+      index = constructEnd;
+      continue;
+    }
+    if (quote !== undefined) {
+      if (character === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    switch (character) {
+    case '"':
+    case "'":
+      quote = character;
+      break;
+    case '(':
+      parentheses++;
+      break;
+    case ')':
+      parentheses--;
+      break;
+    case '?':
+      if (parentheses === 0) {
+        conditions++;
+      }
+      break;
+    case ':':
+      if (parentheses === 0) {
+        if (conditions === 0) {
+          return index;
+        }
+        conditions--;
+      }
+      break;
+    }
+  }
+  return -1;
+}
+
 export function parseParameterExpression({ expression }: { expression: string }): ParsedParameterExpression | undefined {
   if (expression.startsWith('!')) {
     const identifierEnd = readParameterNameEnd({ text: expression, startIndex: 1 });
@@ -274,16 +338,14 @@ export function parseParameterExpression({ expression }: { expression: string })
   }
 
   if (rest.startsWith(':')) {
-    const secondColon = rest.indexOf(':', 1);
+    const secondColon = findSubstringLengthSeparator({ text: rest });
     const offsetExpression = secondColon === -1 ? rest.slice(1) : rest.slice(1, secondColon);
-    if (offsetExpression.length > 0) {
-      return {
-        kind: 'substring',
-        name,
-        offsetExpression,
-        lengthExpression: secondColon === -1 ? undefined : rest.slice(secondColon + 1),
-      };
-    }
+    return {
+      kind: 'substring',
+      name,
+      offsetExpression,
+      lengthExpression: secondColon === -1 ? undefined : rest.slice(secondColon + 1),
+    };
   }
 
   const caseOperator = (() => {

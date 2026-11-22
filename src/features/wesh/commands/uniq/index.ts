@@ -1,10 +1,18 @@
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { parseStandardArgv } from '@/features/wesh/argv';
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv-v2';
 import { resolveCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import type { WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type {
   WeshCommandContext,
   WeshCommandImplementation,
@@ -12,7 +20,7 @@ import type {
   WeshEfficientFileWriter,
   WeshFileHandle,
 } from '@/features/wesh/types';
-import { resolvePath } from '@/features/wesh/path';
+import { toAbsolutePath } from '@/features/wesh/path';
 import { openHandleReadStream, openFileReadStream } from '@/features/wesh/utils/fs';
 
 type UniqAllRepeatedMethod = 'none' | 'prepend' | 'separate';
@@ -52,36 +60,22 @@ interface UniqComparisonOptions {
   delimiter: UniqDelimiter,
 }
 
-function resolveInputPath({
-  cwd,
-  path,
-}: {
-  cwd: string,
-  path: string,
-}): string {
-  if (path.startsWith('/')) {
-    return path;
-  }
-
-  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
-}
-
 function parseNonNegativeInteger({
-  value,
+  rawValue,
   label,
 }: {
-  value: string,
+  rawValue: string,
   label: string,
-}): { ok: true, value: number } | { ok: false, message: string } {
-  const numericText = stripLeadingCLocaleWhitespace({ value });
+}): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
+  const numericText = stripLeadingCLocaleWhitespace({ value: rawValue });
   const match = /^\+?(\d+)$/u.exec(numericText);
   if (match === null) {
-    return { ok: false, message: `invalid argument to ${label}: ${value}` };
+    return { kind: 'invalid', message: `invalid argument to ${label}: ${rawValue}` };
   }
 
   const parsed = BigInt(match[1]!);
   return {
-    ok: true,
+    kind: 'parsed',
     value: parsed > BigInt(Number.MAX_SAFE_INTEGER)
       ? Number.MAX_SAFE_INTEGER
       : Number(parsed),
@@ -340,82 +334,27 @@ function formatRecord({
   });
 }
 
-function parseAllRepeatedMethod({
+function parseUniqMethod<TMethod extends string>({
   value,
+  methods,
+  fallback,
+  option,
 }: {
-  value: string,
-}): UniqAllRepeatedMethod | undefined {
-  const matches = UNIQ_ALL_REPEATED_METHODS.filter(method => method.startsWith(value));
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
-function parseAllRepeatedLongOption({
-  token,
-}: {
-  token: string,
-}) {
-  const prefix = '--all-repeated=';
-  if (!token.startsWith(prefix)) {
-    return undefined;
+  value: string | undefined,
+  methods: readonly TMethod[],
+  fallback: TMethod,
+  option: '--all-repeated' | '--group',
+}): { ok: true, value: TMethod } | { ok: false, message: string } {
+  if (value === undefined) {
+    return { ok: true, value: fallback };
   }
-
-  const value = token.slice(prefix.length);
-  const method = parseAllRepeatedMethod({ value });
-  const effects = method === undefined
-    ? [{ key: 'allRepeatedParseError', value }]
-    : [
-      { key: 'allRepeated', value: true },
-      { key: 'allRepeatedMethod', value: method },
-    ];
-  return {
-    kind: 'matched' as const,
-    consumeCount: 1,
-    effects,
-    occurrences: [{
-      kind: 'special' as const,
-      option: '--all-repeated',
-      effects,
-    }],
-  };
-}
-
-function parseGroupMethod({
-  value,
-}: {
-  value: string,
-}): UniqGroupMethod | undefined {
-  const matches = UNIQ_GROUP_METHODS.filter(method => method.startsWith(value));
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
-function parseGroupLongOption({
-  token,
-}: {
-  token: string,
-}) {
-  const prefix = '--group=';
-  if (!token.startsWith(prefix)) {
-    return undefined;
+  const matches = methods.filter(method => method.startsWith(value));
+  const match = matches.length === 1 ? matches[0] : undefined;
+  if (match !== undefined) {
+    return { ok: true, value: match };
   }
-
-  const value = token.slice(prefix.length);
-  const method = parseGroupMethod({ value });
-  const effects = method === undefined
-    ? [{ key: 'groupParseError', value }]
-    : [
-      { key: 'group', value: true },
-      { key: 'groupMethod', value: method },
-    ];
-  return {
-    kind: 'matched' as const,
-    consumeCount: 1,
-    effects,
-    occurrences: [{
-      kind: 'special' as const,
-      option: '--group',
-      effects,
-    }],
-  };
+  const reason = matches.length === 0 ? 'invalid' : 'ambiguous';
+  return { ok: false, message: `${reason} argument '${value}' for '${option}'` };
 }
 
 function groupHasLeadingSeparator({
@@ -537,7 +476,7 @@ async function openUniqInputStream({
 
   return await openFileReadStream({
     files: context.files,
-    path: resolveInputPath({ cwd: context.cwd, path: inputPath }),
+    path: toAbsolutePath({ cwd: context.cwd, path: inputPath }),
   });
 }
 
@@ -623,7 +562,7 @@ async function openUniqOutputTarget({
     };
   }
 
-  const path = resolveInputPath({ cwd: context.cwd, path: outputPath });
+  const path = toAbsolutePath({ cwd: context.cwd, path: outputPath });
   if (context.files.tryCreateFileWriterEfficiently !== undefined) {
     const writerResult = await context.files.tryCreateFileWriterEfficiently({
       path,
@@ -744,8 +683,8 @@ async function inputAndOutputReferToSameFile({
     return false;
   }
 
-  const resolvedInputPath = resolvePath({ cwd: context.cwd, path: inputPath });
-  const resolvedOutputPath = resolvePath({ cwd: context.cwd, path: outputPath });
+  const resolvedInputPath = toAbsolutePath({ cwd: context.cwd, path: inputPath });
+  const resolvedOutputPath = toAbsolutePath({ cwd: context.cwd, path: outputPath });
   if (resolvedInputPath === resolvedOutputPath) {
     return true;
   }
@@ -759,133 +698,225 @@ async function inputAndOutputReferToSameFile({
   }
 }
 
+const uniqOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'count', value: true }] },
+    forms: [
+      { kind: 'short', name: 'c', value: { kind: 'none' } },
+      { kind: 'long', name: 'count', value: { kind: 'none' } },
+    ],
+    summary: 'prefix lines by the number of occurrences',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'duplicatesOnly', value: true }] },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'none' } },
+      { kind: 'long', name: 'repeated', value: { kind: 'none' } },
+    ],
+    summary: 'only print duplicate lines, one for each group',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'allRepeated' },
+    forms: [
+      { kind: 'short', name: 'D', value: { kind: 'none' } },
+      { kind: 'long', name: 'all-repeated', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'print all duplicate lines; METHOD may separate groups',
+    valueName: 'METHOD',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'group' },
+    forms: [{ kind: 'long', name: 'group', value: { kind: 'optional-inline' } }],
+    summary: 'show all items, separating groups with an empty line',
+    valueName: 'METHOD',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'uniqueOnly', value: true }] },
+    forms: [
+      { kind: 'short', name: 'u', value: { kind: 'none' } },
+      { kind: 'long', name: 'unique', value: { kind: 'none' } },
+    ],
+    summary: 'only print unique lines',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'ignoreCase', value: true }] },
+    forms: [
+      { kind: 'short', name: 'i', value: { kind: 'none' } },
+      { kind: 'long', name: 'ignore-case', value: { kind: 'none' } },
+    ],
+    summary: 'ignore differences in case when comparing',
+    category: 'common',
+  },
+  {
+    semantic: {
+      kind: 'required-value',
+      key: 'skipFields',
+      parse: ({ rawValue }: { rawValue: string }) => parseNonNegativeInteger({ rawValue, label: 'skip-fields' }),
+    },
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'required-attached-or-following', missingValueName: 'fields' } },
+      { kind: 'long', name: 'skip-fields', value: { kind: 'required', missingValueName: 'fields' } },
+    ],
+    summary: 'avoid comparing the first N fields',
+    valueName: 'N',
+    category: 'common',
+  },
+  {
+    semantic: {
+      kind: 'required-value',
+      key: 'skipChars',
+      parse: ({ rawValue }: { rawValue: string }) => parseNonNegativeInteger({ rawValue, label: 'skip-chars' }),
+    },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'required-attached-or-following', missingValueName: 'chars' } },
+      { kind: 'long', name: 'skip-chars', value: { kind: 'required', missingValueName: 'chars' } },
+    ],
+    summary: 'avoid comparing the first N characters',
+    valueName: 'N',
+    category: 'common',
+  },
+  {
+    semantic: {
+      kind: 'required-value',
+      key: 'checkChars',
+      parse: ({ rawValue }: { rawValue: string }) => parseNonNegativeInteger({ rawValue, label: 'check-chars' }),
+    },
+    forms: [
+      { kind: 'short', name: 'w', value: { kind: 'required-attached-or-following', missingValueName: 'chars' } },
+      { kind: 'long', name: 'check-chars', value: { kind: 'required', missingValueName: 'chars' } },
+    ],
+    summary: 'compare no more than N characters in lines',
+    valueName: 'N',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'zeroTerminated', value: true }] },
+    forms: [
+      { kind: 'short', name: 'z', value: { kind: 'none' } },
+      { kind: 'long', name: 'zero-terminated', value: { kind: 'none' } },
+    ],
+    summary: 'line delimiter is NUL, not newline',
+    category: 'advanced',
+  },
+] as const;
+
+type UniqArgvTag = Extract<(typeof uniqOptions)[number]['semantic'], { kind: 'deferred' }>['tag'];
+
+const uniqArgvCatalog = defineArgvCatalog<StandardArgvAction<UniqArgvTag>>({
+  definitions: uniqOptions,
+  nonExecutableLongOptions: ['version'],
+});
+const uniqArgvHelp = defineArgvHelpPresentation({ catalog: uniqArgvCatalog, rows: uniqOptions });
+const uniqArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
+
+async function writeUniqUsageError({
+  context,
+  message,
+}: {
+  context: WeshCommandContext,
+  message: string,
+}): Promise<WeshCommandResult> {
+  await writeCommandUsageError({
+    context,
+    command: 'uniq',
+    message: `uniq: ${message}`,
+    usageSummary: formatArgvUsageSummary({ presentation: uniqArgvHelp }),
+  });
+  return { exitCode: 1 };
+}
+
 export const uniqCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const uniqArgvSpec: StandardArgvParserSpec = {
-      options: [
-        { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-        { kind: 'flag', short: 'c', long: 'count', effects: [{ key: 'count', value: true }], help: { summary: 'prefix lines by the number of occurrences', category: 'common' } },
-        { kind: 'flag', short: 'd', long: 'repeated', effects: [{ key: 'duplicatesOnly', value: true }], help: { summary: 'only print duplicate lines, one for each group', category: 'common' } },
-        { kind: 'flag', short: 'D', long: undefined, effects: [{ key: 'allRepeated', value: true }, { key: 'allRepeatedMethod', value: 'none' }], help: { summary: 'print all duplicate lines', category: 'common' } },
-        { kind: 'flag', short: undefined, long: 'all-repeated', effects: [{ key: 'allRepeated', value: true }, { key: 'allRepeatedMethod', value: 'none' }], help: { summary: 'print all duplicate lines; METHOD may separate groups', category: 'advanced' } },
-        { kind: 'flag', short: undefined, long: 'group', effects: [{ key: 'group', value: true }, { key: 'groupMethod', value: 'separate' }], help: { summary: 'show all items, separating groups with an empty line', category: 'advanced' } },
-        { kind: 'flag', short: 'u', long: 'unique', effects: [{ key: 'uniqueOnly', value: true }], help: { summary: 'only print unique lines', category: 'common' } },
-        { kind: 'flag', short: 'i', long: 'ignore-case', effects: [{ key: 'ignoreCase', value: true }], help: { summary: 'ignore differences in case when comparing', category: 'common' } },
-        {
-          kind: 'value',
-          short: 'f',
-          long: 'skip-fields',
-          key: 'skipFields',
-          valueName: 'fields',
-          allowAttachedValue: true,
-          parseValue: ({ value }) => {
-            const parsed = parseNonNegativeInteger({ value, label: 'skip-fields' });
-            return parsed.ok ? { ok: true, value: parsed.value } : parsed;
-          },
-          help: { summary: 'avoid comparing the first N fields', valueName: 'N', category: 'common' },
-        },
-        {
-          kind: 'value',
-          short: 's',
-          long: 'skip-chars',
-          key: 'skipChars',
-          valueName: 'chars',
-          allowAttachedValue: true,
-          parseValue: ({ value }) => {
-            const parsed = parseNonNegativeInteger({ value, label: 'skip-chars' });
-            return parsed.ok ? { ok: true, value: parsed.value } : parsed;
-          },
-          help: { summary: 'avoid comparing the first N characters', valueName: 'N', category: 'common' },
-        },
-        {
-          kind: 'value',
-          short: 'w',
-          long: 'check-chars',
-          key: 'checkChars',
-          valueName: 'chars',
-          allowAttachedValue: true,
-          parseValue: ({ value }) => {
-            const parsed = parseNonNegativeInteger({ value, label: 'check-chars' });
-            return parsed.ok ? { ok: true, value: parsed.value } : parsed;
-          },
-          help: { summary: 'compare no more than N characters in lines', valueName: 'N', category: 'common' },
-        },
-        { kind: 'flag', short: 'z', long: 'zero-terminated', effects: [{ key: 'zeroTerminated', value: true }], help: { summary: 'line delimiter is NUL, not newline', category: 'advanced' } },
-      ],
-      allowShortFlagBundles: true,
-      stopAtDoubleDash: true,
-      treatSingleDashAsPositional: true,
-      specialTokenParsers: [
-        ({ token }) => parseAllRepeatedLongOption({ token }),
-        ({ token }) => parseGroupLongOption({ token }),
-      ],
-    };
-
-    const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: uniqArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
-      spec: uniqArgvSpec,
+    const args = stopArgvAtFirstEarlyExit({
+      args: context.args,
+      catalog: uniqArgvCatalog,
+      policy: uniqArgvPolicy,
+      earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
     });
-
+    const parsed = parseStandardArgv({ args, catalog: uniqArgvCatalog, policy: uniqArgvPolicy });
     const diagnostic = parsed.diagnostics[0];
-    if (diagnostic !== undefined) {
-      await writeCommandUsageError({
-        context,
-        command: 'uniq',
-        message: `uniq: ${diagnostic.message}`,
-        argvSpec: uniqArgvSpec,
-      });
-      return { exitCode: 1 };
+    let allRepeatedMethod: UniqAllRepeatedMethod | undefined;
+    let groupMethod: UniqGroupMethod | undefined;
+
+    // Method values are validated before later options. Output selection
+    // conflicts are checked after help.
+    for (const occurrence of parsed.deferred) {
+      if (diagnostic !== undefined && diagnostic.argvIndex <= occurrence.argvIndex) {
+        break;
+      }
+      const value = 'rawValue' in occurrence.value ? occurrence.value.rawValue : undefined;
+      const tag = occurrence.semantic.tag;
+      switch (tag) {
+      case 'allRepeated': {
+        const method = parseUniqMethod({
+          value,
+          methods: UNIQ_ALL_REPEATED_METHODS,
+          fallback: 'none',
+          option: '--all-repeated',
+        });
+        if (!method.ok) {
+          return writeUniqUsageError({ context, message: method.message });
+        }
+        allRepeatedMethod = method.value;
+        break;
+      }
+      case 'group': {
+        const method = parseUniqMethod({
+          value,
+          methods: UNIQ_GROUP_METHODS,
+          fallback: 'separate',
+          option: '--group',
+        });
+        if (!method.ok) {
+          return writeUniqUsageError({ context, message: method.message });
+        }
+        groupMethod = method.value;
+        break;
+      }
+      default: {
+        const _ex: never = tag;
+        throw new Error(`Unhandled uniq option: ${_ex}`);
+      }
+      }
     }
 
+    if (diagnostic !== undefined) {
+      return writeUniqUsageError({ context, message: diagnostic.message });
+    }
     if (parsed.optionValues.help === true) {
       await writeCommandHelp({
         context,
         command: 'uniq',
-        argvSpec: uniqArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: uniqArgvHelp }),
       });
       return { exitCode: 0 };
     }
 
-    const allRepeatedParseError = parsed.optionValues.allRepeatedParseError;
-    if (typeof allRepeatedParseError === 'string') {
-      await writeCommandUsageError({
-        context,
-        command: 'uniq',
-        message: allRepeatedParseError.length === 0
-          ? "uniq: ambiguous argument '' for '--all-repeated'"
-          : `uniq: invalid argument '${allRepeatedParseError}' for '--all-repeated'`,
-        argvSpec: uniqArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
-
-    const groupParseError = parsed.optionValues.groupParseError;
-    if (typeof groupParseError === 'string') {
-      await writeCommandUsageError({
-        context,
-        command: 'uniq',
-        message: groupParseError.length === 0
-          ? "uniq: ambiguous argument '' for '--group'"
-          : `uniq: invalid argument '${groupParseError}' for '--group'`,
-        argvSpec: uniqArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
-
-    const allRepeated = parsed.optionValues.allRepeated === true;
+    const allRepeated = allRepeatedMethod !== undefined;
     if (allRepeated && parsed.optionValues.count === true) {
-      await writeCommandUsageError({
+      return writeUniqUsageError({
         context,
-        command: 'uniq',
-        message: 'uniq: printing all duplicated lines and repeat counts is meaningless',
-        argvSpec: uniqArgvSpec,
+        message: 'printing all duplicated lines and repeat counts is meaningless',
       });
-      return { exitCode: 1 };
     }
 
-    const group = parsed.optionValues.group === true;
     if (
-      group
+      groupMethod !== undefined
       && (
         parsed.optionValues.count === true
         || parsed.optionValues.duplicatesOnly === true
@@ -893,46 +924,23 @@ export const uniqCommandImplementation: WeshCommandImplementation = {
         || allRepeated
       )
     ) {
-      await writeCommandUsageError({
-        context,
-        command: 'uniq',
-        message: 'uniq: --group is mutually exclusive with -c/-d/-D/-u',
-        argvSpec: uniqArgvSpec,
-      });
-      return { exitCode: 1 };
+      return writeUniqUsageError({ context, message: '--group is mutually exclusive with -c/-d/-D/-u' });
     }
 
     if (parsed.positionals.length > 2) {
-      await writeCommandUsageError({
-        context,
-        command: 'uniq',
-        message: `uniq: extra operand '${parsed.positionals[2]}'`,
-        argvSpec: uniqArgvSpec,
-      });
-      return { exitCode: 1 };
+      return writeUniqUsageError({ context, message: `extra operand '${parsed.positionals[2]}'` });
     }
 
     const inputPath = parsed.positionals[0];
     const outputPath = parsed.positionals[1];
     const zeroTerminated = parsed.optionValues.zeroTerminated === true;
     const delimiter: UniqDelimiter = zeroTerminated ? 0x00 : 0x0a;
-    const rawAllRepeatedMethod = parsed.optionValues.allRepeatedMethod;
-    const allRepeatedMethod: UniqAllRepeatedMethod = rawAllRepeatedMethod === 'prepend'
-      || rawAllRepeatedMethod === 'separate'
-      ? rawAllRepeatedMethod
-      : 'none';
     const outputPolicy = resolveOutputPolicy({
       duplicatesOnly: parsed.optionValues.duplicatesOnly === true,
       uniqueOnly: parsed.optionValues.uniqueOnly === true,
       allRepeated,
-      allRepeatedMethod,
+      allRepeatedMethod: allRepeatedMethod ?? 'none',
     });
-    const rawGroupMethod = parsed.optionValues.groupMethod;
-    const groupMethod: UniqGroupMethod | undefined = group
-      ? rawGroupMethod === 'prepend' || rawGroupMethod === 'append' || rawGroupMethod === 'both'
-        ? rawGroupMethod
-        : 'separate'
-      : undefined;
 
     const comparisonOptions: UniqComparisonOptions = {
       ignoreCase: parsed.optionValues.ignoreCase === true,

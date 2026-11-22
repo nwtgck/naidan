@@ -1,10 +1,11 @@
 import { normalizePath } from '@/features/wesh/path';
+import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import type { GitAttributesMatcher } from './attributes';
 import { cleanWorktreeBytes, loadIndexAttributes } from './attributes';
 import type { GitWorktreeContentConfig } from './config';
-import type { WeshFileType } from '@/features/wesh/types';
+import { WeshRenameIncompleteError, type WeshEntryRef, type WeshFileType, type WeshStat, type WeshTemporaryEntry } from '@/features/wesh/types';
 import type { GitFiles } from './files';
-import { pathExists, readFileBytes, writeFileBytes } from './files';
+import { pathExists, readFileBytes, writeFileBytes, writeHandleBytes } from './files';
 import { objectIdFor, readObject, writeObject } from './objects';
 import { sortGitPaths } from './path-order';
 import { assertSafeGitRepositoryPath } from './path-safety';
@@ -159,6 +160,45 @@ export function worktreeAbsolutePath({ repository, path }: {
   return joinPath({ base: repository.worktreePath, child: path });
 }
 
+type GitWorktreePathStat =
+  | { kind: 'entry', stat: WeshStat }
+  | { kind: 'missing' }
+  | { kind: 'leading-symlink' };
+
+export async function lstatWorktreePath({ files, repository, path, ancestorTypes }: {
+  files: GitFiles,
+  repository: GitRepository,
+  path: string,
+  ancestorTypes: Map<string, WeshFileType | undefined>,
+}): Promise<GitWorktreePathStat> {
+  for (let slash = path.indexOf('/'); slash !== -1; slash = path.indexOf('/', slash + 1)) {
+    const parent = path.slice(0, slash);
+    if (!ancestorTypes.has(parent)) {
+      const stat = await files.lstat({ path: joinPath({ base: repository.worktreePath, child: parent }) }).catch(() => undefined);
+      ancestorTypes.set(parent, stat?.type);
+    }
+    const type = ancestorTypes.get(parent);
+    switch (type) {
+    case 'directory':
+      break;
+    case 'symlink':
+      return { kind: 'leading-symlink' };
+    case 'file':
+    case 'fifo':
+    case 'chardev':
+    case undefined:
+      return { kind: 'missing' };
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled worktree ancestor type: ${_ex}`);
+    }
+    }
+  }
+  const absolutePath = joinPath({ base: repository.worktreePath, child: path });
+  const stat = await files.lstat({ path: absolutePath }).catch(() => undefined);
+  return stat === undefined ? { kind: 'missing' } : { kind: 'entry', stat };
+}
+
 async function removeWorktreePathRecursively({ files, path }: {
   files: GitFiles,
   path: string,
@@ -286,37 +326,139 @@ async function prepareWorktreeMaterialization({ files, repository, entry, attrib
   }
 }
 
+async function replaceExistingWorktreeFile({ files, path, entry, bytes }: {
+  files: GitFiles,
+  path: string,
+  entry: WeshEntryRef<'file'>,
+  bytes: Uint8Array,
+}): Promise<void> {
+  const result = await files.tryCreateFileWriterEfficiently({ path, expected: entry, mode: 'truncate' });
+  switch (result.kind) {
+  case 'fallback_required':
+    throw new Error(`Could not stage existing worktree file: ${path}`);
+  case 'writer':
+    break;
+  default: {
+    const _ex: never = result;
+    throw new Error(`Unhandled worktree writer result: ${JSON.stringify(_ex)}`);
+  }
+  }
+
+  const { writer } = result;
+  try {
+    if (bytes.byteLength !== 0) {
+      await writer.write({ chunk: bytes });
+    }
+    await writer.close();
+  } catch (error: unknown) {
+    await writer.abort({ reason: error }).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function stageWorktreeEntry({ files, prepared }: {
+  files: GitFiles,
+  prepared: Exclude<PreparedWorktreeMaterialization, { type: 'gitlink' }>,
+}): Promise<WeshTemporaryEntry> {
+  const directory = parentPath({ path: prepared.path });
+  const path = joinPath({ base: directory, child: `.wesh-git-${crypto.randomUUID()}` });
+  switch (prepared.type) {
+  case 'symlink':
+    return files.createTemporarySymlink({ path, targetPath: prepared.targetPath });
+  case 'file': {
+    const temporary = await files.createTemporaryFile({ path });
+    try {
+      await writeHandleBytes({ handle: temporary.handle, bytes: prepared.bytes });
+      await temporary.handle.close();
+      return temporary;
+    } catch (error: unknown) {
+      await temporary.handle.close().catch(() => {});
+      await temporary.discard().catch(() => {});
+      throw error;
+    }
+  }
+  default: {
+    const _ex: never = prepared;
+    throw new Error(`Unhandled worktree output: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
+async function replaceWorktreeEntry({ files, prepared, expected }: {
+  files: GitFiles,
+  prepared: Exclude<PreparedWorktreeMaterialization, { type: 'gitlink' }>,
+  expected: WeshEntryRef,
+}): Promise<void> {
+  const temporary = await stageWorktreeEntry({ files, prepared });
+  try {
+    await files.replaceEntry({ entry: temporary.entry, path: prepared.path, expected, backupPath: undefined });
+  } catch (error: unknown) {
+    if (!(error instanceof WeshRenameIncompleteError)) {
+      await temporary.discard().catch(() => {});
+    }
+    throw error;
+  }
+}
+
 async function applyPreparedWorktreeMaterialization({ files, repository, prepared }: {
   files: GitFiles,
   repository: GitRepository,
   prepared: PreparedWorktreeMaterialization,
 }): Promise<void> {
   await ensureWorktreeDirectory({ files, repository, directoryPath: parentPath({ path: prepared.path }) });
+  const resolveExistingEntry = () => files.resolveEntry({ path: prepared.path, finalSymlinkTreatment: 'no-follow', pinBacking: true }).catch((error: unknown) => {
+    if (isPathNotFoundError({ error })) {
+      return undefined;
+    }
+    throw error;
+  });
   switch (prepared.type) {
-  case 'file':
-    if (await pathExists({ files, path: prepared.path })) {
-      const stat = await files.lstat({ path: prepared.path });
-      switch (stat.type) {
-      case 'file':
-        break;
-      case 'directory':
-      case 'fifo':
-      case 'chardev':
-      case 'symlink':
-        await removeWorktreePathRecursively({ files, path: prepared.path });
-        break;
-      default: {
-        const _ex: never = stat.type;
-        throw new Error(`Unhandled file type: ${_ex}`);
-      }
-      }
+  case 'file': {
+    const entry = await resolveExistingEntry();
+    switch (entry?.type) {
+    case 'file':
+      await replaceExistingWorktreeFile({ files, path: prepared.path, entry, bytes: prepared.bytes });
+      return;
+    case 'directory':
+      await removeWorktreePathRecursively({ files, path: prepared.path });
+      break;
+    case 'fifo':
+    case 'chardev':
+    case 'symlink':
+      await replaceWorktreeEntry({ files, prepared, expected: entry });
+      return;
+    case undefined:
+      break;
+    default: {
+      const _ex: never = entry;
+      throw new Error(`Unhandled worktree entry: ${JSON.stringify(_ex)}`);
+    }
     }
     await writeFileBytes({ files, path: prepared.path, bytes: prepared.bytes });
     return;
-  case 'symlink':
-    await removeWorktreePathRecursively({ files, path: prepared.path });
+  }
+  case 'symlink': {
+    const entry = await resolveExistingEntry();
+    switch (entry?.type) {
+    case 'directory':
+      await removeWorktreePathRecursively({ files, path: prepared.path });
+      break;
+    case 'file':
+    case 'symlink':
+    case 'fifo':
+    case 'chardev':
+      await replaceWorktreeEntry({ files, prepared, expected: entry });
+      return;
+    case undefined:
+      break;
+    default: {
+      const _ex: never = entry;
+      throw new Error(`Unhandled worktree entry: ${JSON.stringify(_ex)}`);
+    }
+    }
     await files.symlink({ path: prepared.path, targetPath: prepared.targetPath });
     return;
+  }
   case 'gitlink':
     if (await pathExists({ files, path: prepared.path })) {
       const stat = await files.lstat({ path: prepared.path });

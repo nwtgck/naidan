@@ -1,4 +1,5 @@
 import type { WeshFileHandle } from '@/features/wesh/types';
+import { WeshInputBuffer, type WeshShellInput } from '@/features/wesh/utils/file-input';
 import { decodeShellUtf8Text, findShellUtf8ByteOffsetForTextBoundary } from './byte-text';
 
 export type ShellSource =
@@ -52,7 +53,7 @@ export function createHandleShellSource({ handle }: {
 }
 
 async function readShellSourceHandleIntoBuffer({ handle, buffer, maximumBytes }: {
-  handle: WeshFileHandle,
+  handle: Pick<WeshFileHandle, 'read'>,
   buffer: Uint8Array,
   maximumBytes: number,
 }): Promise<Uint8Array | undefined> {
@@ -318,69 +319,9 @@ function findRawByteOffsetForParserByteBoundary({ rawBytes, parserVisibleBytes, 
   throw new Error(`Shell parser consumed beyond available source bytes: ${parserByteOffset}`);
 }
 
-class ShellSourceByteBuffer {
-  private storage: Uint8Array<ArrayBuffer> = new Uint8Array(0);
-  private start = 0;
-  private length = 0;
-
-  view(): Uint8Array<ArrayBuffer> {
-    return this.storage.subarray(this.start, this.start + this.length);
-  }
-
-  append({ bytes }: { bytes: Uint8Array }) {
-    if (bytes.length === 0) {
-      return;
-    }
-    const availableAtEnd = this.storage.length - (this.start + this.length);
-    if (availableAtEnd < bytes.length) {
-      const availableAfterCompaction = this.storage.length - this.length;
-      if (availableAfterCompaction >= bytes.length) {
-        this.storage.copyWithin(0, this.start, this.start + this.length);
-        this.start = 0;
-      } else {
-        const requiredLength = this.length + bytes.length;
-        let capacity = Math.max(SHELL_SOURCE_READ_CHUNK_BYTES, this.storage.length);
-        while (capacity < requiredLength) {
-          capacity = Math.max(requiredLength, capacity * 2);
-        }
-        const expanded = new Uint8Array(capacity);
-        expanded.set(this.view(), 0);
-        this.storage = expanded;
-        this.start = 0;
-      }
-    }
-    this.storage.set(bytes, this.start + this.length);
-    this.length += bytes.length;
-  }
-
-  consume({ bytes }: { bytes: number }) {
-    if (!Number.isSafeInteger(bytes) || bytes < 0 || bytes > this.length) {
-      throw new Error(`Invalid shell source retained-byte consumption: ${bytes}`);
-    }
-    this.start += bytes;
-    this.length -= bytes;
-    if (this.length === 0) {
-      this.start = 0;
-    }
-  }
-
-  read({ buffer, offset, length }: {
-    buffer: Uint8Array,
-    offset: number,
-    length: number,
-  }): number {
-    const bytesRead = Math.min(length, this.length);
-    if (bytesRead === 0) {
-      return 0;
-    }
-    buffer.set(this.view().subarray(0, bytesRead), offset);
-    this.consume({ bytes: bytesRead });
-    return bytesRead;
-  }
-}
-
-export function createShellSourceReader({ source }: {
+export function createShellSourceReader({ source, input }: {
   source: ShellSource,
+  input?: WeshShellInput,
 }): ShellSourceReader {
   switch (source.kind) {
   case 'text': {
@@ -422,13 +363,13 @@ export function createShellSourceReader({ source }: {
       case 'bytes':
         return ({ maximumBytes }: { maximumBytes: number }) => byteBackedSource.read({ maximumBytes });
       case 'handle': {
-        let reusableBuffer = new Uint8Array(SHELL_SOURCE_READ_CHUNK_BYTES);
+        let reusableBuffer: Uint8Array | undefined;
         return ({ maximumBytes }: { maximumBytes: number }) => {
-          if (reusableBuffer.length < maximumBytes) {
+          if (reusableBuffer === undefined || reusableBuffer.length < maximumBytes) {
             reusableBuffer = new Uint8Array(maximumBytes);
           }
           return readShellSourceHandleIntoBuffer({
-            handle: byteBackedSource.handle,
+            handle: input ?? byteBackedSource.handle,
             buffer: reusableBuffer,
             maximumBytes,
           });
@@ -441,9 +382,12 @@ export function createShellSourceReader({ source }: {
       }
     })();
     let completion: 'complete' | 'may-continue' = 'may-continue';
-    const retainedBytes = new ShellSourceByteBuffer();
+    const retainedBytes = input?.buffer ?? new WeshInputBuffer();
     let retainedText = '';
     let projectedBytes = 0;
+    let projectionRevision = retainedBytes.revision;
+    let projectionLength = 0;
+    let firstRead = true;
     const projectionSegments: Array<{
       textCharacters: number,
       rawBytes: number,
@@ -517,6 +461,7 @@ export function createShellSourceReader({ source }: {
       }
       retainedText += projection.text;
       projectedBytes += consumedRawBytes;
+      projectionLength = retainedBytes.byteLength;
       return projection.text;
     };
 
@@ -525,8 +470,13 @@ export function createShellSourceReader({ source }: {
       projectedBytes = 0;
       projectionSegments.length = 0;
       projectionSegmentStart = 0;
-      appendProjection();
+      projectionRevision = retainedBytes.revision;
+      return appendProjection();
     };
+
+    const refreshProjection = () => projectionRevision === retainedBytes.revision
+      ? projectionLength === retainedBytes.byteLength ? '' : appendProjection()
+      : rebuildProjection();
 
     return {
       async read() {
@@ -544,26 +494,39 @@ export function createShellSourceReader({ source }: {
         }
         }
 
-        const chunk = await readSource({
-          maximumBytes: SHELL_SOURCE_READ_CHUNK_BYTES,
-        });
-        if (chunk === undefined) {
-          completion = 'complete';
-          return {
-            text: appendProjection(),
-            completion,
-          };
+        const useRetainedInput = firstRead && retainedBytes.byteLength !== 0;
+        firstRead = false;
+        if (useRetainedInput) {
+          return { text: refreshProjection(), completion };
         }
-        if (chunk.length === 0) {
-          throw new Error('Shell source returned an empty chunk before end of source');
+        const read = () => readSource({ maximumBytes: SHELL_SOURCE_READ_CHUNK_BYTES });
+        const isCancelled = input?.isClosed ?? (() => false);
+        while (!isCancelled()) {
+          const refill = retainedBytes.pendingRefill;
+          const result = await (refill !== undefined && input?.waitForRefill !== undefined
+            ? input.waitForRefill({ operation: refill })
+            : retainedBytes.refill({ read, isCancelled }));
+          switch (result) {
+          case 'cancelled':
+            break;
+          case 'eof':
+            completion = 'complete';
+            return {
+              text: projectionRevision === retainedBytes.revision ? appendProjection() : rebuildProjection(),
+              completion,
+            };
+          case 'data':
+            return { text: refreshProjection(), completion };
+          default: {
+            const _ex: never = result;
+            throw new Error(`Unhandled shell source refill result: ${_ex}`);
+          }
+          }
         }
-        retainedBytes.append({ bytes: chunk });
-        return {
-          text: appendProjection(),
-          completion,
-        };
+        return { text: '', completion };
       },
       consumeText({ characters }) {
+        refreshProjection();
         if (!Number.isSafeInteger(characters) || characters < 0 || characters > retainedText.length) {
           throw new Error(`Invalid shell source text consumption: ${characters}`);
         }
@@ -623,6 +586,8 @@ export function createShellSourceReader({ source }: {
           throw new Error('Shell parser consumed bytes not yet available in its text projection');
         }
         retainedBytes.consume({ bytes: rawBytesConsumed });
+        projectionRevision = retainedBytes.revision;
+        projectionLength = retainedBytes.byteLength;
         projectedBytes -= rawBytesConsumed;
         retainedText = retainedText.slice(characters);
       },
@@ -633,13 +598,10 @@ export function createShellSourceReader({ source }: {
         if (!Number.isSafeInteger(length) || length < 0 || offset + length > buffer.length) {
           throw new Error(`Invalid shell source retained-byte length: ${length}`);
         }
-        const bytesRead = retainedBytes.read({ buffer, offset, length });
-        if (bytesRead > 0) {
-          rebuildProjection();
-        }
-        return bytesRead;
+        return retainedBytes.read({ buffer, offset, length });
       },
       getRetainedText() {
+        refreshProjection();
         return retainedText;
       },
     };

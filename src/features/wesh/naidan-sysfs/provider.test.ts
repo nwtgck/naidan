@@ -7,6 +7,7 @@ import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId, ChatGroupId, ChatId } from '@/01-models/ids';
 import type { NaidanSysfsStorageReader } from './types';
 import { NaidanSysfsProvider } from './provider';
+import { WeshVFS } from '@/features/wesh/vfs';
 import { NAIDAN_SYSFS_ROOT_PATH, NAIDAN_SYSFS_VERSION_TEXT } from './constants';
 import { createNaidanSysfsBinaryObject } from './binary-object-metadata';
 import { toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId, toToolCallId, toVolumeId } from '@/01-models/ids';
@@ -635,6 +636,12 @@ describe('NaidanSysfsProvider', () => {
     });
 
     expect(await provider.readlink({ path: `${NAIDAN_SYSFS_ROOT_PATH}/current-chat` })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1`);
+
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    vfs.mountVirtual({ path: NAIDAN_SYSFS_ROOT_PATH, provider, readOnly: true });
+    const parent = await vfs.resolve({ path: `${NAIDAN_SYSFS_ROOT_PATH}/current-chat/..` });
+    expect(parent.fullPath).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats`);
+    expect(parent.stat.type).toBe('directory');
 
     const entries = [];
     for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats` })) {

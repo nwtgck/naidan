@@ -1,5 +1,5 @@
 import { parse } from '@babel/parser';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createStandaloneWorkerRuntimeModuleSource } from './standalone-worker-runtime-source.js';
 
@@ -49,5 +49,56 @@ describe('createStandaloneWorkerRuntimeModuleSource', () => {
     expect(source).toContain('new MessageChannel()');
     expect(source).not.toContain('/tmp/');
     expect(source).not.toContain('file:///');
+  });
+
+  it('aborts before allocation and terminates allocated Workers still waiting for READY', async () => {
+    const terminate = vi.fn();
+    const postMessage = vi.fn();
+    const allocate = vi.fn();
+    const port = { onmessage: undefined, onmessageerror: undefined, close: vi.fn() };
+    class WorkerMock extends EventTarget {
+      constructor() {
+        super();
+        allocate();
+      }
+
+      terminate = terminate;
+      postMessage = postMessage;
+    }
+    class ChannelMock {
+      port1 = port;
+      port2 = {};
+    }
+    const evaluate = new Function('{ Worker, MessageChannel, URL, globalThis }',
+      createSource().replace(/^export /gm, '') + '\nreturn { createStandaloneWorkerFromUrls, debugGetStandaloneWorkerRuntimeDiagnostics };',
+    ) as ({ Worker, MessageChannel, URL, globalThis }: {
+      Worker: typeof WorkerMock,
+      MessageChannel: typeof ChannelMock,
+      URL: { createObjectURL: () => string },
+      globalThis: object,
+    }) => {
+      createStandaloneWorkerFromUrls({ workerEntryUrl, systemRuntimeUrl, signal }: { workerEntryUrl: string, systemRuntimeUrl: string, signal: AbortSignal }): Promise<WorkerMock>,
+      debugGetStandaloneWorkerRuntimeDiagnostics(): unknown,
+    };
+    const runtime = evaluate({ Worker: WorkerMock, MessageChannel: ChannelMock, URL: { createObjectURL: () => 'blob:bootstrap' }, globalThis: {} });
+    const location = { workerEntryUrl: 'https://example.invalid/worker.js', systemRuntimeUrl: 'https://example.invalid/system.js' };
+    const cause = new Error('cancel startup');
+    await expect(runtime.createStandaloneWorkerFromUrls({ ...location, signal: AbortSignal.abort(cause) })).rejects.toBe(cause);
+    expect(allocate).not.toHaveBeenCalled();
+
+    const controller = new AbortController();
+    const ready = runtime.createStandaloneWorkerFromUrls({ ...location, signal: controller.signal });
+    expect(allocate).toHaveBeenCalledOnce();
+    expect(postMessage).toHaveBeenCalledOnce();
+    controller.abort(cause);
+    await expect(ready).rejects.toBe(cause);
+    expect(terminate).toHaveBeenCalledOnce();
+    expect(port.onmessage).toBeNull();
+    expect(runtime.debugGetStandaloneWorkerRuntimeDiagnostics()).toMatchObject({
+      workersCreated: 1,
+      workersTerminated: 1,
+      activeWorkers: 0,
+      initializationTimeouts: 0,
+    });
   });
 });

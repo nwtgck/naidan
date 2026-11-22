@@ -1,9 +1,13 @@
 import { Lexer, ShellLexerIncompleteError } from './lexer';
-import type { Token, TokenType } from './lexer';
+import type { ConditionalTokenContext, Token, TokenType } from './lexer';
 import { parseShellHereDocumentDelimiter } from './shell/scan';
 import type {
   WeshASTNode,
   WeshCaseClause,
+  WeshConditionalBinaryOperator,
+  WeshConditionalExpression,
+  WeshConditionalOperand,
+  WeshConditionalUnaryOperator,
   WeshListNode,
   WeshRedirection,
   WeshSubshellNode,
@@ -14,7 +18,6 @@ export function parseCommandLine({
   commandLine,
 }: {
   commandLine: string,
-  env: Map<string, string>,
 }): WeshASTNode {
   const lexer = new Lexer({ input: commandLine });
   const parser = new Parser({ lexer, sourceCompletion: 'complete' });
@@ -37,7 +40,6 @@ export function parseNextShellUnit({
   sourceCompletion,
 }: {
   commandLine: string,
-  env: Map<string, string>,
   sourceCompletion: 'complete' | 'may-continue',
 }): ShellUnitParseResult {
   const lexer = new Lexer({ input: commandLine });
@@ -111,6 +113,27 @@ const KEYWORDS = new Set([
   'function',
 ]);
 
+const MAX_CONDITIONAL_DEPTH = 512;
+
+const conditionalUnaryOperators: ReadonlySet<string> = new Set<WeshConditionalUnaryOperator>([
+  '-n', '-z', '-v',
+  '-b', '-c', '-d', '-e', '-f', '-h', '-L',
+  '-p', '-r', '-s', '-S', '-t', '-w', '-x',
+]);
+const conditionalBinaryOperators: ReadonlySet<string> = new Set<WeshConditionalBinaryOperator>([
+  '=', '==', '!=', '=~', '<', '>',
+  '-eq', '-ne', '-lt', '-le', '-gt', '-ge',
+  '-ef', '-nt', '-ot',
+]);
+
+function isConditionalUnaryOperator(value: string): value is WeshConditionalUnaryOperator {
+  return conditionalUnaryOperators.has(value);
+}
+
+function isConditionalBinaryOperator(value: string): value is WeshConditionalBinaryOperator {
+  return conditionalBinaryOperators.has(value);
+}
+
 class Parser {
   private currentToken: Token;
   private lexer: Lexer;
@@ -168,8 +191,10 @@ class Parser {
 
   private parseProcessSubstitution({
     tokenType,
+    followingContext,
   }: {
     tokenType: 'PROC_SUB_IN' | 'PROC_SUB_OUT',
+    followingContext?: 'conditional',
   }): WeshProcessSubstitutionNode {
     this.eat({ type: tokenType });
 
@@ -190,9 +215,18 @@ class Parser {
 
     const endType = this.currentToken.type;
     switch (endType) {
-    case 'RPAREN':
-      this.eat({ type: 'RPAREN' });
+    case 'RPAREN': {
+      if (followingContext === undefined) {
+        this.eat({ type: 'RPAREN' });
+        break;
+      }
+      const endPosition = this.currentToken.position + 1;
+      this.currentToken = this.lexer.next({ context: followingContext });
+      if (this.currentToken.type === 'WORD' && this.lexer.isAdjacentWord({ end: endPosition, start: this.currentToken.position })) {
+        throw new Error('Expected a word boundary after conditional process substitution');
+      }
       break;
+    }
     case 'WORD':
     case 'LPAREN':
     case 'PIPE':
@@ -327,42 +361,6 @@ class Parser {
     }
   }
 
-  private withTrailingListOperator({
-    node,
-    operator,
-  }: {
-    node: WeshASTNode,
-    operator: ';' | '&&' | '||' | '&',
-  }): WeshASTNode {
-    const kind = node.kind;
-    switch (kind) {
-    case 'list': {
-      const lastPart = node.parts[node.parts.length - 1];
-      if (lastPart) {
-        lastPart.operator = operator;
-      }
-      return node;
-    }
-    case 'command':
-    case 'pipeline':
-    case 'if':
-    case 'for':
-    case 'while':
-    case 'until':
-    case 'case':
-    case 'functionDefinition':
-    case 'arithmeticCommand':
-    case 'redirected':
-    case 'assignment':
-    case 'subshell':
-      return { kind: 'list', parts: [{ node, operator }] };
-    default: {
-      const _ex: never = kind;
-      throw new Error(`Unhandled node kind: ${_ex}`);
-    }
-    }
-  }
-
   private parseList({
     terminators,
     newlinePolicy,
@@ -388,6 +386,7 @@ class Parser {
     }
 
     let node = this.parsePipeline({ terminators });
+    let parts: WeshListNode['parts'] | undefined;
 
     while (
       (this.currentToken.type === 'SEMI' ||
@@ -401,7 +400,7 @@ class Parser {
         this.currentToken.type === 'SEMI' &&
         this.currentToken.value === '\n'
       ) {
-        return node;
+        break;
       }
 
       const type = this.currentToken.type;
@@ -424,6 +423,8 @@ class Parser {
         throw new Error(`Unhandled operator type: ${type}`);
       }
 
+      parts ??= [];
+      parts.push({ node, operator });
       this.eat({ type });
       while (this.currentToken.type === 'SEMI' && !this.isTerminator({ terminators })) {
         if (
@@ -432,7 +433,7 @@ class Parser {
           type !== 'AND' &&
           type !== 'OR'
         ) {
-          return this.withTrailingListOperator({ node, operator });
+          return { kind: 'list', parts };
         }
         this.eat({ type: 'SEMI' });
       }
@@ -441,49 +442,17 @@ class Parser {
         if (type === 'AND' || type === 'OR') {
           throw new Error(`Expected command after '${operator}'`);
         }
-        return this.withTrailingListOperator({ node, operator });
+        return { kind: 'list', parts };
       }
 
-      const nextNode = this.parsePipeline({ terminators });
-
-      const kind = node.kind;
-      switch (kind) {
-      case 'list': {
-        const lastPart = node.parts[node.parts.length - 1];
-        if (lastPart) {
-          lastPart.operator = operator;
-        }
-        node.parts.push({ node: nextNode, operator: ';' });
-        break;
-      }
-      case 'command':
-      case 'pipeline':
-      case 'if':
-      case 'for':
-      case 'while':
-      case 'until':
-      case 'case':
-      case 'functionDefinition':
-      case 'arithmeticCommand':
-      case 'redirected':
-      case 'assignment':
-      case 'subshell':
-        node = {
-          kind: 'list',
-          parts: [
-            { node, operator },
-            { node: nextNode, operator: ';' },
-          ],
-        };
-        break;
-      default: {
-        const _ex: never = kind;
-        throw new Error(`Unhandled node kind: ${_ex}`);
-      }
-      }
+      node = this.parsePipeline({ terminators });
     }
 
-    return node;
+    if (parts === undefined) {
+      return node;
+    }
+    parts.push({ node, operator: ';' });
+    return { kind: 'list', parts };
   }
 
   private isTerminator({ terminators }: { terminators: string[] }): boolean {
@@ -491,105 +460,60 @@ class Parser {
            this.currentToken.type === 'RPAREN';
   }
 
-  private parsePipeline({ terminators = [] }: { terminators?: string[] } = {}): WeshASTNode {
-    let node = this.parseCommand({ terminators });
+  private parsePipeline({ terminators }: { terminators: string[] }): WeshASTNode {
+    const first = this.parseCommand({ terminators });
+    const commands: WeshASTNode[] = [first];
+    let stage = first;
 
     while (this.currentToken.type === 'PIPE' && !this.isTerminator({ terminators })) {
       this.eat({ type: 'PIPE' });
       const pipeStderr = (this.currentToken.type as TokenType) === 'AMP';
       if (pipeStderr) {
         this.eat({ type: 'AMP' });
-        const leftCommand = (() => {
-          const kind = node.kind;
-          switch (kind) {
-          case 'command':
-            return node;
-          case 'pipeline': {
-            const command = node.commands[node.commands.length - 1];
-            if (command === undefined) {
-              throw new Error('Pipeline stderr shorthand requires a command');
-            }
-            const commandKind = command.kind;
-            switch (commandKind) {
-            case 'command':
-              return command;
-            case 'pipeline':
-            case 'list':
-            case 'if':
-            case 'for':
-            case 'while':
-            case 'until':
-            case 'case':
-            case 'functionDefinition':
-            case 'arithmeticCommand':
-            case 'redirected':
-            case 'assignment':
-            case 'subshell':
-              throw new Error('Pipeline stderr shorthand requires a command');
-            default: {
-              const _ex: never = commandKind;
-              throw new Error(`Unhandled pipeline command kind: ${_ex}`);
-            }
-            }
-          }
-          case 'list':
-          case 'if':
-          case 'for':
-          case 'while':
-          case 'until':
-          case 'case':
-          case 'functionDefinition':
-          case 'arithmeticCommand':
-          case 'redirected':
-          case 'assignment':
-          case 'subshell':
-            throw new Error('Pipeline stderr shorthand requires a command');
-          default: {
-            const _ex: never = kind;
-            throw new Error(`Unhandled pipeline node kind: ${_ex}`);
-          }
-          }
-        })();
-        leftCommand.redirections.push({
+        const kind = stage.kind;
+        const redirection: WeshRedirection = {
           fd: 2,
           type: 'dup_output',
           target: '1',
           targetFd: 1,
-        });
+        };
+        switch (kind) {
+        case 'command':
+        case 'redirected':
+          stage.redirections.push(redirection);
+          break;
+        case 'pipeline':
+        case 'list':
+        case 'if':
+        case 'for':
+        case 'while':
+        case 'until':
+        case 'case':
+        case 'functionDefinition':
+        case 'arithmeticCommand':
+        case 'conditionalCommand':
+        case 'assignment':
+        case 'subshell':
+          stage = { kind: 'redirected', node: stage, redirections: [redirection] };
+          commands[commands.length - 1] = stage;
+          break;
+        default: {
+          const _ex: never = kind;
+          throw new Error(`Unhandled pipeline node kind: ${_ex}`);
+        }
+        }
       }
       while ((this.currentToken.type as TokenType) === 'SEMI' && this.currentToken.value === '\n') {
         this.eat({ type: 'SEMI' });
       }
-      const right = this.parseCommand({ terminators });
-
-      const kind = node.kind;
-      switch (kind) {
-      case 'pipeline':
-        node.commands.push(right);
-        break;
-      case 'command':
-        node = { kind: 'pipeline', commands: [node, right] };
-        break;
-      case 'list':
-      case 'if':
-      case 'for':
-      case 'while':
-      case 'until':
-      case 'case':
-      case 'functionDefinition':
-      case 'arithmeticCommand':
-      case 'redirected':
-      case 'assignment':
-      case 'subshell':
-        throw new Error(`Invalid node kind in pipeline: ${kind}`);
-      default: {
-        const _ex: never = kind;
-        throw new Error(`Unhandled node kind: ${_ex}`);
+      if (this.isTerminator({ terminators }) || (this.currentToken.type as TokenType) === 'EOF') {
+        throw new Error("Expected command after pipe");
       }
-      }
+      stage = this.parseCommand({ terminators });
+      commands.push(stage);
     }
 
-    return node;
+    return commands.length === 1 ? first : { kind: 'pipeline', commands };
   }
 
   private parseCommand({ terminators = [] }: { terminators?: string[] } = {}): WeshASTNode {
@@ -913,6 +837,7 @@ class Parser {
     case 'case':
     case 'functionDefinition':
     case 'arithmeticCommand':
+    case 'conditionalCommand':
     case 'redirected':
     case 'assignment':
     case 'subshell':
@@ -934,93 +859,115 @@ class Parser {
   }
 
   private parseArithmeticCommand(): WeshASTNode {
-    this.eat({ type: 'DLPAREN' });
-    const parts: string[] = [];
-    let depth = 1;
-
-    while (true) {
-      const token = this.currentToken;
-      switch (token.type) {
-      case 'LPAREN':
-        depth += 1;
-        parts.push(token.value);
-        this.eat({ type: 'LPAREN' });
-        break;
-      case 'RPAREN': {
-        const nextToken = this.lexer.peek();
-        if (depth === 1 && nextToken.type === 'RPAREN') {
-          this.eat({ type: 'RPAREN' });
-          this.eat({ type: 'RPAREN' });
-          return {
-            kind: 'arithmeticCommand',
-            expression: parts.join(' ').trim(),
-          };
-        }
-        depth -= 1;
-        parts.push(token.value);
-        this.eat({ type: 'RPAREN' });
-        break;
-      }
-      case 'EOF':
-        throw new Error("Expected '))' to close arithmetic command");
-      default:
-        parts.push(token.value);
-        this.eat({ type: token.type });
-        break;
-      }
-    }
+    const expression = this.lexer.readArithmeticCommand({ startIndex: this.currentToken.position });
+    this.currentToken = this.lexer.next();
+    return { kind: 'arithmeticCommand', expression };
   }
 
   private parseExtendedTestCommand(): WeshASTNode {
-    this.eat({ type: 'WORD' });
-    const args: string[] = [];
-
-    while (true) {
-      const token = this.currentToken;
-      switch (token.type) {
-      case 'WORD':
-        args.push(token.value);
-        this.eat({ type: 'WORD' });
-        if (token.value === ']]') {
-          return {
-            kind: 'command',
-            name: '[[',
-            args,
-            assignments: [],
-            redirections: [],
-          };
-        }
-        break;
-      case 'AND':
-        args.push('&&');
-        this.eat({ type: 'AND' });
-        break;
-      case 'OR':
-        args.push('||');
-        this.eat({ type: 'OR' });
-        break;
-      case 'LPAREN':
-        args.push('(');
-        this.eat({ type: 'LPAREN' });
-        break;
-      case 'RPAREN':
-        args.push(')');
-        this.eat({ type: 'RPAREN' });
-        break;
-      case 'GT':
-        args.push('>');
-        this.eat({ type: 'GT' });
-        break;
-      case 'LT':
-        args.push('<');
-        this.eat({ type: 'LT' });
-        break;
-      case 'EOF':
-        throw new Error("Expected closing ']]'");
-      default:
-        throw new Error(`Unexpected token in [[ expression: ${token.value}`);
-      }
+    this.currentToken = this.lexer.next({ context: 'conditional-term' });
+    const expression = this.parseConditionalOr({ depth: 0 });
+    if (this.getConditionalWord() !== ']]') {
+      this.failConditionalSyntax({ message: "Expected closing ']]' after conditional expression" });
     }
+    this.currentToken = this.lexer.next();
+    return { kind: 'conditionalCommand', expression };
+  }
+
+  private parseConditionalOr({ depth }: { depth: number }): WeshConditionalExpression {
+    const first = this.parseConditionalAnd({ depth });
+    let operands: WeshConditionalExpression[] | undefined;
+    while (this.currentToken.value === '||') {
+      operands ??= [first];
+      this.currentToken = this.lexer.next({ context: 'conditional-term' });
+      operands.push(this.parseConditionalAnd({ depth }));
+    }
+    return operands === undefined ? first : { kind: 'or', operands };
+  }
+
+  private parseConditionalAnd({ depth }: { depth: number }): WeshConditionalExpression {
+    const first = this.parseConditionalTerm({ depth });
+    this.skipConditionalNewlines({ context: 'conditional' });
+    let operands: WeshConditionalExpression[] | undefined;
+    while (this.currentToken.value === '&&') {
+      operands ??= [first];
+      this.currentToken = this.lexer.next({ context: 'conditional-term' });
+      operands.push(this.parseConditionalTerm({ depth }));
+      this.skipConditionalNewlines({ context: 'conditional' });
+    }
+    return operands === undefined ? first : { kind: 'and', operands };
+  }
+
+  private parseConditionalTerm({ depth }: { depth: number }): WeshConditionalExpression {
+    if (depth >= MAX_CONDITIONAL_DEPTH) {
+      throw new Error('Conditional expression nesting limit exceeded');
+    }
+    this.skipConditionalNewlines({ context: 'conditional-term' });
+    if (this.currentToken.value === '(') {
+      this.currentToken = this.lexer.next({ context: 'conditional-term' });
+      const expression = this.parseConditionalOr({ depth: depth + 1 });
+      if (this.currentToken.value !== ')') {
+        this.failConditionalSyntax({ message: "Expected ')' after conditional expression" });
+      }
+      this.currentToken = this.lexer.next({ context: 'conditional' });
+      return expression;
+    }
+    const operatorOrWord = this.getConditionalWord();
+    if (operatorOrWord === '!') {
+      this.currentToken = this.lexer.next({ context: 'conditional-term' });
+      return { kind: 'not', operand: this.parseConditionalTerm({ depth: depth + 1 }) };
+    }
+    if (isConditionalUnaryOperator(operatorOrWord)) {
+      this.currentToken = this.lexer.next({ context: 'conditional' });
+      return { kind: 'unary', operator: operatorOrWord, word: this.takeConditionalOperand() };
+    }
+
+    const left = this.takeConditionalOperand();
+    const operator = this.getConditionalWord();
+    const context = operator === '=~' ? 'conditional-regexp' : 'conditional';
+    if (isConditionalBinaryOperator(operator)) {
+      this.currentToken = this.lexer.next({ context });
+      return { kind: 'binary', operator, left, right: this.takeConditionalOperand() };
+    }
+    if (operator === ']]' || operator === ')' || operator === '&&' || operator === '||') {
+      return { kind: 'word', word: left };
+    }
+    this.failConditionalSyntax({ message: 'Expected a conditional binary operator' });
+  }
+
+  private getConditionalWord(): string {
+    return this.currentToken.value.replaceAll('\\\n', '');
+  }
+
+  private takeConditionalOperand(): WeshConditionalOperand {
+    const { type, value } = this.currentToken;
+    if (type === 'PROC_SUB_IN' || type === 'PROC_SUB_OUT') {
+      return this.parseProcessSubstitution({ tokenType: type, followingContext: 'conditional' });
+    }
+    if ((value === '<' || value === '>') && this.sourceCompletion === 'may-continue' && this.lexer.isAtEndOfInput()) {
+      throw new ShellLexerIncompleteError('Incomplete conditional process substitution');
+    }
+    if (type !== 'WORD' || this.getConditionalWord() === ']]') {
+      this.failConditionalSyntax({ message: 'Expected a conditional operand' });
+    }
+    this.currentToken = this.lexer.next({ context: 'conditional' });
+    return value;
+  }
+
+  private skipConditionalNewlines({ context }: { context: ConditionalTokenContext }): void {
+    while (this.currentToken.type === 'SEMI' && this.currentToken.value === '\n') {
+      this.readPendingHereDocuments();
+      this.currentToken = this.lexer.next({ context });
+    }
+  }
+
+  private failConditionalSyntax({ message }: { message: string }): never {
+    const token = this.currentToken;
+    if (this.sourceCompletion === 'may-continue' && this.lexer.isAtEndOfInput()
+      && (token.type === 'WORD' || token.type === 'PIPE' || token.type === 'AMP')) {
+      throw new ShellLexerIncompleteError(message);
+    }
+    throw new Error(message);
   }
 
   private parseIf(): WeshASTNode {
@@ -1401,6 +1348,7 @@ class Parser {
         case 'case':
         case 'functionDefinition':
         case 'arithmeticCommand':
+        case 'conditionalCommand':
         case 'redirected':
         case 'assignment':
         case 'subshell':
@@ -1435,6 +1383,7 @@ class Parser {
       case 'case':
       case 'functionDefinition':
       case 'arithmeticCommand':
+      case 'conditionalCommand':
       case 'redirected':
       case 'assignment':
       case 'subshell':
@@ -1547,16 +1496,29 @@ class Parser {
     }
     }
 
-    if (!/^\d+$/.test(this.currentToken.value)) {
+    const word = this.currentToken;
+    if (!/^\d(?:\d|\\\n)*$/.test(word.value)) {
       return false;
     }
-
-    return this.isRedirection({ type: this.lexer.peek().type });
+    const next = this.lexer.peek();
+    if (next.position !== word.position + word.value.length) {
+      return false;
+    }
+    if (next.type === 'EOF' && this.sourceCompletion === 'may-continue') {
+      throw new ShellLexerIncompleteError('Incomplete numeric redirection prefix');
+    }
+    return next.value !== '&>' && next.value !== '&>>'
+      && this.isRedirection({ type: next.type });
   }
 
   private parseRedirectionGroup(): WeshRedirection[] {
+    let explicitFd: number | undefined;
+    if (!this.isRedirection({ type: this.currentToken.type })) {
+      explicitFd = Number.parseInt(this.currentToken.value.replaceAll('\\\n', ''), 10);
+      this.eat({ type: 'WORD' });
+    }
     const operatorValue = this.currentToken.value;
-    const primary = this.parseRedirection();
+    const primary = this.parseRedirection({ explicitFd });
     if (operatorValue !== '&>' && operatorValue !== '&>>') {
       return [primary];
     }
@@ -1571,13 +1533,7 @@ class Parser {
     ];
   }
 
-  private parseRedirection(): WeshRedirection {
-    let explicitFd: number | undefined;
-    if (this.currentToken.type === 'WORD' && /^\d+$/.test(this.currentToken.value)) {
-      explicitFd = parseInt(this.currentToken.value, 10);
-      this.eat({ type: 'WORD' });
-    }
-
+  private parseRedirection({ explicitFd }: { explicitFd: number | undefined }): WeshRedirection {
     const tokenType = this.currentToken.type;
     const tokenValue = this.currentToken.value;
     this.eat({ type: tokenType });

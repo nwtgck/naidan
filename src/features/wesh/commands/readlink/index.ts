@@ -5,7 +5,7 @@ import {
   canonicalizeExistingPath,
   canonicalizePathAllowingMissingComponents,
   canonicalizePathAllowingMissingLeaf,
-  resolvePath,
+  toAbsolutePath,
 } from '@/features/wesh/path';
 
 type ReadlinkMode = 'link' | 'canonicalize' | 'existing' | 'missing';
@@ -144,10 +144,7 @@ async function resolveOperand({
 
   switch (mode) {
   case 'link': {
-    if (operand.length > 1 && operand.endsWith('/')) {
-      throw new Error(`Not a symbolic link: ${operand}`);
-    }
-    const inputPath = resolvePath({ cwd: context.cwd, path: operand });
+    const inputPath = toAbsolutePath({ cwd: context.cwd, path: operand });
     return context.files.readlink({ path: inputPath });
   }
   case 'canonicalize':

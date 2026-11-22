@@ -198,10 +198,10 @@ function translateBracketExpression({
         }
         const rawName = subexpression.content;
         const name = rawName.toLowerCase() as PosixCharacterClassName;
-        const replacement = characterClasses[name];
-        if (replacement === undefined) {
-          throw new Error(`Invalid character class name '${rawName}'`);
+        if (!Object.hasOwn(characterClasses, name)) {
+          throw new SyntaxError(`Invalid character class name '${rawName}'`);
         }
+        const replacement = characterClasses[name];
         result += replacement;
         requiresUnicode ||= replacement.includes(String.raw`\p{`);
         index = subexpression.endIndex + 1;
@@ -211,7 +211,7 @@ function translateBracketExpression({
       case '=': {
         const symbols = Array.from(subexpression.content);
         if (symbols.length !== 1) {
-          throw new Error(`Unsupported multi-character collating element '${subexpression.content}'`);
+          throw new SyntaxError(`Unsupported multi-character collating element '${subexpression.content}'`);
         }
         const symbol = symbols[0]!;
         result += escapeBracketLiteral({ value: symbol });
@@ -381,7 +381,7 @@ function validatePosixBackreferences({
   }
 
   if (references.some((reference) => reference > captureGroupCount)) {
-    throw new Error('Invalid back reference');
+    throw new SyntaxError('Invalid back reference');
   }
 }
 

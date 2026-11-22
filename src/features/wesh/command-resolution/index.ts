@@ -1,18 +1,48 @@
-import { normalizePath, resolvePath } from '@/features/wesh/path';
+import { normalizePath, toAbsolutePath } from '@/features/wesh/path';
 import type {
   WeshCommandContext,
   WeshCommandMeta,
   WeshResolvedCommand as CoreWeshResolvedCommand,
 } from '@/features/wesh/types';
 
-export const shellControlFlowBuiltinNames: ReadonlySet<string> = new Set([
+type CommandLookupContext = Pick<WeshCommandContext, 'cwd' | 'env' | 'getWeshCommandMeta'> & {
+  readonly files: Pick<WeshCommandContext['files'], 'stat'>,
+};
+
+export const shellIntrinsicNames: ReadonlySet<string> = new Set([
   'break',
   'continue',
   'exit',
   'return',
+  'wait',
 ]);
 
-const WESH_COMMAND_SEARCH_DIRECTORY = '/bin';
+/** Literal compatibility paths for registered commands. Other paths go through the VFS. */
+export function registeredCommandPath({ name, cwd }: { name: string, cwd: string }): { path: string, name: string } | undefined {
+  const path = toAbsolutePath({ cwd, path: name });
+  if (path.endsWith('/') || path.endsWith('/.') || /(?:^|\/)\.\.(?=\/|$)/u.test(path)) {
+    return undefined;
+  }
+  const normalized = normalizePath({ cwd: '/', path });
+  const separator = normalized.lastIndexOf('/');
+  const parent = normalized.slice(0, separator);
+  return parent === '/bin' || parent === '/usr/bin'
+    ? { path: normalized, name: normalized.slice(separator + 1) }
+    : undefined;
+}
+
+export function* iterateCommandPaths({ name, cwd, searchPathEntries }: {
+  name: string, cwd: string, searchPathEntries: readonly string[],
+}): Iterable<{ candidatePath: string, invocationPath: string }> {
+  if (name.includes('/')) {
+    yield { candidatePath: toAbsolutePath({ cwd, path: name }), invocationPath: name };
+    return;
+  }
+  for (const entry of searchPathEntries) {
+    const invocationPath = `${(entry || '.').replace(/\/+$/u, '')}/${name}`;
+    yield { candidatePath: toAbsolutePath({ cwd, path: invocationPath }), invocationPath };
+  }
+}
 
 type CommandResolutionSource = 'builtin-name' | 'path-lookup' | 'explicit-path';
 
@@ -69,7 +99,7 @@ async function resolveFileAtPath({
   invocationPath,
   resolution,
 }: {
-  context: WeshCommandContext;
+  context: CommandLookupContext;
   name: string;
   candidatePath: string;
   invocationPath: string;
@@ -105,7 +135,7 @@ function resolveWeshBuiltin({
   context,
   name,
 }: {
-  context: WeshCommandContext;
+  context: CommandLookupContext;
   name: string;
 }): ResolvedBuiltinCommand | undefined {
   const meta = context.getWeshCommandMeta({ name });
@@ -123,19 +153,15 @@ async function resolveExplicitCommand({
   context,
   name,
 }: {
-  context: WeshCommandContext;
+  context: CommandLookupContext;
   name: string;
 }): Promise<WeshResolvedCommand> {
-  const normalizedPath = normalizePath({ cwd: context.cwd, path: name });
-  const separatorIndex = normalizedPath.lastIndexOf('/');
-  const directory = separatorIndex === 0 ? '/' : normalizedPath.slice(0, separatorIndex);
-  const basename = normalizedPath.slice(separatorIndex + 1);
-
-  if (directory === WESH_COMMAND_SEARCH_DIRECTORY) {
-    const meta = context.getWeshCommandMeta({ name: basename });
+  const registered = registeredCommandPath({ name, cwd: context.cwd });
+  if (registered !== undefined) {
+    const meta = context.getWeshCommandMeta({ name: registered.name });
     if (meta !== undefined) {
       return toBuiltinResolution({
-        name: basename,
+        name: registered.name,
         meta,
         invocationPath: name,
         resolution: 'explicit-path',
@@ -143,65 +169,33 @@ async function resolveExplicitCommand({
     }
   }
 
-  return await resolveFileAtPath({
-    context,
-    name: basename,
-    candidatePath: normalizedPath,
-    invocationPath: name,
-    resolution: 'explicit-path',
-  }) ?? { kind: 'not_found', name };
-}
-
-export function hasShellFunction({
-  context,
-  name,
-}: {
-  context: WeshCommandContext;
-  name: string;
-}): boolean {
-  const functionAwareContext = context as WeshCommandContext & {
-    hasFunction?: ({ name }: { name: string }) => boolean;
-  };
-  return functionAwareContext.hasFunction?.({ name }) === true;
+  const [file] = await resolvePathCommands({ context, name });
+  return file ?? { kind: 'not_found', name };
 }
 
 export async function resolvePathCommands({
   context,
   name,
+  searchPathEntries,
 }: {
-  context: WeshCommandContext;
+  context: CommandLookupContext;
   name: string;
+  searchPathEntries?: readonly string[];
 }): Promise<readonly ResolvedFileCommand[]> {
-  if (name.includes('/')) {
-    const normalizedPath = normalizePath({ cwd: context.cwd, path: name });
-    const separatorIndex = normalizedPath.lastIndexOf('/');
-    const basename = normalizedPath.slice(separatorIndex + 1);
+  const explicit = name.includes('/');
+  const basename = name.slice(name.lastIndexOf('/') + 1);
+  const matches: ResolvedFileCommand[] = [];
+  for (const { candidatePath, invocationPath } of iterateCommandPaths({
+    name,
+    cwd: context.cwd,
+    searchPathEntries: explicit ? [] : searchPathEntries ?? (context.env.get('PATH') ?? '').split(':'),
+  })) {
     const file = await resolveFileAtPath({
       context,
       name: basename,
-      candidatePath: normalizedPath,
-      invocationPath: name,
-      resolution: 'explicit-path',
-    });
-    return file === undefined ? [] : [file];
-  }
-
-  const matches: ResolvedFileCommand[] = [];
-  for (const pathEntry of (context.env.get('PATH') ?? '').split(':')) {
-    const directory = resolvePath({
-      cwd: context.cwd,
-      path: pathEntry.length === 0 ? '.' : pathEntry,
-    });
-    const candidatePath = directory === '/' ? `/${name}` : `${directory}/${name}`;
-    const invocationPath = pathEntry.length === 0
-      ? `./${name}`
-      : `${pathEntry.replace(/\/+$/u, '')}/${name}`;
-    const file = await resolveFileAtPath({
-      context,
-      name,
       candidatePath,
       invocationPath,
-      resolution: 'path-lookup',
+      resolution: explicit ? 'explicit-path' : 'path-lookup',
     });
     if (file !== undefined) {
       matches.push(file);
@@ -213,9 +207,11 @@ export async function resolvePathCommands({
 export async function resolveCommands({
   context,
   name,
+  searchPathEntries,
 }: {
-  context: WeshCommandContext;
+  context: CommandLookupContext;
   name: string;
+  searchPathEntries?: readonly string[];
 }): Promise<readonly WeshResolvedCommand[]> {
   const weshBuiltin = resolveWeshBuiltin({ context, name });
   if (weshBuiltin !== undefined) {
@@ -237,17 +233,19 @@ export async function resolveCommands({
     }
   }
 
-  return await resolvePathCommands({ context, name });
+  return await resolvePathCommands({ context, name, searchPathEntries });
 }
 
 export async function resolveCommand({
   context,
   name,
+  searchPathEntries,
 }: {
-  context: WeshCommandContext;
+  context: CommandLookupContext;
   name: string;
+  searchPathEntries?: readonly string[];
 }): Promise<WeshResolvedCommand> {
-  const first = (await resolveCommands({ context, name }))[0];
+  const first = (await resolveCommands({ context, name, searchPathEntries }))[0];
   return first ?? { kind: 'not_found', name };
 }
 

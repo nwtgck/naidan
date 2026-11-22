@@ -233,6 +233,7 @@ export async function runCommit({ context, args }: {
     files: context.files,
     repository,
     objectId: created.objectId,
+    expected: head,
     reflog: {
       identity: created.committerIdentity,
       timestamp: created.committerTimestamp,

@@ -1,5 +1,5 @@
+import type { ParsedStandardArgv, StandardArgvAction } from '@/features/wesh/argv-v2';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
-import type { ArgvOptionOccurrence } from '@/features/wesh/argv';
 
 const MAX_SAFE_COUNT = BigInt(Number.MAX_SAFE_INTEGER);
 
@@ -79,35 +79,43 @@ export function parseCoreutilsLineOrByteCount({
   };
 }
 
+export function lineOrByteCountArgvAction({
+  unit,
+}: {
+  unit: LineOrByteCountSelection['kind'],
+}): Extract<StandardArgvAction<never>, { kind: 'required-value' }> {
+  return {
+    kind: 'required-value',
+    key: unit,
+    parse: ({ rawValue }) => {
+      const parsed = parseCoreutilsLineOrByteCount({ value: rawValue, errorPrefix: `invalid number of ${unit}` });
+      return parsed.ok
+        ? { kind: 'parsed', value: parsed.value }
+        : { kind: 'invalid', message: parsed.message };
+    },
+  };
+}
+
 export function selectLastLineOrByteCount({
-  occurrences,
+  parsed,
   defaultLineCount,
 }: {
-  occurrences: readonly ArgvOptionOccurrence[],
+  parsed: ParsedStandardArgv<never>,
   defaultLineCount: string,
 }): LineOrByteCountSelection {
-  let selected: LineOrByteCountSelection = {
-    kind: 'lines',
-    value: defaultLineCount,
-  };
-
-  for (const occurrence of occurrences) {
-    if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') {
+  const occurrences = parsed.occurrences ?? [];
+  for (let index = occurrences.length - 1; index >= 0; index -= 1) {
+    const { semantic } = occurrences[index]!;
+    if (!('key' in semantic) || (semantic.key !== 'lines' && semantic.key !== 'bytes')) {
       continue;
     }
-    switch (occurrence.key) {
-    case 'lines':
-      selected = { kind: 'lines', value: occurrence.value };
-      break;
-    case 'bytes':
-      selected = { kind: 'bytes', value: occurrence.value };
-      break;
-    default:
-      break;
+    const value = parsed.optionValues[semantic.key];
+    if (typeof value === 'string') {
+      return { kind: semantic.key, value };
     }
   }
 
-  return selected;
+  return { kind: 'lines', value: defaultLineCount };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

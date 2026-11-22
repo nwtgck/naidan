@@ -1,7 +1,7 @@
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
+import { analyzeArgvLongForm, analyzeArgvShortForm, defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
 
 interface SeqParsedArgs {
@@ -65,18 +65,48 @@ const MAXIMUM_SEQUENCE_VALUES = 1_000_001;
 const DECIMAL_OPERAND_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u;
 const HEXADECIMAL_INTEGER_OPERAND_PATTERN = /^[+-]?0[xX][0-9a-fA-F]+$/u;
 
-const seqArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'value', short: 's', long: 'separator', key: 'separator', valueName: 'STRING', allowAttachedValue: true, parseValue: undefined, help: { summary: 'use STRING to separate numbers', valueName: 'STRING', category: 'common' } },
-    { kind: 'flag', short: 'w', long: 'equal-width', effects: [{ key: 'equalWidth', value: true }], help: { summary: 'equalize width by padding with leading zeroes', category: 'common' } },
-    { kind: 'value', short: 'f', long: 'format', key: 'format', valueName: 'FORMAT', allowAttachedValue: true, parseValue: undefined, help: { summary: 'use printf style floating-point FORMAT', valueName: 'FORMAT', category: 'advanced' } },
-  ],
-  allowShortFlagBundles: false,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
-};
+const seqOptions = [
+  {
+    semantic: 'help',
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: 'separator',
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'required-attached-or-following', missingValueName: 'STRING' } },
+      { kind: 'long', name: 'separator', value: { kind: 'required', missingValueName: 'STRING' } },
+    ],
+    summary: 'use STRING to separate numbers',
+    category: 'common',
+  },
+  {
+    semantic: 'equalWidth',
+    forms: [
+      { kind: 'short', name: 'w', value: { kind: 'none' } },
+      { kind: 'long', name: 'equal-width', value: { kind: 'none' } },
+    ],
+    summary: 'equalize width by padding with leading zeroes',
+    category: 'common',
+  },
+  {
+    semantic: 'format',
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'required-attached-or-following', missingValueName: 'FORMAT' } },
+      { kind: 'long', name: 'format', value: { kind: 'required', missingValueName: 'FORMAT' } },
+    ],
+    summary: 'use printf style floating-point FORMAT',
+    category: 'advanced',
+  },
+] as const;
+
+const seqArgvCatalog = defineArgvCatalog<typeof seqOptions[number]['semantic']>({
+  definitions: seqOptions,
+  nonExecutableLongOptions: [],
+});
+const seqArgvHelp = defineArgvHelpPresentation({ catalog: seqArgvCatalog, rows: seqOptions });
+const seqUsageSummary = formatArgvUsageSummary({ presentation: seqArgvHelp });
 
 function isNumericOperand({
   value,
@@ -233,129 +263,72 @@ function parseSeqArgs({
     diagnostic: undefined,
   };
 
-  let optionsDone = false;
-  for (let index = 0; index < args.length; index++) {
-    const token = args[index];
-    if (token === undefined) {
-      continue;
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]!;
+    if (token === '--') {
+      parsed.positionals = args.slice(index + 1);
+      break;
     }
-
-    if (!optionsDone && token === '--') {
-      optionsDone = true;
-      continue;
-    }
-
-    if (!optionsDone && token === '--help') {
-      parsed.help = true;
-      return parsed;
-    }
-
-    if (!optionsDone && token === '--equal-width') {
-      parsed.equalWidth = true;
-      continue;
-    }
-
-    if (!optionsDone && (token === '--separator' || token.startsWith('--separator='))) {
-      const value = token.startsWith('--separator=') ? token.slice('--separator='.length) : args[index + 1];
-      if (value === undefined) {
-        parsed.diagnostic = 'seq: option requires a value for STRING';
-        break;
-      }
-      parsed.separator = value;
-      if (token === '--separator') {
-        index += 1;
-      }
-      continue;
-    }
-
-    if (!optionsDone && (token === '--format' || token.startsWith('--format='))) {
-      const value = token.startsWith('--format=') ? token.slice('--format='.length) : args[index + 1];
-      if (value === undefined) {
-        parsed.diagnostic = 'seq: option requires a value for FORMAT';
-        break;
-      }
-      parsed.format = value;
-      if (token === '--format') {
-        index += 1;
-      }
-      continue;
-    }
-
-    if (!optionsDone && token.startsWith('--')) {
-      parsed.diagnostic = `seq: unrecognized option '${token}'`;
+    // A negative number starts the operands even without a preceding --.
+    if (token === '-' || !token.startsWith('-') || isNumericOperand({ value: token })) {
+      parsed.positionals = args.slice(index);
       break;
     }
 
-    if (
-      !optionsDone
-      && token.length > 1
-      && token.startsWith('-')
-      && !isNumericOperand({ value: token })
-    ) {
-      let optionIndex = 1;
-      let consumedFollowingArgument = false;
-      while (optionIndex < token.length) {
-        const option = token[optionIndex]!;
-        switch (option) {
-        case 'w':
-          parsed.equalWidth = true;
-          optionIndex += 1;
-          break;
-        case 's':
-        case 'f': {
-          const attachedValue = token.slice(optionIndex + 1);
-          const value = attachedValue.length > 0
-            ? attachedValue
-            : args[index + 1];
-          if (value === undefined) {
-            switch (option) {
-            case 's':
-              parsed.diagnostic = 'seq: option requires a value for STRING';
-              break;
-            case 'f':
-              parsed.diagnostic = 'seq: option requires a value for FORMAT';
-              break;
-            default: {
-              const _ex: never = option;
-              throw new Error(`Unhandled seq value option: ${_ex}`);
-            }
-            }
-            optionIndex = token.length;
-            break;
-          }
-          switch (option) {
-          case 's':
-            parsed.separator = value;
-            break;
-          case 'f':
-            parsed.format = value;
-            break;
-          default: {
-            const _ex: never = option;
-            throw new Error(`Unhandled seq value option: ${_ex}`);
-          }
-          }
-          consumedFollowingArgument = attachedValue.length === 0;
-          optionIndex = token.length;
-          break;
-        }
-        default:
-          parsed.diagnostic = `seq: invalid option -- '${option}'`;
-          optionIndex = token.length;
-          break;
-        }
+    const long = token.startsWith('--');
+    let offset = 1;
+    while (offset < token.length) {
+      const analysis = long
+        ? analyzeArgvLongForm({ token, catalog: seqArgvCatalog, longNameMatch: 'exact' })
+        : analyzeArgvShortForm({ token, bodyOffset: offset, prefix: '-', catalog: seqArgvCatalog });
+      if (analysis.kind !== 'matched' || analysis.value.kind === 'unexpected-inline') {
+        parsed.diagnostic = long
+          ? `seq: unrecognized option '${token}'`
+          : `seq: invalid option -- '${token[offset]}'`;
+        return parsed;
       }
-      if (parsed.diagnostic !== undefined) {
+
+      offset = 'nextBodyOffset' in analysis ? analysis.nextBodyOffset : token.length;
+      const { semantic, value } = analysis;
+      switch (semantic) {
+      case 'help':
+        parsed.help = true;
+        return parsed;
+      case 'equalWidth':
+        parsed.equalWidth = true;
+        break;
+      case 'separator':
+      case 'format': {
+        switch (value.kind) {
+        case 'inline':
+          parsed[semantic] = value.rawValue;
+          break;
+        case 'following-required': {
+          const following = args[index + 1];
+          if (following === undefined) {
+            parsed.diagnostic = `seq: option requires a value for ${value.valueName}`;
+            return parsed;
+          }
+          parsed[semantic] = following;
+          index += 1;
+          break;
+        }
+        case 'none':
+        case 'following-optional':
+          throw new Error(`Unexpected seq value claim for ${analysis.option}`);
+        default: {
+          const _ex: never = value;
+          throw new Error(`Unhandled seq value claim: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+        }
+        }
         break;
       }
-      if (consumedFollowingArgument) {
-        index += 1;
+      default: {
+        const _ex: never = semantic;
+        throw new Error(`Unhandled seq option: ${_ex}`);
       }
-      continue;
+      }
     }
-
-    parsed.positionals.push(token);
-    optionsDone = true;
   }
 
   return parsed;
@@ -1161,7 +1134,7 @@ export const seqCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'seq',
         message: parsed.diagnostic,
-        argvSpec: seqArgvSpec,
+        usageSummary: seqUsageSummary,
       });
       return { exitCode: 1 };
     }
@@ -1170,7 +1143,7 @@ export const seqCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'seq',
-        argvSpec: seqArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: seqArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -1181,7 +1154,7 @@ export const seqCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'seq',
         message: 'seq: missing operand',
-        argvSpec: seqArgvSpec,
+        usageSummary: seqUsageSummary,
       });
       return { exitCode: 1 };
     }
@@ -1191,7 +1164,7 @@ export const seqCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'seq',
         message: 'seq: extra operand',
-        argvSpec: seqArgvSpec,
+        usageSummary: seqUsageSummary,
       });
       return { exitCode: 1 };
     }
@@ -1203,7 +1176,7 @@ export const seqCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'seq',
         message: failedOperand.message,
-        argvSpec: seqArgvSpec,
+        usageSummary: seqUsageSummary,
       });
       return { exitCode: 1 };
     }
@@ -1229,7 +1202,7 @@ export const seqCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'seq',
         message: planned.message,
-        argvSpec: seqArgvSpec,
+        usageSummary: seqUsageSummary,
       });
       return { exitCode: 1 };
     }
@@ -1239,7 +1212,7 @@ export const seqCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'seq',
         message: 'seq: format string may not be specified when printing equal width strings',
-        argvSpec: seqArgvSpec,
+        usageSummary: seqUsageSummary,
       });
       return { exitCode: 1 };
     }
@@ -1252,7 +1225,7 @@ export const seqCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'seq',
           message: parsedFormat.message,
-          argvSpec: seqArgvSpec,
+          usageSummary: seqUsageSummary,
         });
         return { exitCode: 1 };
       }

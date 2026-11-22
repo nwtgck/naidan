@@ -190,9 +190,11 @@ export async function createStandaloneWorkerFromUrls({
   systemRuntimeUrl,
   name = 'naidan-standalone-worker',
   startupTimeoutMs = 10000,
+  signal,
 } = {}) {
   if (!workerEntryUrl) throw new TypeError('workerEntryUrl is required');
   if (!systemRuntimeUrl) throw new TypeError('systemRuntimeUrl is required');
+  signal?.throwIfAborted();
   const nameRecord = workerDiagnosticsForName(name);
   mutableDiagnostics.initializationAttempts += 1;
   nameRecord.initializationAttempts += 1;
@@ -213,22 +215,29 @@ export async function createStandaloneWorkerFromUrls({
   nameRecord.workersCreated += 1;
   nameRecord.activeWorkers += 1;
   const terminate = instrumentWorkerTermination(worker, nameRecord);
-  const channel = new MessageChannel();
+  let channel;
   let timeoutId;
   let workerErrorListener;
+  let abortListener;
   let failureKind = 'initialization';
   try {
+    channel = new MessageChannel();
     await new Promise((resolve, reject) => {
       const finish = callback => value => {
         clearTimeout(timeoutId);
         channel.port1.onmessage = null;
         channel.port1.onmessageerror = null;
         if (workerErrorListener) worker.removeEventListener('error', workerErrorListener);
+        if (abortListener) signal.removeEventListener('abort', abortListener);
         channel.port1.close();
         callback(value);
       };
       const succeed = finish(resolve);
       const fail = finish(reject);
+      if (signal) {
+        abortListener = () => fail(signal.reason);
+        signal.addEventListener('abort', abortListener, { once: true });
+      }
       channel.port1.onmessage = event => {
         if (event.data && event.data.type === READY_MESSAGE_TYPE) succeed();
         else if (event.data && event.data.type === ERROR_MESSAGE_TYPE) {
@@ -242,13 +251,19 @@ export async function createStandaloneWorkerFromUrls({
         failureKind = 'timeout';
         fail(new Error('Standalone Worker initialization timed out'));
       }, startupTimeoutMs);
-      worker.postMessage({
-        type: INIT_MESSAGE_TYPE,
-        workerEntryUrl: String(workerEntryUrl),
-        systemRuntimeUrl: String(systemRuntimeUrl),
-        packageLocale: resolvePackageLocale(),
-      }, [channel.port2]);
+      try {
+        worker.postMessage({
+          type: INIT_MESSAGE_TYPE,
+          workerEntryUrl: String(workerEntryUrl),
+          systemRuntimeUrl: String(systemRuntimeUrl),
+          packageLocale: resolvePackageLocale(),
+        }, [channel.port2]);
+      } catch (error) {
+        channel.port2.close();
+        fail(error);
+      }
     });
+    signal?.throwIfAborted();
     mutableDiagnostics.initializationSuccesses += 1;
     nameRecord.initializationSuccesses += 1;
     return worker;
@@ -259,7 +274,7 @@ export async function createStandaloneWorkerFromUrls({
       mutableDiagnostics.initializationTimeouts += 1;
       nameRecord.initializationTimeouts += 1;
     }
-    channel.port1.close();
+    channel?.port1.close();
     terminate();
     throw error;
   }

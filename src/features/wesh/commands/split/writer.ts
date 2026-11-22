@@ -1,4 +1,4 @@
-import { resolvePath } from '@/features/wesh/path';
+import { toAbsolutePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshFileHandle, WeshEfficientFileWriter } from '@/features/wesh/types';
 import { writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
@@ -111,7 +111,7 @@ export function createSplitOutputController({
       await verboseWriter.write({ text: `creating file '${path}'\n` });
     }
 
-    const resolvedPath = resolvePath({ cwd: context.cwd, path });
+    const resolvedPath = toAbsolutePath({ cwd: context.cwd, path });
     try {
       const efficient = await context.files.tryCreateFileWriterEfficiently({
         path: resolvedPath,

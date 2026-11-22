@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -6,6 +6,11 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+import { awkCommandDefinition } from './definition';
+
+beforeAll(async () => {
+  await awkCommandDefinition.load();
+});
 
 describe('wesh awk', () => {
   let wesh: Wesh;
@@ -382,6 +387,31 @@ describe('wesh awk', () => {
     expect(invalid.result.exitCode).toBe(2);
   });
 
+  it('handles help only when option scanning has not claimed the token as a value or operand', async () => {
+    await writeFile({ path: '--help', data: 'data\n' });
+
+    const help = await execute({ script: 'awk --help --unknown' });
+    const invalid = await execute({ script: 'awk --unknown --help' });
+    const missing = await execute({ script: 'awk -v' });
+    const value = await execute({ script: "awk -v --help 'BEGIN {}'" });
+    const input = await execute({ script: "awk '{print $0}' --help" });
+
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('--help');
+    expect(help.stderr.text).toBe('');
+    expect(invalid.result.exitCode).toBe(2);
+    expect(invalid.stdout.text).toBe('');
+    expect(invalid.stderr.text).toContain("awk: unrecognized option '--unknown'");
+    expect(missing.result.exitCode).toBe(2);
+    expect(missing.stderr.text).toContain('awk: -v requires a value for var=value');
+    expect(value.result.exitCode).toBe(2);
+    expect(value.stdout.text).toBe('');
+    expect(value.stderr.text).toContain("awk: invalid assignment '--help'");
+    expect(input.result.exitCode).toBe(0);
+    expect(input.stdout.text).toBe('data\n');
+    expect(input.stderr.text).toBe('');
+  });
+
   it('supports inline programs with BEGIN, END, fields, and variables', async () => {
     await writeFile({
       path: 'people.txt',
@@ -426,6 +456,24 @@ bob 20
     expect(attachedProgramFile.stdout.text).toBe('\n');
     expect(attachedProgramFile.stderr.text).toBe('');
     expect(attachedProgramFile.result.exitCode).toBe(0);
+  });
+
+  it('retains repeated assignments and program files in their respective argv order', async () => {
+    await writeFile({ path: 'first.awk', data: 'BEGIN { print label }\n' });
+    await writeFile({ path: 'second.awk', data: '{ print $1; print $2 }\n' });
+    await writeFile({ path: 'input.txt', data: 'one:two\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'awk -v label=old -vlabel=new -F: -f first.awk -fsecond.awk input.txt',
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+new
+one
+two
+`);
+    expect(stderr.text).toBe('');
   });
 
   it('supports regex patterns and -f program files', async () => {
@@ -1517,6 +1565,25 @@ matched 2
     expect(result.exitCode).toBe(0);
   });
 
+  it('keeps the decimal point in alternate general formats with no fractional digits', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk 'BEGIN {
+  printf "[%#g][%#.0g][%#.1G][%#.2g]\\n", 123456, 0, 1, 12
+  printf "[%+#08.1g][%#-7.1G][%#.1g][%#.1g][%.1g]\\n", 1, -1, -0.0, 1.2, 1
+  print sprintf("[%#.1g][%#.1g][%.2G]", 1, 12, 12)
+}'`,
+    });
+
+    expect(stdout.text).toBe(`\
+[123456.][0.][1.][12.]
+[+000001.][-1.    ][-0.][1.][1]
+[1.][1.e+01][12]
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports common printf sign, alternate-form, alignment, and zero-padding flags', async () => {
     const formatted = await execute({
       script: `awk 'BEGIN { printf "[%-5s][%+d][% d][%#x][%05d]\n", "x", 3, 3, 15, -7 }'`,
@@ -1688,6 +1755,42 @@ child0
 `);
     expect(system.stderr.text).toBe('');
     expect(system.result.exitCode).toBe(0);
+  });
+
+  it('isolates system and command pipe shell state from the calling shell', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+mkdir /awk-child
+export AWK_CHILD_SCOPE=parent
+awk 'BEGIN {
+  system("cd /awk-child && export AWK_CHILD_SCOPE=system && pwd && echo $AWK_CHILD_SCOPE")
+  command = "cd /awk-child && export AWK_CHILD_SCOPE=input && echo $AWK_CHILD_SCOPE"
+  command | getline value
+  print value
+  close(command)
+  command = "cd /awk-child && export AWK_CHILD_SCOPE=output && echo $AWK_CHILD_SCOPE && cat"
+  print "from awk" | command
+  close(command)
+  system("pwd; echo $AWK_CHILD_SCOPE")
+}'
+pwd
+echo "$AWK_CHILD_SCOPE"
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+/awk-child
+system
+input
+output
+from awk
+/
+parent
+/
+parent
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('returns shell-compatible status 127 when system cannot resolve a command', async () => {

@@ -1,8 +1,17 @@
-import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import {
+  analyzeArgvLongForm,
+  analyzeArgvShortForm,
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  parseStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv-v2';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
-import { findFirstStandardSemanticIssue, standardSemanticIssuePrecedesDiagnostic, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type {
   WeshCommandContext,
   WeshCommandImplementation,
@@ -18,21 +27,41 @@ const OUTPUT_BUFFER_SIZE = 16 * 1024;
 const RUN_FRAGMENT_SIZE = 8 * 1024;
 
 function parseMinimumLength({
-  value,
+  rawValue,
 }: {
-  value: string,
-}): { ok: true, value: number } | { ok: false, message: string } {
-  const numericText = stripLeadingCLocaleWhitespace({ value });
+  rawValue: string,
+}): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
+  const numericText = stripLeadingCLocaleWhitespace({ value: rawValue });
   if (!/^\+?[1-9]\d*$/u.test(numericText)) {
-    return { ok: false, message: `invalid minimum string length: '${value}'` };
+    return { kind: 'invalid', message: `invalid minimum string length: '${rawValue}'` };
   }
 
   const parsed = Number(numericText);
   if (!Number.isSafeInteger(parsed)) {
-    return { ok: false, message: `minimum string length is too big: ${value}` };
+    return { kind: 'invalid', message: `minimum string length is too big: ${rawValue}` };
   }
 
-  return { ok: true, value: parsed };
+  return { kind: 'parsed', value: parsed };
+}
+
+function parseRadix({
+  rawValue,
+}: {
+  rawValue: string,
+}): { kind: 'parsed', value: StringsRadix } | { kind: 'invalid', message: string } {
+  switch (rawValue) {
+  case 'o':
+  case 'octal':
+    return { kind: 'parsed', value: 'octal' };
+  case 'd':
+  case 'decimal':
+    return { kind: 'parsed', value: 'decimal' };
+  case 'x':
+  case 'hex':
+    return { kind: 'parsed', value: 'hex' };
+  default:
+    return { kind: 'invalid', message: `invalid radix: '${rawValue}'` };
+  }
 }
 
 function parseEncoding({
@@ -274,143 +303,203 @@ function createRunAccumulator() {
   };
 }
 
-const STRINGS_HELP_EARLY_EXIT_OPTIONS = [
-  { token: '-h', optionKey: 'help' },
-  { token: '--help', optionKey: 'help' },
+const stringsOptions = [
+  {
+    semantic: { kind: 'effects', effects: [] },
+    forms: [
+      { kind: 'short', name: 'a', value: { kind: 'none' } },
+      { kind: 'long', name: 'all', value: { kind: 'none' } },
+    ],
+    summary: 'scan the entire file',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'printFileName', value: true }] },
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'none' } },
+      { kind: 'long', name: 'print-file-name', value: { kind: 'none' } },
+    ],
+    summary: 'print the file name before each string',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [
+      { kind: 'short', name: 'h', value: { kind: 'none' } },
+      { kind: 'long', name: 'help', value: { kind: 'none' } },
+    ],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'minimumLength', parse: parseMinimumLength },
+    forms: [
+      { kind: 'short', name: 'n', value: { kind: 'required-attached-or-following', missingValueName: 'number' } },
+      { kind: 'long', name: 'bytes', value: { kind: 'required', missingValueName: 'number' } },
+    ],
+    summary: 'print sequences of at least NUMBER displayable characters',
+    valueName: 'NUMBER',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'radix', value: 'octal' }] },
+    forms: [{ kind: 'short', name: 'o', value: { kind: 'none' } }],
+    summary: 'same as -t o',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'separator', parse: undefined },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'required-attached-or-following', missingValueName: 'string' } },
+      { kind: 'long', name: 'output-separator', value: { kind: 'required', missingValueName: 'string' } },
+    ],
+    summary: 'set the output separator',
+    valueName: 'STRING',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'radix', parse: parseRadix },
+    forms: [
+      { kind: 'short', name: 't', value: { kind: 'required-attached-or-following', missingValueName: 'radix' } },
+      { kind: 'long', name: 'radix', value: { kind: 'required', missingValueName: 'radix' } },
+    ],
+    summary: 'print the location of each string',
+    valueName: '{o,d,x}',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'encoding', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'e', value: { kind: 'required-attached-or-following', missingValueName: '{s,S,b,l,B,L}' } },
+      { kind: 'long', name: 'encoding', value: { kind: 'required', missingValueName: '{s,S,b,l,B,L}' } },
+    ],
+    summary: 'select character size and endianness',
+    valueName: '{s,S,b,l,B,L}',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'includeAllWhitespace', value: true }] },
+    forms: [
+      { kind: 'short', name: 'w', value: { kind: 'none' } },
+      { kind: 'long', name: 'include-all-whitespace', value: { kind: 'none' } },
+    ],
+    summary: 'treat all whitespace as printable',
+    category: 'advanced',
+  },
 ] as const;
 
-const stringsArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'a', long: 'all', effects: [], help: { summary: 'scan the entire file', category: 'common' } },
-    { kind: 'flag', short: 'f', long: 'print-file-name', effects: [{ key: 'printFileName', value: true }], help: { summary: 'print the file name before each string', category: 'common' } },
-    { kind: 'flag', short: 'h', long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'value', short: 'n', long: 'bytes', key: 'minimumLength', valueName: 'number', allowAttachedValue: true, parseValue: undefined, help: { summary: 'print sequences of at least NUMBER displayable characters', valueName: 'NUMBER', category: 'common' } },
-    { kind: 'flag', short: 'o', long: undefined, effects: [{ key: 'radix', value: 'octal' }], help: { summary: 'same as -t o', category: 'common' } },
-    { kind: 'value', short: 's', long: 'output-separator', key: 'separator', valueName: 'string', allowAttachedValue: true, parseValue: undefined, help: { summary: 'set the output separator', valueName: 'STRING', category: 'advanced' } },
-    { kind: 'value', short: 't', long: 'radix', key: 'radix', valueName: 'radix', allowAttachedValue: true, parseValue: undefined, help: { summary: 'print the location of each string', valueName: '{o,d,x}', category: 'common' } },
-    { kind: 'value', short: 'e', long: 'encoding', key: 'encoding', valueName: '{s,S,b,l,B,L}', allowAttachedValue: true, parseValue: undefined, help: { summary: 'select character size and endianness', valueName: '{s,S,b,l,B,L}', category: 'common' } },
-    { kind: 'flag', short: 'w', long: 'include-all-whitespace', effects: [{ key: 'includeAllWhitespace', value: true }], help: { summary: 'treat all whitespace as printable', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [
-    ({ token }) => {
-      if (!/^-[1-9]\d*$/u.test(token)) {
-        return undefined;
-      }
-      return {
-        kind: 'matched',
-        consumeCount: 1,
-        effects: [{ key: 'minimumLength', value: token.slice(1) }],
-      };
-    },
-  ],
+const stringsArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: stringsOptions,
+  nonExecutableLongOptions: [],
+});
+const stringsArgvHelp = defineArgvHelpPresentation({ catalog: stringsArgvCatalog, rows: stringsOptions });
+const stringsArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
-function findStringsPreHelpSemanticIssue({
-  parsed,
-}: {
-  parsed: ReturnType<typeof parseStandardArgv>,
-}): string | undefined {
-  const minimum = parseMinimumLength({
-    value: (parsed.optionValues.minimumLength as string | undefined) ?? '4',
-  });
-  if (!minimum.ok) {
-    return minimum.message;
-  }
+// Normalize obsolete minimum lengths and stop at help, including help within
+// a short option bundle. Required values and tokens after -- are left intact.
+function normalizeStringsArgs({ args }: { args: readonly string[] }): readonly string[] {
+  const normalized: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]!;
+    if (token === '--') {
+      return normalized.concat(args.slice(index));
+    }
+    if (/^-[1-9]\d*$/u.test(token)) {
+      normalized.push(`-n${token.slice(1)}`);
+      continue;
+    }
+    if (token === '--help') {
+      normalized.push(token);
+      break;
+    }
 
-  const radix = parsed.optionValues.radix;
-  if (typeof radix === 'string' && !['o', 'octal', 'd', 'decimal', 'x', 'hex'].includes(radix)) {
-    return `invalid radix: '${radix}'`;
+    let claimsFollowingValue = false;
+    if (token.startsWith('--')) {
+      const option = analyzeArgvLongForm({ token, catalog: stringsArgvCatalog, longNameMatch: stringsArgvPolicy.longNameMatch });
+      claimsFollowingValue = option.kind === 'matched' && option.value.kind === 'following-required';
+    } else if (token.startsWith('-')) {
+      let offset = 1;
+      while (offset < token.length) {
+        const option = analyzeArgvShortForm({ token, bodyOffset: offset, prefix: '-', catalog: stringsArgvCatalog });
+        switch (option.kind) {
+        case 'unknown':
+          offset = token.length;
+          break;
+        case 'matched':
+          offset = option.nextBodyOffset;
+          if (option.option === '-h') {
+            normalized.push(token.slice(0, offset));
+            return normalized;
+          }
+          claimsFollowingValue = option.value.kind === 'following-required';
+          break;
+        default: {
+          const _ex: never = option;
+          throw new Error(`Unhandled strings option: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+        }
+        }
+      }
+    }
+
+    normalized.push(token);
+    const following = args[index + 1];
+    if (claimsFollowingValue && following !== undefined) {
+      normalized.push(following);
+      index += 1;
+    }
   }
-  return undefined;
+  return normalized;
 }
 
 export const stringsCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
-      args: context.args,
-      spec: stringsArgvSpec,
-      earlyExitOptions: STRINGS_HELP_EARLY_EXIT_OPTIONS,
+    const parsed = parseStandardArgv({
+      args: normalizeStringsArgs({ args: context.args }),
+      catalog: stringsArgvCatalog,
+      policy: stringsArgvPolicy,
     });
-    const parsed = parseStandardArgv({ args: parsedArgs, spec: stringsArgvSpec });
 
     const diagnostic = parsed.diagnostics[0];
-    const firstPreHelpSemanticIssue = findFirstStandardSemanticIssue({
-      args: parsedArgs,
-      spec: stringsArgvSpec,
-      parsed,
-      findSemanticIssue: findStringsPreHelpSemanticIssue,
-    });
-    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
-      args: parsedArgs,
-      spec: stringsArgvSpec,
-      parsed,
-      findSemanticIssue: findStringsPreHelpSemanticIssue,
-    });
-    if (diagnostic !== undefined && !semanticIssuePrecedesDiagnostic) {
-      await writeCommandUsageError({
-        context,
-        command: 'strings',
-        message: `strings: ${diagnostic.message}`,
-        argvSpec: stringsArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
-
-    if (firstPreHelpSemanticIssue !== undefined) {
-      await context.text().error({ text: `strings: ${firstPreHelpSemanticIssue}\n` });
-      return { exitCode: 1 };
-    }
-
-    const minimumLengthParsed = parseMinimumLength({
-      value: (parsed.optionValues.minimumLength as string | undefined) ?? '4',
-    });
-    if (!minimumLengthParsed.ok) {
-      throw new Error(`strings pre-help validation missed minimum length: ${minimumLengthParsed.message}`);
-    }
-
-    const radixValue = parsed.optionValues.radix as string | undefined;
-    const radix = (() => {
-      switch (radixValue) {
-      case undefined:
-        return { kind: 'unset' } as const;
-      case 'o':
-      case 'octal':
-        return { kind: 'set', value: 'octal' } as const;
-      case 'd':
-      case 'decimal':
-        return { kind: 'set', value: 'decimal' } as const;
-      case 'x':
-      case 'hex':
-        return { kind: 'set', value: 'hex' } as const;
-      default:
-        return { kind: 'invalid', value: radixValue } as const;
+    if (diagnostic !== undefined) {
+      const message = `strings: ${diagnostic.message}`;
+      switch (diagnostic.kind) {
+      case 'invalid_option_value':
+        await context.text().error({ text: `${message}\n` });
+        break;
+      case 'unknown_short_option':
+      case 'unknown_long_option':
+      case 'ambiguous_long_option':
+      case 'missing_option_value':
+      case 'unexpected_option_value':
+        await writeCommandUsageError({
+          context,
+          command: 'strings',
+          message,
+          usageSummary: formatArgvUsageSummary({ presentation: stringsArgvHelp }),
+        });
+        break;
+      default: {
+        const _ex: never = diagnostic;
+        throw new Error(`Unhandled strings diagnostic: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
       }
-    })();
-    switch (radix.kind) {
-    case 'unset':
-    case 'set':
-      break;
-    case 'invalid':
-      throw new Error(`strings pre-help validation missed radix: ${radix.value}`);
-    default: {
-      const _ex: never = radix;
-      throw new Error(`Unhandled strings radix parsing result: ${_ex}`);
-    }
+      }
+      return { exitCode: 1 };
     }
 
     if (parsed.optionValues.help === true) {
       await writeCommandHelp({
         context,
         command: 'strings',
-        argvSpec: stringsArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: stringsArgvHelp }),
       });
       return { exitCode: 0 };
     }
 
+    // Binutils validates only the final encoding, after handling help.
     const encodingParsed = parseEncoding({
       value: parsed.optionValues.encoding as string | undefined,
     });
@@ -424,12 +513,15 @@ export const stringsCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'strings',
         message: "strings: invalid option -- '-'",
-        argvSpec: stringsArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: stringsArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
     const inputs = parsed.positionals.length === 0 ? ['-'] : parsed.positionals;
+    const minimumLength = typeof parsed.optionValues.minimumLength === 'number' ? parsed.optionValues.minimumLength : 4;
+    const radixValue = parsed.optionValues.radix as StringsRadix | undefined;
+    const radix = radixValue === undefined ? { kind: 'unset' } as const : { kind: 'set', value: radixValue } as const;
     const encoder = new TextEncoder();
     const separatorBytes = encoder.encode((parsed.optionValues.separator as string | undefined) ?? '\n');
     const writer = createBufferedByteWriter({ handle: context.stdout });
@@ -449,7 +541,7 @@ export const stringsCommandImplementation: WeshCommandImplementation = {
             if (runLength === 0) {
               return;
             }
-            if (runLength < minimumLengthParsed.value) {
+            if (runLength < minimumLength) {
               run.reset();
               return;
             }

@@ -7,7 +7,7 @@ export interface GitIdentity {
 }
 
 export function resolveGitIdentity({ env, config, role }: {
-  env: Map<string, string>,
+  env: ReadonlyMap<string, string>,
   config: GitConfig,
   role: 'AUTHOR' | 'COMMITTER',
 }): GitIdentity {
@@ -31,7 +31,7 @@ to set your account's default identity.`);
 }
 
 export function resolveGitReflogIdentity({ env, config }: {
-  env: Map<string, string>,
+  env: ReadonlyMap<string, string>,
   config: GitConfig,
 }): GitIdentity {
   const explicitName = env.get('GIT_COMMITTER_NAME');
@@ -54,7 +54,7 @@ function formatTimezone({ date }: { date: Date }): string {
 }
 
 export function resolveGitTimestamp({ env, role }: {
-  env: Map<string, string>,
+  env: ReadonlyMap<string, string>,
   role: 'AUTHOR' | 'COMMITTER',
 }): string {
   const explicit = env.get(`GIT_${role}_DATE`);

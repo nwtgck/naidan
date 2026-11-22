@@ -1,16 +1,21 @@
-import {
-  STANDARD_HELP_EARLY_EXIT_OPTIONS,
-  standardSemanticIssuePrecedesDiagnostic,
-  stopStandardArgvAtFirstEarlyExit,
-} from '@/features/wesh/commands/_shared/argv';
-import { parseBackupControlLongOption, resolveBackupControl, selectBackupSuffix, type BackupControl } from '@/features/wesh/commands/_shared/backup';
-import { findCopyMovePreHelpSemanticError } from '@/features/wesh/commands/_shared/copy-move-pre-help';
+import { resolveBackupControl, selectBackup, type BackupControl } from '@/features/wesh/commands/_shared/backup';
+import { parseCopyMoveOptions, type CopyMoveOption } from '@/features/wesh/commands/_shared/copy-move-pre-help';
 import { createAffirmativeResponseReader } from '@/features/wesh/commands/_shared/confirmation';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import { getOptionalCoreMethod } from '@/features/wesh/commands/_shared/core-capability';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { parseUpdateLongOption, resolveExistingDestinationUpdate, type UpdateMode } from '@/features/wesh/commands/_shared/update';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import { resolveExistingDestinationUpdate } from '@/features/wesh/commands/_shared/update';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/features/wesh/types';
 
 type MvOverwriteMode = 'default' | 'force' | 'interactive' | 'no-clobber';
@@ -66,7 +71,7 @@ function resolveMvSimpleBackupSuffix({
   const selected = explicitSuffix !== undefined
     ? explicitSuffix
     : environmentSuffix;
-  return selected === undefined || selected.length === 0 ? '~' : selected;
+  return selected === undefined || selected.length === 0 || selected.includes('/') ? '~' : selected;
 }
 
 
@@ -310,7 +315,7 @@ async function moveDirectoryRecursively({
   await removeEntryRecursively({ context, entry: sourceEntry });
 }
 
-async function backupExistingDestination({
+async function moveWithBackup({
   context,
   sourceEntry,
   sourceDisplayPath,
@@ -318,17 +323,18 @@ async function backupExistingDestination({
   destinationPath,
   displayPath,
   suffix,
+  numbered,
 }: {
-  context: WeshCommandContext;
-  sourceEntry: WeshEntryRef;
-  sourceDisplayPath: string;
-  destinationEntry: WeshEntryRef;
-  destinationPath: string;
-  displayPath: string;
-  suffix: string;
-}): Promise<string> {
-  const destinationStat = await context.files.statEntry({ entry: destinationEntry });
-  switch (destinationStat.type) {
+  context: WeshCommandContext,
+  sourceEntry: WeshEntryRef,
+  sourceDisplayPath: string,
+  destinationEntry: WeshEntryRef,
+  destinationPath: string,
+  displayPath: string,
+  suffix: string,
+  numbered: boolean,
+}): Promise<{ displayPath: string, moved: boolean }> {
+  switch (destinationEntry.type) {
   case 'directory':
     throw new Error(`cannot backup directory '${displayPath}'`);
   case 'file':
@@ -337,217 +343,253 @@ async function backupExistingDestination({
   case 'symlink':
     break;
   default: {
-    const _ex: never = destinationStat.type;
-    throw new Error(`Unhandled destination type: ${_ex}`);
+    const _ex: never = destinationEntry;
+    throw new Error(`Unhandled destination type: ${String(_ex)}`);
   }
   }
 
   const backupPath = `${destinationPath}${suffix}`;
   const backupDisplayPath = `${displayPath}${suffix}`;
+  let existingBackup: WeshEntryRef | undefined;
   try {
-    const existingBackup = await context.files.resolveEntry({
-      path: backupPath,
-      finalSymlinkTreatment: 'no-follow',
-    });
-    if (
-      existingBackup.fullPath === sourceEntry.fullPath
-      && (sourceEntry.type === 'file' || sourceEntry.type === 'fifo')
-    ) {
-      throw new MvSourceBackupAliasError({
-        destinationDisplayPath: displayPath,
-        sourceDisplayPath,
-      });
-    }
-    const existingBackupStat = await context.files.statEntry({ entry: existingBackup });
-    switch (existingBackupStat.type) {
-    case 'directory':
-      throw new Error(`backup destination '${backupDisplayPath}' is a directory`);
-    case 'file':
-    case 'fifo':
-    case 'chardev':
-    case 'symlink':
-      await context.files.unlink({ path: backupPath });
-      break;
-    default: {
-      const _ex: never = existingBackupStat.type;
-      throw new Error(`Unhandled backup type: ${_ex}`);
-    }
-    }
+    existingBackup = await context.files.resolveEntry({ path: backupPath, finalSymlinkTreatment: 'no-follow', pinBacking: true });
   } catch (error: unknown) {
     if (!isPathNotFoundError({ error })) {
       throw error;
     }
   }
 
-  await context.files.rename({ oldPath: destinationPath, newPath: backupPath });
-  return backupDisplayPath;
+  if (existingBackup !== undefined) {
+    if (numbered) {
+      throw new Error(`File exists: ${backupDisplayPath}`);
+    }
+    switch (existingBackup.type) {
+    case 'directory':
+      throw new Error(`backup destination '${backupDisplayPath}' is a directory`);
+    case 'file':
+    case 'fifo':
+    case 'chardev':
+    case 'symlink':
+      break;
+    default: {
+      const _ex: never = existingBackup;
+      throw new Error(`Unhandled backup type: ${String(_ex)}`);
+    }
+    }
+    const sourceIdentity = await context.files.compareEntryIdentity({ first: sourceEntry, second: existingBackup });
+    if (sourceIdentity === 'same' && sourceEntry.type === 'symlink' && existingBackup.type === 'symlink') {
+      // Backing up the destination to the source's name and moving it back only removes this link.
+      await context.files.unlink({ path: sourceEntry.fullPath, expected: { entry: sourceEntry, retainedEntries: [destinationEntry] } });
+      return { displayPath: backupDisplayPath, moved: true };
+    }
+    switch (sourceIdentity) {
+    case 'unknown':
+      throw new Error(`cannot verify that backup '${backupDisplayPath}' is separate from '${sourceDisplayPath}'`);
+    case 'shared-backing':
+    case 'same':
+      throw new MvSourceBackupAliasError({ destinationDisplayPath: displayPath, sourceDisplayPath });
+    case 'different':
+      break;
+    default: {
+      const _ex: never = sourceIdentity;
+      throw new Error(`Unhandled entry identity: ${_ex}`);
+    }
+    }
+    const backupIdentity = await context.files.compareEntryIdentity({ first: destinationEntry, second: existingBackup });
+    switch (backupIdentity) {
+    case 'different':
+      break;
+    case 'same':
+    case 'shared-backing':
+    case 'unknown':
+      throw new Error(`cannot verify that backup '${backupDisplayPath}' is separate from '${displayPath}'`);
+    default: {
+      const _ex: never = backupIdentity;
+      throw new Error(`Unhandled entry identity: ${_ex}`);
+    }
+    }
+  }
+
+  if (context.files.getReadOnlyForPath({ path: sourceEntry.fullPath })) {
+    const sourcePath = resolvePath({ cwd: context.cwd, path: sourceDisplayPath });
+    throw new Error(`Read-only source: ${sourcePath}`);
+  }
+  switch (sourceEntry.type) {
+  case 'directory':
+    await context.files.rename({
+      oldPath: destinationPath,
+      newPath: backupPath,
+      expectedSource: destinationEntry,
+      expectedDestination: existingBackup,
+      noReplace: existingBackup === undefined ? true : undefined,
+    });
+    return { displayPath: backupDisplayPath, moved: false };
+  case 'file':
+  case 'fifo':
+  case 'chardev':
+  case 'symlink':
+    await context.files.replaceEntry({
+      entry: sourceEntry,
+      path: destinationPath,
+      expected: destinationEntry,
+      backupPath,
+      expectedBackup: { entry: existingBackup },
+    });
+    return { displayPath: backupDisplayPath, moved: true };
+  default: {
+    const _ex: never = sourceEntry;
+    throw new Error(`Unhandled source type: ${String(_ex)}`);
+  }
+  }
 }
 
-const mvArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'f',
-      long: 'force',
-      effects: [{ key: 'overwriteMode', value: 'force' }],
-      help: { summary: 'remove existing destination files', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'i',
-      long: 'interactive',
-      effects: [{ key: 'overwriteMode', value: 'interactive' }],
-      help: { summary: 'prompt before overwrite', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'n',
-      long: 'no-clobber',
-      effects: [{ key: 'overwriteMode', value: 'no-clobber' }],
-      help: { summary: 'do not overwrite existing files', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'u',
-      long: undefined,
-      effects: [{ key: 'updateMode', value: 'older' }],
-      help: { summary: 'move only when SOURCE is newer than destination', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'b',
-      long: 'backup',
-      effects: [{ key: 'backup', value: true }],
-      help: { summary: 'make a backup of each existing destination file', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'S',
-      long: 'suffix',
-      key: 'backupSuffix',
-      valueName: 'SUFFIX',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'override the usual backup suffix', valueName: 'SUFFIX', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 'v',
-      long: 'verbose',
-      effects: [{ key: 'verbose', value: true }],
-      help: { summary: 'explain what is being done', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'T',
-      long: 'no-target-directory',
-      effects: [{ key: 'noTargetDirectory', value: true }],
-      help: { summary: 'treat destination as a normal file', category: 'advanced' },
-    },
-    {
-      kind: 'value',
-      short: 't',
-      long: 'target-directory',
-      key: 'targetDirectory',
-      valueName: 'DIRECTORY',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'move all source arguments into DIRECTORY', valueName: 'DIRECTORY', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [
-    ({ token }) => parseBackupControlLongOption({ token }),
-    ({ token }) => parseUpdateLongOption({ token }),
-  ],
+const mvOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'overwriteMode', value: 'force' }] },
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'none' } },
+      { kind: 'long', name: 'force', value: { kind: 'none' } },
+    ],
+    summary: 'remove existing destination files',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'overwriteMode', value: 'interactive' }] },
+    forms: [
+      { kind: 'short', name: 'i', value: { kind: 'none' } },
+      { kind: 'long', name: 'interactive', value: { kind: 'none' } },
+    ],
+    summary: 'prompt before overwrite',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'overwriteMode', value: 'no-clobber' }] },
+    forms: [
+      { kind: 'short', name: 'n', value: { kind: 'none' } },
+      { kind: 'long', name: 'no-clobber', value: { kind: 'none' } },
+    ],
+    summary: 'do not overwrite existing files',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'update' },
+    forms: [
+      { kind: 'short', name: 'u', value: { kind: 'none' } },
+      { kind: 'long', name: 'update', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'move only when SOURCE is newer than destination',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'backup' },
+    forms: [
+      { kind: 'short', name: 'b', value: { kind: 'none' } },
+      { kind: 'long', name: 'backup', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'make a backup of each existing destination file',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'backupSuffix', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'S', value: { kind: 'required-attached-or-following', missingValueName: 'SUFFIX' } },
+      { kind: 'long', name: 'suffix', value: { kind: 'required', missingValueName: 'SUFFIX' } },
+    ],
+    summary: 'override the usual backup suffix',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'verbose', value: true }] },
+    forms: [
+      { kind: 'short', name: 'v', value: { kind: 'none' } },
+      { kind: 'long', name: 'verbose', value: { kind: 'none' } },
+    ],
+    summary: 'explain what is being done',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'noTargetDirectory', value: true }] },
+    forms: [
+      { kind: 'short', name: 'T', value: { kind: 'none' } },
+      { kind: 'long', name: 'no-target-directory', value: { kind: 'none' } },
+    ],
+    summary: 'treat destination as a normal file',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'targetDirectory', parse: undefined },
+    forms: [
+      { kind: 'short', name: 't', value: { kind: 'required-attached-or-following', missingValueName: 'DIRECTORY' } },
+      { kind: 'long', name: 'target-directory', value: { kind: 'required', missingValueName: 'DIRECTORY' } },
+    ],
+    summary: 'move all source arguments into DIRECTORY',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const mvArgvCatalog = defineArgvCatalog<StandardArgvAction<CopyMoveOption>>({
+  definitions: mvOptions,
+  nonExecutableLongOptions: [],
+});
+const mvArgvHelp = defineArgvHelpPresentation({ catalog: mvArgvCatalog, rows: mvOptions });
+const mvArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'all',
 };
 
 export const mvCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
+    const parsedArgs = stopArgvAtFirstEarlyExit({
       args: context.args,
-      spec: mvArgvSpec,
-      earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+      catalog: mvArgvCatalog,
+      policy: mvArgvPolicy,
+      earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
     });
-    const parsed = parseStandardArgv({ args: parsedArgs, spec: mvArgvSpec });
+    const parsed = parseStandardArgv({ args: parsedArgs, catalog: mvArgvCatalog, policy: mvArgvPolicy });
 
-    const diagnostic = parsed.diagnostics[0];
-    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
-      args: parsedArgs,
-      spec: mvArgvSpec,
-      parsed,
-      findSemanticIssue: ({ parsed: candidate }) => findCopyMovePreHelpSemanticError({
-        occurrences: candidate.occurrences,
-      }),
-    });
-    if (diagnostic !== undefined && !semanticIssuePrecedesDiagnostic) {
+    const options = parseCopyMoveOptions({ parsed });
+    switch (options.kind) {
+    case 'invalid-option':
       await writeCommandUsageError({
         context,
         command: 'mv',
-        message: `mv: ${diagnostic.message}`,
-        argvSpec: mvArgvSpec,
+        message: `mv: ${options.message}`,
+        usageSummary: formatArgvUsageSummary({ presentation: mvArgvHelp }),
       });
       return { exitCode: 1 };
+    case 'multiple-target-directories':
+      await context.text().error({ text: 'mv: multiple target directories specified\n' });
+      return { exitCode: 1 };
+    case 'options':
+      break;
+    default: {
+      const _ex: never = options;
+      throw new Error(`Unhandled mv options: ${JSON.stringify(_ex)}`);
     }
-
-    const preHelpSemanticError = findCopyMovePreHelpSemanticError({
-      occurrences: parsed.occurrences,
-    });
-    if (preHelpSemanticError !== undefined) {
-      switch (preHelpSemanticError.kind) {
-      case 'invalid-update':
-        await writeCommandUsageError({
-          context,
-          command: 'mv',
-          message: `mv: invalid argument '${preHelpSemanticError.value}' for '--update'`,
-          argvSpec: mvArgvSpec,
-        });
-        return { exitCode: 1 };
-      case 'multiple-target-directories':
-        await context.text().error({ text: 'mv: multiple target directories specified\n' });
-        return { exitCode: 1 };
-      default: {
-        const _ex: never = preHelpSemanticError;
-        throw new Error(`Unhandled mv pre-help semantic error: ${JSON.stringify(_ex)}`);
-      }
-      }
     }
 
     if (parsed.optionValues.help === true) {
       await writeCommandHelp({
         context,
         command: 'mv',
-        argvSpec: mvArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: mvArgvHelp }),
       });
       return { exitCode: 0 };
     }
 
     const text = context.text();
-    const updateMode: UpdateMode = (() => {
-      const configured = parsed.optionValues.updateMode;
-      if (configured === 'all' || configured === 'none' || configured === 'none-fail' || configured === 'older') {
-        return configured;
-      }
-      return 'all';
-    })();
-
-    const backupRequested = parsed.optionValues.backup === true;
+    const { updateMode, backupRequested } = options;
     let backupControl: BackupControl = 'simple';
     if (backupRequested) {
-      const explicitBackupControl = typeof parsed.optionValues.backupControlRaw === 'string'
-        ? parsed.optionValues.backupControlRaw
-        : undefined;
       const backupControlResult = resolveBackupControl({
-        explicitValue: explicitBackupControl,
+        explicitValue: options.backupControl,
         environmentValue: context.env.get('VERSION_CONTROL'),
       });
       if (!backupControlResult.ok) {
@@ -567,7 +609,7 @@ export const mvCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'mv',
           message: `mv: invalid argument '${backupControlResult.value}' for '${source}'`,
-          argvSpec: mvArgvSpec,
+          usageSummary: formatArgvUsageSummary({ presentation: mvArgvHelp }),
         });
         return { exitCode: 1 };
       }
@@ -586,6 +628,8 @@ export const mvCommandImplementation: WeshCommandImplementation = {
     })();
     let interactiveDeclined = false;
     const backupEnabled = backupRequested && backupControl !== 'none';
+    const guardRename = backupEnabled || overwriteMode === 'no-clobber' || overwriteMode === 'interactive' || updateMode !== 'all';
+    const pinBacking = guardRename ? true : undefined;
     const backupSuffix = resolveMvSimpleBackupSuffix({
       explicitSuffix: typeof parsed.optionValues.backupSuffix === 'string'
         ? parsed.optionValues.backupSuffix
@@ -608,7 +652,7 @@ export const mvCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'mv',
         message: 'mv: missing file operand',
-        argvSpec: mvArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: mvArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -623,7 +667,7 @@ export const mvCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'mv',
         message: 'mv: missing destination file operand',
-        argvSpec: mvArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: mvArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -641,7 +685,7 @@ export const mvCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'mv',
         message: 'mv: extra operand with -T',
-        argvSpec: mvArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: mvArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -726,6 +770,7 @@ export const mvCommandImplementation: WeshCommandImplementation = {
           const sourceEntry = await context.files.resolveEntry({
             path: fullSrc,
             finalSymlinkTreatment: 'no-follow',
+            pinBacking,
           });
           const sourceStat = await context.files.statEntry({ entry: sourceEntry });
           if (sourceOperand.length > 1 && sourceOperand.endsWith('/') && sourceStat.type !== 'directory') {
@@ -736,6 +781,7 @@ export const mvCommandImplementation: WeshCommandImplementation = {
               return await context.files.resolveEntry({
                 path: targetPath,
                 finalSymlinkTreatment: 'no-follow',
+                pinBacking,
               });
             } catch (error: unknown) {
               if (isPathNotFoundError({ error })) {
@@ -806,89 +852,141 @@ export const mvCommandImplementation: WeshCommandImplementation = {
             }
           }
 
-          const selectedBackupSuffix = backupEnabled && destinationEntry !== undefined
-            ? await selectBackupSuffix({
+          if (sourceStat.type === 'directory' && getOptionalCoreMethod({ object: context.files, name: 'setMtime' }) === undefined) {
+            throw new Error('cross-filesystem move requires Wesh core mtime mutation support');
+          }
+          if (backupEnabled && destinationEntry !== undefined) {
+            const identity = await context.files.compareEntryIdentity({ first: sourceEntry, second: destinationEntry });
+            switch (identity) {
+            case 'unknown':
+              throw new Error(`cannot verify that '${sourceOperand}' and '${target.displayPath}' are separate files`);
+            case 'same':
+            case 'shared-backing':
+              throw new Error(`'${sourceOperand}' and '${destOperand}' are the same file`);
+            case 'different':
+              break;
+            default: {
+              const _ex: never = identity;
+              throw new Error(`Unhandled entry identity: ${_ex}`);
+            }
+            }
+          }
+
+          const selectedBackup = backupEnabled && destinationEntry !== undefined
+            ? await selectBackup({
               context,
               destinationPath: targetPath,
               control: backupControl,
               simpleSuffix: backupSuffix,
             })
             : undefined;
-          const backupDisplayPath = selectedBackupSuffix !== undefined && destinationEntry !== undefined
-            ? await backupExistingDestination({
+          const backup = selectedBackup !== undefined && destinationEntry !== undefined
+            ? await moveWithBackup({
               context,
               sourceEntry,
               sourceDisplayPath: sourceOperand,
               destinationEntry,
               destinationPath: targetPath,
               displayPath: target.displayPath,
-              suffix: selectedBackupSuffix,
+              suffix: selectedBackup.suffix,
+              numbered: selectedBackup.numbered,
             })
             : undefined;
-          switch (sourceStat.type) {
-          case 'directory': {
-            if (destinationEntry !== undefined) {
-              const destinationStat = await context.files.statEntry({ entry: destinationEntry });
-              switch (destinationStat.type) {
-              case 'directory':
-                break;
+          if (backup?.moved !== true) {
+            switch (sourceStat.type) {
+            case 'directory': {
+              if (backup === undefined && destinationEntry !== undefined) {
+                const destinationStat = await context.files.statEntry({ entry: destinationEntry });
+                switch (destinationStat.type) {
+                case 'directory':
+                  break;
+                case 'file':
+                case 'fifo':
+                case 'chardev':
+                case 'symlink':
+                  throw new Error(`cannot overwrite non-directory '${destOperand}' with directory '${sourceOperand}'`);
+                default: {
+                  const _ex: never = destinationStat.type;
+                  throw new Error(`Unhandled destination type: ${_ex}`);
+                }
+                }
+                if (!noTargetDirectory) {
+                  throw new Error(`destination exists: ${targetPath}`);
+                }
+                for await (const _child of context.files.readDirEntry({
+                  entry: asDirectoryEntry({ entry: destinationEntry }),
+                })) {
+                  throw new Error(`cannot overwrite directory '${destOperand}': Directory not empty`);
+                }
+                await context.files.rmdir({ path: destinationEntry.fullPath });
+              }
+              await moveDirectoryRecursively({
+                context,
+                sourceEntry: asDirectoryEntry({ entry: sourceEntry }),
+                destinationPath: targetPath,
+              });
+              break;
+            }
+            case 'file':
+            case 'fifo':
+            case 'chardev':
+            case 'symlink': {
+              switch (destinationEntry?.type) {
+              case undefined:
               case 'file':
               case 'fifo':
               case 'chardev':
               case 'symlink':
-                throw new Error(`cannot overwrite non-directory '${destOperand}' with directory '${sourceOperand}'`);
+                break;
+              case 'directory':
+                throw new Error(`cannot overwrite directory '${destOperand}' with non-directory`);
               default: {
-                const _ex: never = destinationStat.type;
-                throw new Error(`Unhandled destination type: ${_ex}`);
+                const _ex: never = destinationEntry;
+                throw new Error(`Unhandled destination type: ${((_ex satisfies never) as { readonly type: string }).type}`);
               }
               }
-              if (!noTargetDirectory) {
-                throw new Error(`destination exists: ${targetPath}`);
+              const noReplace = guardRename && destinationEntry === undefined ? true : undefined;
+              try {
+                await context.files.rename({
+                  oldPath: fullSrc,
+                  newPath: targetPath,
+                  expectedSource: guardRename ? sourceEntry : undefined,
+                  expectedDestination: guardRename ? destinationEntry : undefined,
+                  noReplace,
+                });
+              } catch (error: unknown) {
+                if (!noReplace || !(error instanceof DOMException)
+                  || error.name !== 'InvalidModificationError' || !error.message.startsWith('File exists: ')) {
+                  throw error;
+                }
+                if (overwriteMode === 'no-clobber' || updateMode === 'none') {
+                  continue;
+                }
+                switch (updateMode) {
+                case 'none-fail':
+                  throw new Error(`not replacing '${target.displayPath}'`, { cause: error });
+                case 'all':
+                case 'older':
+                  throw new Error(error.message, { cause: error });
+                default: {
+                  const _ex: never = updateMode;
+                  throw new Error(`Unhandled update mode: ${_ex}`);
+                }
+                }
               }
-              for await (const _child of context.files.readDirEntry({
-                entry: asDirectoryEntry({ entry: destinationEntry }),
-              })) {
-                throw new Error(`cannot overwrite directory '${destOperand}': Directory not empty`);
-              }
-              await context.files.rmdir({ path: destinationEntry.fullPath });
-            }
-            await moveDirectoryRecursively({
-              context,
-              sourceEntry: asDirectoryEntry({ entry: sourceEntry }),
-              destinationPath: targetPath,
-            });
-            break;
-          }
-          case 'file':
-          case 'fifo':
-          case 'chardev':
-          case 'symlink':
-            switch (destinationEntry?.type) {
-            case undefined:
-            case 'file':
-            case 'fifo':
-            case 'chardev':
-            case 'symlink':
               break;
-            case 'directory':
-              throw new Error(`cannot overwrite directory '${destOperand}' with non-directory`);
+            }
             default: {
-              const _ex: never = destinationEntry;
-              throw new Error(`Unhandled destination type: ${((_ex satisfies never) as { readonly type: string }).type}`);
+              const _ex: never = sourceStat.type;
+              throw new Error(`Unhandled source type: ${_ex}`);
             }
             }
-            await context.files.rename({ oldPath: fullSrc, newPath: targetPath });
-            break;
-          default: {
-            const _ex: never = sourceStat.type;
-            throw new Error(`Unhandled source type: ${_ex}`);
-          }
           }
 
           if (verbose) {
-            const backupText = backupDisplayPath === undefined
+            const backupText = backup === undefined
               ? ''
-              : ` (backup: '${backupDisplayPath}')`;
+              : ` (backup: '${backup.displayPath}')`;
             await text.print({
               text: `renamed '${sourceOperand}' -> '${target.displayPath}'${backupText}\n`,
             });

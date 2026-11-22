@@ -1,6 +1,16 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type ParsedStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { openHandleReadStream, writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
@@ -30,55 +40,61 @@ const TR_CHARACTER_CLASS_NAMES = [
 type TrCharacterClassName = typeof TR_CHARACTER_CLASS_NAMES[number];
 type TrSetRole = 'set1' | 'set2';
 
-const trArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'd',
-      long: 'delete',
-      effects: [{ key: 'deleteMode', value: true }],
-      help: { summary: 'delete characters in SET1, do not translate', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 's',
-      long: 'squeeze-repeats',
-      effects: [{ key: 'squeezeRepeats', value: true }],
-      help: { summary: 'replace each input sequence of a repeated character with one occurrence', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'c',
-      long: 'complement',
-      effects: [{ key: 'complement', value: true }],
-      help: { summary: 'use the complement of SET1', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'C',
-      long: undefined,
-      effects: [{ key: 'complement', value: true }],
-      help: { summary: 'same as -c', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 't',
-      long: 'truncate-set1',
-      effects: [{ key: 'truncateSet1', value: true }],
-      help: { summary: 'truncate SET1 to the length of SET2', category: 'advanced' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const trOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'deleteMode', value: true }] },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'none' } },
+      { kind: 'long', name: 'delete', value: { kind: 'none' } },
+    ],
+    summary: 'delete characters in SET1, do not translate',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'squeezeRepeats', value: true }] },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'none' } },
+      { kind: 'long', name: 'squeeze-repeats', value: { kind: 'none' } },
+    ],
+    summary: 'replace each input sequence of a repeated character with one occurrence',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'complement', value: true }] },
+    forms: [
+      { kind: 'short', name: 'c', value: { kind: 'none' } },
+      { kind: 'short', name: 'C', value: { kind: 'none' } },
+      { kind: 'long', name: 'complement', value: { kind: 'none' } },
+    ],
+    summary: 'use the complement of SET1',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'truncateSet1', value: true }] },
+    forms: [
+      { kind: 'short', name: 't', value: { kind: 'none' } },
+      { kind: 'long', name: 'truncate-set1', value: { kind: 'none' } },
+    ],
+    summary: 'truncate SET1 to the length of SET2',
+    category: 'advanced',
+  },
+] as const;
+
+const trArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: trOptions,
+  nonExecutableLongOptions: ['version'],
+});
+const trArgvHelp = defineArgvHelpPresentation({ catalog: trArgvCatalog, rows: trOptions });
+const trArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'none',
 };
 
 const CHARACTER_CLASS_NAME_SET = new Set<string>(TR_CHARACTER_CLASS_NAMES);
@@ -94,28 +110,6 @@ const ASTERISK_BYTE = 0x2a;
 const BYTE_VALUE_COUNT = 256;
 const OUTPUT_BUFFER_SIZE = 16 * 1024;
 
-
-function splitTrArgs({ args }: { args: string[] }): {
-  optionArgs: string[],
-  operands: string[],
-} {
-  for (let index = 0; index < args.length; index += 1) {
-    const token = args[index];
-    if (token === '--') {
-      return {
-        optionArgs: args.slice(0, index + 1),
-        operands: args.slice(index + 1),
-      };
-    }
-    if (token === '-' || token === undefined || !token.startsWith('-')) {
-      return {
-        optionArgs: args.slice(0, index),
-        operands: args.slice(index),
-      };
-    }
-  }
-  return { optionArgs: args, operands: [] };
-}
 
 function createByteRange({ start, end }: { start: number, end: number }): number[] {
   const result: number[] = [];
@@ -960,7 +954,7 @@ async function transformInput({
 function resolveTrOptions({
   parsed,
 }: {
-  parsed: ReturnType<typeof parseStandardArgv>,
+  parsed: ParsedStandardArgv<never>,
 }): TrOptions {
   return {
     deleteMode: parsed.optionValues.deleteMode === true,
@@ -968,6 +962,22 @@ function resolveTrOptions({
     complement: parsed.optionValues.complement === true,
     truncateSet1: parsed.optionValues.truncateSet1 === true,
   };
+}
+
+async function writeTrUsageError({
+  context,
+  message,
+}: {
+  context: WeshCommandContext,
+  message: string,
+}): Promise<WeshCommandResult> {
+  await writeCommandUsageError({
+    context,
+    command: 'tr',
+    message: `tr: ${message}`,
+    usageSummary: formatArgvUsageSummary({ presentation: trArgvHelp }),
+  });
+  return { exitCode: 1 };
 }
 
 async function writeTrSetDiagnostic({
@@ -992,68 +1002,46 @@ async function writeTrWarning({
 
 export const trCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const splitArgs = splitTrArgs({ args: context.args });
-    const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
-        args: splitArgs.optionArgs,
-        spec: trArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
-      }),
-      spec: trArgvSpec,
+    const args = stopArgvAtFirstEarlyExit({
+      args: context.args,
+      catalog: trArgvCatalog,
+      policy: trArgvPolicy,
+      earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
     });
-    const positionals = [...parsed.positionals, ...splitArgs.operands];
+    const parsed = parseStandardArgv({
+      args,
+      catalog: trArgvCatalog,
+      policy: trArgvPolicy,
+    });
+    const { positionals } = parsed;
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
-      await writeCommandUsageError({
-        context,
-        command: 'tr',
-        message: `tr: ${diagnostic.message}`,
-        argvSpec: trArgvSpec,
-      });
-      return { exitCode: 1 };
+      return writeTrUsageError({ context, message: diagnostic.message });
     }
 
     if (parsed.optionValues.help === true) {
       await writeCommandHelp({
         context,
         command: 'tr',
-        argvSpec: trArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: trArgvHelp }),
       });
       return { exitCode: 0 };
     }
 
     if (positionals.length < 1) {
-      await writeCommandUsageError({
-        context,
-        command: 'tr',
-        message: 'tr: missing operand',
-        argvSpec: trArgvSpec,
-      });
-      return { exitCode: 1 };
+      return writeTrUsageError({ context, message: 'missing operand' });
     }
 
     if (positionals.length > 2) {
-      await writeCommandUsageError({
-        context,
-        command: 'tr',
-        message: `tr: extra operand '${positionals[2]}'`,
-        argvSpec: trArgvSpec,
-      });
-      return { exitCode: 1 };
+      return writeTrUsageError({ context, message: `extra operand '${positionals[2]}'` });
     }
 
     const options = resolveTrOptions({ parsed });
     const set1Raw = positionals[0] ?? '';
     const set2Raw = positionals[1];
     if (!options.deleteMode && !options.squeezeRepeats && set2Raw === undefined) {
-      await writeCommandUsageError({
-        context,
-        command: 'tr',
-        message: 'tr: missing operand',
-        argvSpec: trArgvSpec,
-      });
-      return { exitCode: 1 };
+      return writeTrUsageError({ context, message: 'missing operand' });
     }
     if (options.deleteMode && !options.squeezeRepeats && set2Raw !== undefined) {
       await writeTrSetDiagnostic({

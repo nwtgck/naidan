@@ -29,11 +29,33 @@ describe('set command', () => {
     return { result, stdout, stderr };
   }
 
-  it('supports --help without advertising unsupported state mutation', async () => {
+  it('shows the supported shell option forms in help', async () => {
     const { result, stdout, stderr } = await execute({ script: 'set --help' });
 
-    expect(stdout.text).toContain('usage: set\n');
-    expect(stdout.text).not.toContain('pipefail');
+    expect(stdout.text).toContain('usage: set [+-aeu] [+-o [option-name]] [--] [arg ...]\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('lists execution options in human-readable and reusable forms', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+set -o allexport
+set -o
+set +a
+set +o`,
+    });
+
+    expect(stdout.text).toBe(`\
+allexport      \ton
+errexit        \toff
+nounset        \toff
+pipefail       \toff
+set +o allexport
+set +o errexit
+set +o nounset
+set +o pipefail
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

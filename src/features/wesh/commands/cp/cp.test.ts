@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -152,6 +152,90 @@ describe('wesh cp', () => {
     expect(backupConflict.result.exitCode).toBe(1);
     expect(backupConflict.stderr.text).toContain('mutually exclusive');
     expect((await execute({ script: 'cat dest.txt' })).stdout.text).toBe('dest');
+  });
+
+  it.each(['-i', '-u'])('preserves a replacement after the overwrite decision (%s)', async option => {
+    await writeFile({ path: 'source.txt', data: 'source' });
+    await writeFile({ path: 'dest.txt', data: 'previous data' });
+    await setFileMtime({ path: 'source.txt', mtime: 2_000 });
+    await setFileMtime({ path: 'dest.txt', mtime: 1_000 });
+
+    const openEntry = wesh.vfs.openEntry.bind(wesh.vfs);
+    let replaced = false;
+    using _replaceDestination = vi.spyOn(wesh.vfs, 'openEntry').mockImplementation(async request => {
+      if (request.entry.fullPath === '/source.txt' && !replaced) {
+        replaced = true;
+        await rootHandle.removeEntry('dest.txt');
+        await writeFile({ path: 'dest.txt', data: 'other writer' });
+        await setFileMtime({ path: 'dest.txt', mtime: 9_000 });
+      }
+      return openEntry(request);
+    });
+    const { result, stdout, stderr } = await execute({ script: 'cp -v ' + option + ' source.txt dest.txt', stdin: 'y\n' });
+
+    const destination = await rootHandle.getFileHandle('dest.txt');
+    expect(await (await destination.getFile()).text()).toBe('other writer');
+    expect(replaced).toBe(true);
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('changed');
+  });
+
+  it('copies to a character device after interactive confirmation', async () => {
+    await writeFile({ path: 'source.txt', data: 'source' });
+
+    const { result, stdout, stderr } = await execute({ script: 'cp -i source.txt /dev/null', stdin: 'y\n' });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe("cp: overwrite '/dev/null'? ");
+  });
+
+  it('writes to a named FIFO after interactive confirmation', async () => {
+    await writeFile({ path: 'source.txt', data: 'source' });
+    await wesh.vfs.mknod({ path: '/sink', type: 'fifo' });
+    const reader = await wesh.vfs.open({
+      path: '/sink',
+      flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+    });
+    await using _closeReader = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+
+    const { result, stdout, stderr } = await execute({ script: 'cp -i source.txt sink', stdin: 'y\n' });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe("cp: overwrite '/sink'? ");
+    const buffer = new Uint8Array(6);
+    expect(await reader.read({ buffer })).toEqual({ bytesRead: 6 });
+    expect(new TextDecoder().decode(buffer)).toBe('source');
+  });
+
+  it('preserves a regular file that replaces a confirmed FIFO', async () => {
+    await writeFile({ path: 'source.txt', data: 'source' });
+    await wesh.vfs.mknod({ path: '/sink', type: 'fifo' });
+
+    const openEntry = wesh.vfs.openEntry.bind(wesh.vfs);
+    let replaced = false;
+    using _replaceDestination = vi.spyOn(wesh.vfs, 'openEntry').mockImplementation(async request => {
+      if (request.entry.fullPath === '/source.txt' && !replaced) {
+        replaced = true;
+        await wesh.vfs.unlink({ path: '/sink' });
+        await writeFile({ path: 'sink', data: 'other writer' });
+      }
+      return openEntry(request);
+    });
+    const { result, stdout, stderr } = await execute({ script: 'cp -i source.txt sink', stdin: 'y\n' });
+
+    const destination = await rootHandle.getFileHandle('sink');
+    expect(await (await destination.getFile()).text()).toBe('other writer');
+    expect(replaced).toBe(true);
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('changed');
   });
 
   it('supports interactive overwrite decisions and returns non-zero when declined', async () => {
@@ -308,6 +392,93 @@ readlink preserved.link`,
     expect(copied.stderr.text).toBe('');
     expect(copied.result.exitCode).toBe(0);
     expect((await wesh.vfs.lstat({ path: '/preserved.link' })).type).toBe('symlink');
+  });
+
+  it.each(['-i', '-u'])('preserves a destination symlink while writing its approved referent (%s)', async option => {
+    await writeFile({ path: 'source.txt', data: 'new contents' });
+    await writeFile({ path: 'referent.txt', data: 'old contents' });
+    await wesh.vfs.symlink({ path: '/dest.link', targetPath: '/referent.txt' });
+    await setFileMtime({ path: 'source.txt', mtime: Date.now() + 10_000 });
+    const copied = await execute({ script: 'cp ' + option + ' source.txt dest.link', stdin: 'y\n' });
+
+    expect(copied.result.exitCode).toBe(0);
+    expect(await wesh.vfs.readlink({ path: '/dest.link' })).toBe('/referent.txt');
+    const referent = await rootHandle.getFileHandle('referent.txt');
+    expect(await (await referent.getFile()).text()).toBe('new contents');
+  });
+
+  it.each([{ referentNewer: true }, { referentNewer: false }])('uses the referent timestamp when updating through a symlink ($referentNewer)', async ({ referentNewer }) => {
+    await writeFile({ path: 'source.txt', data: 'source' });
+    await writeFile({ path: 'referent.txt', data: 'referent' });
+    await wesh.vfs.symlink({ path: '/dest.link', targetPath: '/referent.txt' });
+    const now = Date.now();
+    await setFileMtime({ path: 'source.txt', mtime: now + (referentNewer ? 10_000 : -10_000) });
+    await setFileMtime({ path: 'referent.txt', mtime: now + (referentNewer ? 20_000 : -20_000) });
+
+    const { result, stderr } = await execute({ script: 'cp -u source.txt dest.link' });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(await wesh.vfs.readlink({ path: '/dest.link' })).toBe('/referent.txt');
+    const referent = await rootHandle.getFileHandle('referent.txt');
+    expect(await (await referent.getFile()).text()).toBe(referentNewer ? 'referent' : 'source');
+  });
+
+  it('rejects a symlink retargeted after checking the original referent timestamp', async () => {
+    await writeFile({ path: 'source.txt', data: 'source' });
+    await writeFile({ path: 'original.txt', data: 'original' });
+    await writeFile({ path: 'other.txt', data: 'other writer' });
+    await wesh.vfs.symlink({ path: '/dest.link', targetPath: '/original.txt' });
+    await setFileMtime({ path: 'source.txt', mtime: 2_000 });
+    await setFileMtime({ path: 'original.txt', mtime: 1_000 });
+    await setFileMtime({ path: 'other.txt', mtime: 3_000 });
+
+    const statEntry = wesh.vfs.statEntry.bind(wesh.vfs);
+    let retargeted = false;
+    using _retarget = vi.spyOn(wesh.vfs, 'statEntry').mockImplementation(async request => {
+      const stat = await statEntry(request);
+      if (request.entry.fullPath === '/original.txt' && !retargeted) {
+        retargeted = true;
+        await wesh.vfs.unlink({ path: '/dest.link' });
+        await wesh.vfs.symlink({ path: '/dest.link', targetPath: '/other.txt' });
+      }
+      return stat;
+    });
+    const { result, stderr } = await execute({ script: 'cp -u source.txt dest.link' });
+
+    expect(retargeted).toBe(true);
+    expect(result.exitCode).toBe(1);
+    expect(stderr.text).toContain('changed');
+    expect(await wesh.vfs.readlink({ path: '/dest.link' })).toBe('/other.txt');
+    expect((await execute({ script: 'cat original.txt' })).stdout.text).toBe('original');
+    expect((await execute({ script: 'cat other.txt' })).stdout.text).toBe('other writer');
+  });
+
+  it('retains the observed source link after interactive confirmation', async () => {
+    await writeFile({ path: 'original.txt', data: 'original' });
+    await writeFile({ path: 'other.txt', data: 'other' });
+    await writeFile({ path: 'old.txt', data: 'old' });
+    await wesh.vfs.symlink({ path: '/source.link', targetPath: '/original.txt' });
+    await wesh.vfs.symlink({ path: '/dest.link', targetPath: '/old.txt' });
+
+    const stat = wesh.vfs.stat.bind(wesh.vfs);
+    let destLookups = 0;
+    using _replaceSource = vi.spyOn(wesh.vfs, 'stat').mockImplementation(async request => {
+      const result = await stat(request);
+      if (request.path === '/dest.link' && ++destLookups === 2) {
+        // The destination symlink is checked again after accepting the overwrite.
+        await wesh.vfs.unlink({ path: '/source.link' });
+        await wesh.vfs.symlink({ path: '/source.link', targetPath: '/other.txt' });
+      }
+      return result;
+    });
+    const { result, stderr } = await execute({ script: 'cp -Pi source.link dest.link', stdin: 'y\n' });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe("cp: overwrite '/dest.link'? ");
+    expect(destLookups).toBe(2);
+    expect(await wesh.vfs.readlink({ path: '/source.link' })).toBe('/other.txt');
+    expect(await wesh.vfs.readlink({ path: '/dest.link' })).toBe('/original.txt');
   });
 
   it('supports -R to copy directories recursively', async () => {
@@ -558,6 +729,66 @@ cat dest.txt`,
     expect(copied.result.exitCode).toBe(0);
   });
 
+  it.each([
+    { options: '-n', sourceType: 'file', exitCode: 0 },
+    { options: '--update=none', sourceType: 'file', exitCode: 0 },
+    { options: '--update=none-fail', sourceType: 'file', exitCode: 1 },
+    { options: '-n', sourceType: 'symlink', exitCode: 0 },
+    { options: '--update=none', sourceType: 'symlink', exitCode: 0 },
+    { options: '--update=none-fail', sourceType: 'symlink', exitCode: 1 },
+  ])('preserves a destination created after the vacancy check ($options, $sourceType)', async ({ options, sourceType, exitCode }) => {
+    await writeFile({ path: 'source.txt', data: 'copy data' });
+    if (sourceType === 'symlink') {
+      await wesh.vfs.symlink({ path: '/source.link', targetPath: '/source.txt' });
+    }
+
+    const resolveEntry = wesh.vfs.resolveEntry.bind(wesh.vfs);
+    let destinationLookups = 0;
+    using _createDestination = vi.spyOn(wesh.vfs, 'resolveEntry').mockImplementation(async request => {
+      try {
+        return await resolveEntry(request);
+      } catch (error: unknown) {
+        // The second absent result prepares the output after the same-file check.
+        if (request.path === '/dest.txt' && ++destinationLookups === 2) {
+          await writeFile({ path: 'dest.txt', data: 'other writer' });
+        }
+        throw error;
+      }
+    });
+    const sourceOperand = sourceType === 'symlink' ? '-P source.link' : 'source.txt';
+    const { result, stdout, stderr } = await execute({ script: 'cp -v ' + options + ' ' + sourceOperand + ' dest.txt' });
+
+    expect(destinationLookups).toBe(2);
+    expect(result.exitCode).toBe(exitCode);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe(exitCode === 0 ? '' : "cp: not replacing 'dest.txt'\n");
+    expect((await wesh.vfs.lstat({ path: '/dest.txt' })).type).toBe('file');
+    expect(await (await (await rootHandle.getFileHandle('dest.txt')).getFile()).text()).toBe('other writer');
+  });
+
+  it('preserves a nonempty destination returned by the provider during exclusive creation', async () => {
+    await writeFile({ path: 'source.txt', data: 'copy data' });
+
+    const getFileHandle = rootHandle.getFileHandle.bind(rootHandle);
+    let created = false;
+    using _createDestination = vi.spyOn(rootHandle, 'getFileHandle').mockImplementation(async (name, options) => {
+      const handle = await getFileHandle(name, options);
+      if (name === 'dest.txt' && options?.create === true && !created) {
+        created = true;
+        handle.content = new TextEncoder().encode('other writer');
+      }
+      return handle;
+    });
+    const { result, stdout, stderr } = await execute({ script: 'cp -nv source.txt dest.txt' });
+
+    const destination = await getFileHandle('dest.txt');
+    expect(await (await destination.getFile()).text()).toBe('other writer');
+    expect(created).toBe(true);
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+  });
+
   it('supports -f while following an existing symlink destination', async () => {
     await writeFile({ path: 'source.txt', data: 'source' });
     await writeFile({ path: 'existing.txt', data: 'existing' });
@@ -806,6 +1037,76 @@ cat /root-dest.txt`,
     expect((await execute({ script: 'cat destination.txt~' })).stdout.text).toBe('old');
   });
 
+  it.each([false, true])('preserves a backup of a different type on failure (destination replaced: %s)', async replaced => {
+    await writeFile({ path: 'source.txt', data: 'source' });
+    await writeFile({ path: 'destination.txt', data: 'old destination' });
+    await writeFile({ path: 'referent.txt', data: 'do not modify' });
+    await wesh.vfs.symlink({ path: '/destination.txt~', targetPath: '/referent.txt' });
+
+    const replaceEntry = wesh.vfs.replaceEntry.bind(wesh.vfs);
+    using _replaceDestination = vi.spyOn(wesh.vfs, 'replaceEntry').mockImplementation(async request => {
+      if (request.path === '/destination.txt' && replaced) {
+        await rootHandle.removeEntry('destination.txt');
+        await writeFile({ path: 'destination.txt', data: 'other writer' });
+      }
+      return replaceEntry(request);
+    });
+    const copied = await execute({ script: 'cp -b source.txt destination.txt' });
+
+    expect(copied.result.exitCode).toBe(1);
+    expect(await wesh.vfs.readlink({ path: '/destination.txt~' })).toBe('/referent.txt');
+    expect((await execute({ script: 'cat destination.txt' })).stdout.text).toBe(replaced ? 'other writer' : 'old destination');
+    expect((await execute({ script: 'cat referent.txt' })).stdout.text).toBe('do not modify');
+  });
+
+  it('preserves a backup replaced after its identity was observed', async () => {
+    await writeFile({ path: 'source.txt', data: 'source' });
+    await writeFile({ path: 'destination.txt', data: 'old destination' });
+    await writeFile({ path: 'destination.txt~', data: 'old backup' });
+
+    const resolveEntry = wesh.vfs.resolveEntry.bind(wesh.vfs);
+    let replaced = false;
+    using _replaceBackup = vi.spyOn(wesh.vfs, 'resolveEntry').mockImplementation(async request => {
+      const entry = await resolveEntry(request);
+      if (request.path === '/destination.txt~' && !replaced) {
+        replaced = true;
+        await rootHandle.removeEntry('destination.txt~');
+        await writeFile({ path: 'destination.txt~', data: 'other writer' });
+      }
+      return entry;
+    });
+    const { result, stdout, stderr } = await execute({ script: 'cp -bv source.txt destination.txt' });
+
+    expect((await execute({ script: 'cat destination.txt~' })).stdout.text).toBe('other writer');
+    expect((await execute({ script: 'cat destination.txt' })).stdout.text).toBe('old destination');
+    expect(replaced).toBe(true);
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('changed');
+  });
+
+  it('preserves a destination created while moving the old entry to its backup', async () => {
+    await writeFile({ path: 'source.txt', data: 'source' });
+    await writeFile({ path: 'destination.txt', data: 'old destination' });
+
+    const removeEntry = rootHandle.removeEntry.bind(rootHandle);
+    let replaced = false;
+    using _createDestination = vi.spyOn(rootHandle, 'removeEntry').mockImplementation(async (name, options) => {
+      await removeEntry(name, options);
+      if (name === 'destination.txt' && !replaced) {
+        replaced = true;
+        await writeFile({ path: 'destination.txt', data: 'other writer' });
+      }
+    });
+    const { result, stdout } = await execute({ script: 'cp -bv source.txt destination.txt' });
+
+    expect((await execute({ script: 'cat destination.txt' })).stdout.text).toBe('other writer');
+    expect((await execute({ script: 'cat destination.txt~' })).stdout.text).toBe('old destination');
+    expect(replaced).toBe(true);
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+  });
+
   it('rejects backups that would destroy the source operand', async () => {
     await writeFile({ path: 'destination.txt~', data: 'source' });
     await writeFile({ path: 'destination.txt', data: 'old' });
@@ -816,6 +1117,40 @@ cat /root-dest.txt`,
     expect(copied.stderr.text).toContain('might destroy source');
     expect((await execute({ script: 'cat destination.txt~' })).stdout.text).toBe('source');
     expect((await execute({ script: 'cat destination.txt' })).stdout.text).toBe('old');
+  });
+
+  it('preserves the source and existing backup when their identities cannot be compared', async () => {
+    await writeFile({ path: 'source.txt', data: 'source' });
+    await writeFile({ path: 'destination.txt', data: 'destination' });
+    await writeFile({ path: 'destination.txt~', data: 'backup' });
+    using identity = vi.spyOn(wesh.vfs, 'compareEntryIdentity').mockResolvedValueOnce('unknown');
+
+    const { result, stdout, stderr } = await execute({ script: 'cp -bv source.txt destination.txt' });
+
+    expect(identity).toHaveBeenCalledOnce();
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("cannot verify that backup 'destination.txt~' is separate from 'source.txt'");
+    expect((await execute({ script: 'cat source.txt' })).stdout.text).toBe('source');
+    expect((await execute({ script: 'cat destination.txt' })).stdout.text).toBe('destination');
+    expect((await execute({ script: 'cat destination.txt~' })).stdout.text).toBe('backup');
+  });
+
+  it('compares a recursively listed source link with an existing backup on the same grant', async () => {
+    await mkdir({ path: 'source' });
+    await mkdir({ path: 'destination/source' });
+    await writeFile({ path: 'origin', data: 'origin' });
+    await wesh.vfs.symlink({ path: '/source/link', targetPath: '/origin' });
+    await wesh.vfs.symlink({ path: '/destination/source/link', targetPath: '/old' });
+    await wesh.vfs.symlink({ path: '/destination/source/link~', targetPath: '/older' });
+
+    const { result, stderr } = await execute({ script: 'cp -Rb source destination' });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(await wesh.vfs.readlink({ path: '/source/link' })).toBe('/origin');
+    expect(await wesh.vfs.readlink({ path: '/destination/source/link' })).toBe('/origin');
+    expect(await wesh.vfs.readlink({ path: '/destination/source/link~' })).toBe('/old');
   });
 
   it('rejects backup mode combined with no-clobber', async () => {

@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition } from '@/features/wesh/types';
+import type { WeshShellBuiltinDefinition } from '@/features/wesh/types';
 
 export const unsetCommandDefinition = {
   meta: {
@@ -6,8 +6,8 @@ export const unsetCommandDefinition = {
     description: 'Unset environment variables',
     usage: 'unset [-v] [-f] [name ...]',
   },
-  load: async () => (await import('./index.ts')).unsetCommandImplementation.fn,
-} satisfies WeshCommandDefinition;
+  loadShellBuiltin: async () => (await import('./index.ts')).unsetCommandImplementation.fn,
+} satisfies WeshShellBuiltinDefinition;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

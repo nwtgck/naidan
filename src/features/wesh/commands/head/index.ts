@@ -1,13 +1,18 @@
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
   parseStandardArgv,
-  type ArgvOptionOccurrence,
-  type StandardArgvParserSpec,
-} from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+  stopArgvAtFirstEarlyExit,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import {
-  parseCoreutilsLineOrByteCount,
+  lineOrByteCountArgvAction,
   selectLastLineOrByteCount,
 } from '@/features/wesh/commands/_shared/line-byte-count-selection';
 import { openHandleReadStream, openFileReadStream, writeAllBytesToHandle } from '@/features/wesh/utils/fs';
@@ -29,16 +34,6 @@ type HeadCount =
   | { kind: 'first', count: number }
   | { kind: 'omit-last', count: number };
 
-function validateCount({
-  value,
-  errorPrefix,
-}: {
-  value: string,
-  errorPrefix: string,
-}): { ok: true, value: string } | { ok: false, message: string } {
-  return parseCoreutilsLineOrByteCount({ value, errorPrefix });
-}
-
 function parseHeadCount({ value }: { value: string }): HeadCount {
   if (value.startsWith('-')) {
     return {
@@ -53,131 +48,148 @@ function parseHeadCount({ value }: { value: string }): HeadCount {
   };
 }
 
-function findInvalidObsoleteHeadCount({
-  args,
-  occurrences,
-}: {
-  args: readonly string[],
-  occurrences: readonly ArgvOptionOccurrence[],
-}): string | undefined {
-  let foundObsoleteCount = false;
-
-  for (const [index, occurrence] of occurrences.entries()) {
-    if (occurrence.kind !== 'value' || !/^-\d+$/.test(occurrence.option)) {
-      continue;
-    }
-
-    if (
-      foundObsoleteCount
-      || index !== 0
-      || args[0] !== occurrence.option
-    ) {
-      return occurrence.option.slice(1);
-    }
-    foundObsoleteCount = true;
+function normalizeObsoleteHeadCount({ args }: { args: string[] }): { ok: true, args: string[] } | { ok: false, message: string } {
+  const first = args[0];
+  const digits = /^-(\d+)/.exec(first ?? '')?.[1];
+  if (first === undefined || digits === undefined) {
+    return { ok: true, args };
   }
 
-  return undefined;
+  let countOption = '-n';
+  let countSuffix = '';
+  const flags: string[] = [];
+  for (const modifier of first.slice(1 + digits.length)) {
+    switch (modifier) {
+    case 'b':
+    case 'k':
+    case 'm':
+      countOption = '-c';
+      countSuffix = modifier;
+      break;
+    case 'c':
+      countOption = '-c';
+      countSuffix = '';
+      break;
+    case 'l':
+      // Switching back to lines preserves the multiplier already selected.
+      countOption = '-n';
+      break;
+    case 'q':
+    case 'v':
+    case 'z':
+      flags.push(`-${modifier}`);
+      break;
+    default:
+      return { ok: false, message: `invalid trailing option -- ${modifier}` };
+    }
+  }
+
+  return { ok: true, args: [`${countOption}${digits}${countSuffix}`, ...flags, ...args.slice(1)] };
 }
 
-const headArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'q',
-      long: 'quiet',
-      effects: [{ key: 'headerMode', value: 'never' }],
-      help: { summary: 'never print headers with file names', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'silent',
-      effects: [{ key: 'headerMode', value: 'never' }],
-      help: { summary: 'same as --quiet', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 'v',
-      long: 'verbose',
-      effects: [{ key: 'headerMode', value: 'always' }],
-      help: { summary: 'always print headers with file names', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'n',
-      long: 'lines',
-      key: 'lines',
-      valueName: 'lines',
-      allowAttachedValue: true,
-      parseValue: ({ value }) => validateCount({
-        value,
-        errorPrefix: 'invalid number of lines',
-      }),
-      help: { summary: 'print the first NUM lines', valueName: 'NUM', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'c',
-      long: 'bytes',
-      key: 'bytes',
-      valueName: 'bytes',
-      allowAttachedValue: true,
-      parseValue: ({ value }) => validateCount({
-        value,
-        errorPrefix: 'invalid number of bytes',
-      }),
-      help: { summary: 'print the first NUM bytes', valueName: 'NUM', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 'z',
-      long: 'zero-terminated',
-      effects: [{ key: 'zeroTerminated', value: true }],
-      help: { summary: 'line delimiter is NUL, not newline', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [
-    ({ token }) => {
-      if (!/^-\d+$/.test(token)) {
-        return undefined;
-      }
-      const value = token.slice(1);
-      return {
-        kind: 'matched',
-        consumeCount: 1,
-        effects: [{ key: 'lines', value }],
-        occurrences: [{ kind: 'value', option: token, key: 'lines', value }],
-      };
-    },
-  ],
+const headOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'headerMode', value: 'never' }] },
+    forms: [
+      { kind: 'short', name: 'q', value: { kind: 'none' } },
+      { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+      { kind: 'long', name: 'silent', value: { kind: 'none' } },
+    ],
+    summary: 'never print headers with file names',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'headerMode', value: 'always' }] },
+    forms: [
+      { kind: 'short', name: 'v', value: { kind: 'none' } },
+      { kind: 'long', name: 'verbose', value: { kind: 'none' } },
+    ],
+    summary: 'always print headers with file names',
+    category: 'common',
+  },
+  {
+    semantic: lineOrByteCountArgvAction({ unit: 'lines' }),
+    forms: [
+      { kind: 'short', name: 'n', value: { kind: 'required-attached-or-following', missingValueName: 'lines' } },
+      { kind: 'long', name: 'lines', value: { kind: 'required', missingValueName: 'lines' } },
+    ],
+    summary: 'print the first NUM lines',
+    valueName: 'NUM',
+    category: 'common',
+  },
+  {
+    semantic: lineOrByteCountArgvAction({ unit: 'bytes' }),
+    forms: [
+      { kind: 'short', name: 'c', value: { kind: 'required-attached-or-following', missingValueName: 'bytes' } },
+      { kind: 'long', name: 'bytes', value: { kind: 'required', missingValueName: 'bytes' } },
+    ],
+    summary: 'print the first NUM bytes',
+    valueName: 'NUM',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'zeroTerminated', value: true }] },
+    forms: [
+      { kind: 'short', name: 'z', value: { kind: 'none' } },
+      { kind: 'long', name: 'zero-terminated', value: { kind: 'none' } },
+    ],
+    summary: 'line delimiter is NUL, not newline',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const headArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: headOptions,
+  nonExecutableLongOptions: ['-presume-input-pipe', 'version'],
+});
+const headArgvHelp = defineArgvHelpPresentation({ catalog: headArgvCatalog, rows: headOptions });
+const headArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'all',
 };
 
 export const headCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const textOutput = context.text();
+    const normalized = normalizeObsoleteHeadCount({ args: context.args });
+    if (!normalized.ok) {
+      await writeCommandUsageError({
+        context,
+        command: 'head',
+        message: `head: ${normalized.message}`,
+        usageSummary: formatArgvUsageSummary({ presentation: headArgvHelp }),
+      });
+      return { exitCode: 1 };
+    }
+
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: headArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
-      spec: headArgvSpec,
+      args: stopArgvAtFirstEarlyExit({
+        args: normalized.args,
+        catalog: headArgvCatalog,
+        policy: headArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
+      }),
+      catalog: headArgvCatalog,
+      policy: headArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
+      const message = diagnostic.kind === 'unknown_short_option' && /^-\d$/.test(diagnostic.option)
+        ? `invalid trailing option -- ${diagnostic.option.slice(1)}`
+        : diagnostic.message;
       await writeCommandUsageError({
         context,
         command: 'head',
-        message: `head: ${diagnostic.message}`,
-        argvSpec: headArgvSpec,
+        message: `head: ${message}`,
+        usageSummary: formatArgvUsageSummary({ presentation: headArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -186,27 +198,13 @@ export const headCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'head',
-        argvSpec: headArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: headArgvHelp }),
       });
       return { exitCode: 0 };
     }
 
-    const invalidObsoleteCount = findInvalidObsoleteHeadCount({
-      args: context.args,
-      occurrences: parsed.occurrences,
-    });
-    if (invalidObsoleteCount !== undefined) {
-      await writeCommandUsageError({
-        context,
-        command: 'head',
-        message: `head: invalid trailing option -- ${invalidObsoleteCount}`,
-        argvSpec: headArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
-
     const countSelection = selectLastLineOrByteCount({
-      occurrences: parsed.occurrences,
+      parsed,
       defaultLineCount: '10',
     });
     const { lines, bytes } = (() => {

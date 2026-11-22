@@ -682,7 +682,7 @@ export function findBalancedArithmeticExpression({
   });
 }
 
-function findBalancedArithmeticCommand({
+export function findBalancedArithmeticCommand({
   text,
   startIndex,
 }: {

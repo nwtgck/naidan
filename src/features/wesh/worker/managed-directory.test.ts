@@ -12,7 +12,7 @@ import { toVolumeId } from '@/01-models/ids';
 
 async function execute({ worker, script }: { worker: WorkerServerApi<IWeshWorker>, script: string }) {
   const stdout: string[] = [];
-  const { executionId } = await worker.startExecution({ script }, event => {
+  const response = await worker.execute({ script }, event => {
     switch (event.type) {
     case 'stdout':
       stdout.push(new TextDecoder().decode(event.buffer));
@@ -28,12 +28,7 @@ async function execute({ worker, script }: { worker: WorkerServerApi<IWeshWorker
     }
     }
   });
-  try {
-    const response = await worker.awaitExecution({ request: { executionId } });
-    return { ...response, stdout: stdout.join('') };
-  } finally {
-    await worker.disposeExecution({ request: { executionId } });
-  }
+  return { ...response, stdout: stdout.join('') };
 }
 
 describe('managed directory worker integration', () => {

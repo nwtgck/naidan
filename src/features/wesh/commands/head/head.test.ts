@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh';
+import { headCommandDefinition } from '@/features/wesh/commands/head/definition';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
@@ -7,6 +8,10 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+
+beforeAll(async () => {
+  await headCommandDefinition.load();
+});
 
 describe('head command', () => {
   let wesh: Wesh;
@@ -330,6 +335,33 @@ beta
     expect(result.exitCode).toBe(1);
   });
 
+  it('validates counts that precede or consume help', async () => {
+    const invalid = await execute({ script: 'head -n bad -c1 --help', stdinText: undefined });
+    const claimed = await execute({ script: 'head -n --help', stdinText: undefined });
+    const help = await execute({ script: 'head --help -n bad', stdinText: undefined });
+
+    expect(invalid.result.exitCode).toBe(1);
+    expect(invalid.stderr.text).toContain("head: invalid number of lines: 'bad'");
+    expect(claimed.result.exitCode).toBe(1);
+    expect(claimed.stderr.text).toContain("head: invalid number of lines: '--help'");
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: head');
+    expect(help.stderr.text).toBe('');
+  });
+
+  it('recognizes unique long prefixes and preserves ambiguity with unsupported options', async () => {
+    const help = await execute({ script: 'head --he --unknown', stdinText: undefined });
+    const ambiguous = await execute({ script: 'head --ve --help', stdinText: undefined });
+    const unexpectedValue = await execute({ script: 'head --quiet=yes --help', stdinText: undefined });
+
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: head');
+    expect(ambiguous.result.exitCode).toBe(1);
+    expect(ambiguous.stderr.text).toContain("option '--ve' is ambiguous; possibilities: '--verbose' '--version'");
+    expect(unexpectedValue.result.exitCode).toBe(1);
+    expect(unexpectedValue.stderr.text).toContain("option '--quiet' doesn't allow an argument");
+  });
+
   it('supports GNU decimal and binary count suffixes', async () => {
     const input = `${'a'.repeat(999)}B${'c'.repeat(24)}D`;
     const decimal = await execute({
@@ -383,9 +415,43 @@ beta
     expect(obsoleteLineThenByte.result.exitCode).toBe(0);
   });
 
-  it('rejects obsolete line-count syntax after another option', async () => {
+  it.each([
+    { option: '-1c', bytes: 1 },
+    { option: '-1bc', bytes: 1 },
+    { option: '-1cb', bytes: 512 },
+    { option: '-1bl', bytes: 1024 },
+  ])('applies the obsolete count modifiers in $option', async ({ option, bytes }) => {
+    const input = 'a\n'.repeat(600);
+    const { result, stdout, stderr } = await execute({
+      script: `head ${option}`,
+      stdinText: input,
+    });
+
+    expect(stdout.text).toBe(input.slice(0, bytes));
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('applies obsolete header and delimiter flags across file and stdin operands', async () => {
+    await writeFile({ name: 'data', data: 'a\0b\0c\0' });
+    const quiet = await execute({ script: 'head -1vqz data -', stdinText: 'x\0y\0z\0' });
+    const verbose = await execute({ script: 'head -1vqz -v -n2 data -', stdinText: 'x\0y\0z\0' });
+
+    expect(quiet.stdout.text).toBe('a\0x\0');
+    expect(quiet.stderr.text).toBe('');
+    expect(quiet.result.exitCode).toBe(0);
+    expect(verbose.stdout.text).toBe('==> data <==\na\0b\0\n==> standard input <==\nx\0y\0');
+    expect(verbose.stderr.text).toBe('');
+    expect(verbose.result.exitCode).toBe(0);
+  });
+
+  it.each([
+    { args: '-c2 -1', invalidOption: '1' },
+    { args: '-c2 -20c --help', invalidOption: '2' },
+    { args: '-1d --help', invalidOption: 'd' },
+  ])('reports the invalid trailing option in $args', async ({ args, invalidOption }) => {
     const result = await execute({
-      script: 'head -c2 -1',
+      script: `head ${args}`,
       stdinText: `\
 alpha
 beta
@@ -393,8 +459,17 @@ beta
     });
 
     expect(result.stdout.text).toBe('');
-    expect(result.stderr.text).toContain('head: invalid trailing option -- 1');
+    expect(result.stderr.text).toContain(`head: invalid trailing option -- ${invalidOption}`);
     expect(result.result.exitCode).toBe(1);
+  });
+
+  it('treats an obsolete count-shaped operand as a file after --', async () => {
+    await writeFile({ name: '-1c', data: 'alpha\n' });
+    const { result, stdout, stderr } = await execute({ script: 'head -- -1c', stdinText: undefined });
+
+    expect(stdout.text).toBe('alpha\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('prints the standard input header when verbose is forced without operands', async () => {

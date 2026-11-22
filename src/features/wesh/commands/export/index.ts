@@ -1,34 +1,58 @@
-import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
-import { parseStandardArgv } from '@/features/wesh/argv';
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import type { WeshShellBuiltinFunction, WeshCommandResult, WeshBuiltinCommandContext } from '@/features/wesh/types';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { compareAsciiStrings } from '@/features/wesh/commands/_shared/ascii-order';
-import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
+import { WeshReadonlyVariableError } from '@/features/wesh/shell/variables';
 
-const exportArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'print', value: true }], help: { summary: 'show exported names and values in a reusable format', category: 'common' } },
-    { kind: 'flag', short: 'n', long: undefined, effects: [{ key: 'unexport', value: true }], help: { summary: 'remove the export attribute from each name', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const exportOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'print', value: true }] },
+    forms: [{ kind: 'short', name: 'p', value: { kind: 'none' } }],
+    summary: 'show exported names and values in a reusable format',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'unexport', value: true }] },
+    forms: [{ kind: 'short', name: 'n', value: { kind: 'none' } }],
+    summary: 'remove the export attribute from each name',
+    category: 'common',
+  },
+] as const;
+
+const exportArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: exportOptions,
+  nonExecutableLongOptions: [],
+});
+const exportArgvHelp = defineArgvHelpPresentation({ catalog: exportArgvCatalog, rows: exportOptions });
+const exportArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'none',
 };
 
-async function printExportedVariables({ context }: { context: WeshCommandContext }): Promise<void> {
-  for (const [key, value] of [...context.env.entries()].sort(([left], [right]) => compareAsciiStrings({ left, right }))) {
-    const declaration = `export ${key}='${value.replaceAll("'", "'\\''")}'`;
+async function printExportedVariables({ context, exports }: {
+  context: WeshBuiltinCommandContext,
+  exports: Iterable<[string, string | undefined]>,
+}): Promise<void> {
+  for (const [key, value] of [...exports].sort(([left], [right]) => compareAsciiStrings({ left, right }))) {
+    const declaration = value === undefined ? `export ${key}` : `export ${key}='${value.replaceAll("'", "'\\''")}'`;
     await context.text().print({ text: `${declaration}\n` });
   }
 }
 
-export const exportCmdCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const exportCmdCommandImplementation = {
+  fn: async ({ context, shell }): Promise<WeshCommandResult> => {
+    const { variables } = shell;
     const parsed = parseStandardArgv({
-      args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: exportArgvSpec }),
-      spec: exportArgvSpec,
+      args: context.args,
+      catalog: exportArgvCatalog,
+      policy: exportArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -37,7 +61,7 @@ export const exportCmdCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'export',
         message: `export: ${diagnostic.message}`,
-        argvSpec: exportArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: exportArgvHelp }),
       });
       return { exitCode: 2 };
     }
@@ -46,14 +70,14 @@ export const exportCmdCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'export',
-        argvSpec: exportArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: exportArgvHelp }),
       });
       return { exitCode: 0 };
     }
 
     const printVariables = parsed.optionValues.print === true || parsed.positionals.length === 0;
     if (printVariables) {
-      await printExportedVariables({ context });
+      await printExportedVariables({ context, exports: variables.exportDeclarations() });
     }
     if (parsed.positionals.length === 0) {
       return { exitCode: 0 };
@@ -76,22 +100,20 @@ export const exportCmdCommandImplementation: WeshCommandImplementation = {
       const value = equalsIndex < 0
         ? undefined
         : argument.slice(equalsIndex + 1);
-      if (unexport) {
-        if (value !== undefined) {
-          context.setEnv({ key, value });
+      try {
+        variables.setExport({ name: key, value, exported: !unexport });
+      } catch (error: unknown) {
+        if (!(error instanceof WeshReadonlyVariableError)) {
+          throw error;
         }
-        await context.text().error({
-          text: 'export: -n requires Wesh core export-state support\n',
-        });
+        await context.text().error({ text: `export: ${error.message}\n` });
         exitCode = 1;
-      } else if (value !== undefined) {
-        context.setEnv({ key, value });
       }
     }
 
     return { exitCode };
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'variables'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

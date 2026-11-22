@@ -1,5 +1,12 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import {
+  analyzeArgvLongForm,
+  analyzeArgvShortForm,
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+} from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { resolvePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
@@ -254,65 +261,189 @@ async function* iterateXxdRows({
   }
 }
 
-const xxdArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'a', long: undefined, effects: [{ key: 'autoskip', value: true }], help: { summary: 'replace repeated nul lines with *', category: 'common' } },
-    { kind: 'value', short: 'c', long: undefined, key: 'columns', valueName: 'cols', allowAttachedValue: true, parseValue: undefined, help: { summary: 'set the number of octets per line', valueName: 'COLS', category: 'common' } },
-    { kind: 'value', short: 'g', long: undefined, key: 'groupSize', valueName: 'bytes', allowAttachedValue: true, parseValue: undefined, help: { summary: 'group output by BYTES octets', valueName: 'BYTES', category: 'common' } },
-    { kind: 'flag', short: 'h', long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'value', short: 'l', long: undefined, key: 'length', valueName: 'len', allowAttachedValue: true, parseValue: undefined, help: { summary: 'stop after LEN octets', valueName: 'LEN', category: 'common' } },
-    { kind: 'value', short: 'o', long: undefined, key: 'displayOffset', valueName: 'offset', allowAttachedValue: true, parseValue: undefined, help: { summary: 'add OFFSET to displayed positions', valueName: 'OFFSET', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'flag', short: 'p', long: 'ps', effects: [{ key: 'plain', value: true }], help: { summary: 'output in plain hexdump style', category: 'common' } },
-    { kind: 'flag', short: 'r', long: 'revert', effects: [{ key: 'reverse', value: true }], help: { summary: 'convert a hex dump back to binary', category: 'common' } },
-    { kind: 'value', short: 's', long: undefined, key: 'seek', valueName: 'seek', allowAttachedValue: true, parseValue: undefined, help: { summary: 'start at SEEK bytes', valueName: 'SEEK', category: 'common' } },
-    { kind: 'flag', short: 'u', long: undefined, effects: [{ key: 'uppercase', value: true }], help: { summary: 'use upper-case hex letters', category: 'common' } },
-  ],
-  allowShortFlagBundles: false,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [
-    ({ token }) => {
-      if (token !== '-ps' && token !== '-plain' && token !== '-postscript') {
-        return undefined;
-      }
+type XxdOption = 'autoskip' | 'help' | 'plain' | 'reverse' | 'uppercase'
+  | 'columns' | 'groupSize' | 'length' | 'displayOffset' | 'seek';
+
+const xxdOptions = [
+  {
+    semantic: 'autoskip',
+    forms: [{ kind: 'short', name: 'a', value: { kind: 'none' } }],
+    summary: 'replace repeated nul lines with *',
+    category: 'common',
+  },
+  {
+    semantic: 'columns',
+    forms: [{ kind: 'short', name: 'c', value: { kind: 'required-attached-or-following', missingValueName: 'cols' } }],
+    summary: 'set the number of octets per line',
+    valueName: 'COLS',
+    category: 'common',
+  },
+  {
+    semantic: 'groupSize',
+    forms: [{ kind: 'short', name: 'g', value: { kind: 'required-attached-or-following', missingValueName: 'bytes' } }],
+    summary: 'group output by BYTES octets',
+    valueName: 'BYTES',
+    category: 'common',
+  },
+  {
+    semantic: 'help',
+    forms: [
+      { kind: 'short', name: 'h', value: { kind: 'none' } },
+      { kind: 'long', name: 'help', value: { kind: 'none' } },
+    ],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: 'length',
+    forms: [{ kind: 'short', name: 'l', value: { kind: 'required-attached-or-following', missingValueName: 'len' } }],
+    summary: 'stop after LEN octets',
+    valueName: 'LEN',
+    category: 'common',
+  },
+  {
+    semantic: 'displayOffset',
+    forms: [{ kind: 'short', name: 'o', value: { kind: 'required-attached-or-following', missingValueName: 'offset' } }],
+    summary: 'add OFFSET to displayed positions',
+    valueName: 'OFFSET',
+    category: 'common',
+  },
+  {
+    semantic: 'plain',
+    forms: [
+      { kind: 'short', name: 'p', value: { kind: 'none' } },
+      { kind: 'long', name: 'ps', value: { kind: 'none' } },
+    ],
+    summary: 'output in plain hexdump style',
+    category: 'common',
+  },
+  {
+    semantic: 'reverse',
+    forms: [
+      { kind: 'short', name: 'r', value: { kind: 'none' } },
+      { kind: 'long', name: 'revert', value: { kind: 'none' } },
+    ],
+    summary: 'convert a hex dump back to binary',
+    category: 'common',
+  },
+  {
+    semantic: 'seek',
+    forms: [{ kind: 'short', name: 's', value: { kind: 'required-attached-or-following', missingValueName: 'seek' } }],
+    summary: 'start at SEEK bytes',
+    valueName: 'SEEK',
+    category: 'common',
+  },
+  {
+    semantic: 'uppercase',
+    forms: [{ kind: 'short', name: 'u', value: { kind: 'none' } }],
+    summary: 'use upper-case hex letters',
+    category: 'common',
+  },
+] as const;
+
+const xxdArgvCatalog = defineArgvCatalog<XxdOption>({
+  definitions: xxdOptions,
+  nonExecutableLongOptions: [],
+});
+const xxdArgvHelp = defineArgvHelpPresentation({ catalog: xxdArgvCatalog, rows: xxdOptions });
+
+function parseXxdArgv({ args }: { args: readonly string[] }):
+  | { readonly kind: 'parsed', readonly optionValues: Partial<Record<XxdOption, string | true>>, readonly positionals: readonly string[] }
+  | { readonly kind: 'invalid', readonly message: string } {
+  const optionValues: Partial<Record<XxdOption, string | true>> = {};
+  const positionals: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]!;
+    if (token === '--') {
+      positionals.push(...args.slice(index + 1));
+      break;
+    }
+    if (token === '-' || !token.startsWith('-')) {
+      positionals.push(token);
+      continue;
+    }
+
+    const long = token.startsWith('--');
+    const plainAlias = token === '-ps' || token === '-plain' || token === '-postscript';
+    const shortToken = plainAlias ? '-p' : token;
+    const analysis = long
+      ? analyzeArgvLongForm({ token, catalog: xxdArgvCatalog, longNameMatch: 'exact' })
+      : analyzeArgvShortForm({ token: shortToken, bodyOffset: 1, prefix: '-', catalog: xxdArgvCatalog });
+    switch (analysis.kind) {
+    case 'unknown':
       return {
-        kind: 'matched',
-        consumeCount: 1,
-        effects: [{ key: 'plain', value: true }],
-        occurrences: [{
-          kind: 'special',
-          option: token,
-          effects: [{ key: 'plain', value: true }],
-        }],
+        kind: 'invalid',
+        message: long ? `unrecognized option '${analysis.option}'` : `invalid option -- '${analysis.option.slice(1)}'`,
       };
-    },
-  ],
-};
+    case 'ambiguous':
+      throw new Error('xxd only supports exact long option names');
+    case 'matched': {
+      const { semantic, value } = analysis;
+      switch (value.kind) {
+      case 'none':
+      case 'unexpected-inline':
+        optionValues[semantic] = true;
+        // Preserve the established xxd operand boundary for non-bundled short flags.
+        if (!long && shortToken.length > 2) {
+          positionals.push(`-${shortToken.slice(2)}`);
+        }
+        break;
+      case 'inline':
+        optionValues[semantic] = value.rawValue;
+        break;
+      case 'following-required': {
+        const following = args[index + 1];
+        if (following === undefined) {
+          return { kind: 'invalid', message: `${analysis.option} requires a value for ${value.valueName}` };
+        }
+        optionValues[semantic] = following;
+        index += 1;
+        break;
+      }
+      case 'following-optional':
+        throw new Error(`xxd option '${analysis.option}' has unexpected optional-value syntax`);
+      default: {
+        const _ex: never = value;
+        throw new Error(`Unhandled xxd option value: ${JSON.stringify(_ex)}`);
+      }
+      }
+      break;
+    }
+    default: {
+      const _ex: never = analysis;
+      throw new Error(`Unhandled xxd option analysis: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+  return { kind: 'parsed', optionValues, positionals };
+}
+
 
 export const xxdCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseStandardArgv({
-      args: context.args,
-      spec: xxdArgvSpec,
-    });
-
-    const diagnostic = parsed.diagnostics[0];
-    if (diagnostic !== undefined) {
+    const parsed = parseXxdArgv({ args: context.args });
+    switch (parsed.kind) {
+    case 'invalid':
       await writeCommandUsageError({
         context,
         command: 'xxd',
-        message: `xxd: ${diagnostic.message}`,
-        argvSpec: xxdArgvSpec,
+        message: `xxd: ${parsed.message}`,
+        usageSummary: formatArgvUsageSummary({ presentation: xxdArgvHelp }),
       });
       return { exitCode: 1 };
+    case 'parsed':
+      break;
+    default: {
+      const _ex: never = parsed;
+      throw new Error(`Unhandled xxd argv parse result: ${JSON.stringify(_ex)}`);
+    }
     }
 
     if (parsed.optionValues.help === true) {
       await writeCommandHelp({
         context,
         command: 'xxd',
-        argvSpec: xxdArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: xxdArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -322,7 +453,7 @@ export const xxdCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'xxd',
         message: 'xxd: extra operand',
-        argvSpec: xxdArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: xxdArgvHelp }),
       });
       return { exitCode: 1 };
     }

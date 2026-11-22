@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction } from '@/features/wesh/argv-v2';
 import {
+  lineOrByteCountArgvAction,
   parseCoreutilsLineOrByteCount,
   selectLastLineOrByteCount,
 } from './line-byte-count-selection';
@@ -63,13 +65,30 @@ describe('parseCoreutilsLineOrByteCount', () => {
 
 describe('selectLastLineOrByteCount', () => {
   it('uses the last relevant value occurrence and ignores unrelated flags', () => {
-    expect(selectLastLineOrByteCount({
-      occurrences: [
-        { kind: 'value', option: '-c', key: 'bytes', value: '2' },
-        { kind: 'flag', option: '-q', effects: [{ key: 'headerMode', value: 'never' }] },
-        { kind: 'value', option: '-n', key: 'lines', value: '3' },
+    const catalog = defineArgvCatalog<StandardArgvAction<never>>({
+      definitions: [
+        {
+          semantic: lineOrByteCountArgvAction({ unit: 'bytes' }),
+          forms: [{ kind: 'short', name: 'c', value: { kind: 'required-attached-or-following', missingValueName: 'bytes' } }],
+        },
+        {
+          semantic: lineOrByteCountArgvAction({ unit: 'lines' }),
+          forms: [{ kind: 'short', name: 'n', value: { kind: 'required-attached-or-following', missingValueName: 'lines' } }],
+        },
+        {
+          semantic: { kind: 'effects', effects: [{ key: 'headerMode', value: 'never' }] },
+          forms: [{ kind: 'short', name: 'q', value: { kind: 'none' } }],
+        },
       ],
-      defaultLineCount: '10',
-    })).toEqual({ kind: 'lines', value: '3' });
+      nonExecutableLongOptions: [],
+    });
+    const parsed = parseStandardArgv({
+      args: ['-c2', '-n3K', '-q'],
+      catalog,
+      policy: { longNameMatch: 'exact', optionBoundary: 'continue', occurrenceRetention: 'all' },
+    });
+
+    expect(parsed.diagnostics).toEqual([]);
+    expect(selectLastLineOrByteCount({ parsed, defaultLineCount: '10' })).toEqual({ kind: 'lines', value: '3072' });
   });
 });

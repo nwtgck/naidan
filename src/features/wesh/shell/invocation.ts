@@ -3,10 +3,12 @@ import type { ShellSource } from './source';
 
 export type ShellInvocationMode = 'execute' | 'parse-only';
 
-export interface ShellExecutionOptions {
-  readonly errexit: boolean,
-  readonly nounset: boolean,
-  readonly pipefail: boolean,
+export const SHELL_EXECUTION_OPTION_NAMES = ['allexport', 'errexit', 'nounset', 'pipefail'] as const;
+
+export type WeshExecutionOptions = Record<typeof SHELL_EXECUTION_OPTION_NAMES[number], boolean>;
+
+export function createDefaultExecutionOptions(): WeshExecutionOptions {
+  return { allexport: false, errexit: false, nounset: false, pipefail: false };
 }
 
 export interface ShellOptionOverride {
@@ -16,9 +18,9 @@ export interface ShellOptionOverride {
 
 export interface ShellInvocation {
   readonly source: ShellSource,
-  readonly argv0: string,
+  readonly argv0: string | undefined,
   readonly positionalArgs: readonly string[],
-  readonly executionOptions: ShellExecutionOptions,
+  readonly executionOptions: Readonly<WeshExecutionOptions>,
   readonly shellOptionOverrides: readonly ShellOptionOverride[],
   readonly mode: ShellInvocationMode,
 }

@@ -1,10 +1,9 @@
 import { CommandDataStreamDecoder, decodeCommandDataBytes } from '@/features/wesh/commands/_shared/data-codec';
 import { resolveCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { stripLeadingCLocaleAndTrailingBlankWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
-import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
-import { parseStandardArgv, type ArgvOptionOccurrence, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
+import type { WeshShellBuiltinFunction, WeshCommandResult } from '@/features/wesh/types';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy, type ParsedStandardArgv } from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 
 function parseReadUnsignedInteger({
   value,
@@ -12,93 +11,76 @@ function parseReadUnsignedInteger({
 }: {
   value: string,
   invalidMessage: string,
-}): { ok: true, value: number } | { ok: false, message: string } {
+}): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
   const numericText = stripLeadingCLocaleAndTrailingBlankWhitespace({ value });
   if (!/^(?:0|[1-9]\d*)$/u.test(numericText)) {
-    return { ok: false, message: invalidMessage };
+    return { kind: 'invalid', message: invalidMessage };
   }
 
   const parsed = Number(numericText);
   return Number.isSafeInteger(parsed)
-    ? { ok: true, value: parsed }
-    : { ok: false, message: invalidMessage };
+    ? { kind: 'parsed', value: parsed }
+    : { kind: 'invalid', message: invalidMessage };
 }
 
-const readArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'rawMode', value: true }], help: { summary: 'do not treat backslash as an escape character' } },
-    {
-      kind: 'value',
-      short: 'd',
-      long: undefined,
-      key: 'delimiter',
-      valueName: 'delimiter',
-      allowAttachedValue: true,
-      help: { summary: 'continue until the first character of DELIM is read', valueName: 'DELIM' },
-      parseValue: undefined,
-    },
-    {
-      kind: 'value',
-      short: 'n',
-      long: undefined,
-      key: 'maximumCharacters',
-      valueName: 'nchars',
-      allowAttachedValue: true,
-      help: { summary: 'return after reading NCHARS rather than waiting for a delimiter', valueName: 'NCHARS' },
-      parseValue: ({ value }) => parseReadUnsignedInteger({
-        value,
-        invalidMessage: `${value}: invalid number`,
-      }),
-    },
-    {
-      kind: 'value',
-      short: 'N',
-      long: undefined,
-      key: 'exactCharacters',
-      valueName: 'nchars',
-      allowAttachedValue: true,
-      help: { summary: 'return only after reading exactly NCHARS, unless EOF is reached', valueName: 'NCHARS' },
-      parseValue: ({ value }) => parseReadUnsignedInteger({
-        value,
-        invalidMessage: `${value}: invalid number`,
-      }),
-    },
-    {
-      kind: 'value',
-      short: 'p',
-      long: undefined,
-      key: 'prompt',
-      valueName: 'prompt',
-      allowAttachedValue: true,
-      help: { summary: 'output the string PROMPT without a trailing newline before attempting to read', valueName: 'PROMPT' },
-      parseValue: undefined,
-    },
-    {
-      kind: 'flag',
-      short: 's',
-      long: undefined,
-      effects: [{ key: 'silent', value: true }],
-      help: { summary: 'do not echo input coming from a terminal', category: 'advanced' },
-    },
-    {
-      kind: 'value',
-      short: 'u',
-      long: undefined,
-      key: 'fd',
-      valueName: 'fd',
-      allowAttachedValue: true,
-      help: { summary: 'read from file descriptor fd' },
-      parseValue: ({ value }) => parseReadUnsignedInteger({
-        value,
-        invalidMessage: `invalid file descriptor '${value}'`,
-      }),
-    },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const readOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'rawMode', value: true }] },
+    forms: [{ kind: 'short', name: 'r', value: { kind: 'none' } }],
+    summary: 'do not treat backslash as an escape character',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'delimiter', parse: undefined },
+    forms: [{ kind: 'short', name: 'd', value: { kind: 'required-attached-or-following', missingValueName: 'delimiter' } }],
+    summary: 'continue until the first character of DELIM is read',
+    valueName: 'DELIM',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'maximumCharacters', parse: ({ rawValue }: { rawValue: string }) => parseReadUnsignedInteger({ value: rawValue, invalidMessage: `${rawValue}: invalid number` }) },
+    forms: [{ kind: 'short', name: 'n', value: { kind: 'required-attached-or-following', missingValueName: 'nchars' } }],
+    summary: 'return after reading NCHARS rather than waiting for a delimiter',
+    valueName: 'NCHARS',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'exactCharacters', parse: ({ rawValue }: { rawValue: string }) => parseReadUnsignedInteger({ value: rawValue, invalidMessage: `${rawValue}: invalid number` }) },
+    forms: [{ kind: 'short', name: 'N', value: { kind: 'required-attached-or-following', missingValueName: 'nchars' } }],
+    summary: 'return only after reading exactly NCHARS, unless EOF is reached',
+    valueName: 'NCHARS',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'prompt', parse: undefined },
+    forms: [{ kind: 'short', name: 'p', value: { kind: 'required-attached-or-following', missingValueName: 'prompt' } }],
+    summary: 'output the string PROMPT without a trailing newline before attempting to read',
+    valueName: 'PROMPT',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'silent', value: true }] },
+    forms: [{ kind: 'short', name: 's', value: { kind: 'none' } }],
+    summary: 'do not echo input coming from a terminal',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'fd', parse: ({ rawValue }: { rawValue: string }) => parseReadUnsignedInteger({ value: rawValue, invalidMessage: `invalid file descriptor '${rawValue}'` }) },
+    forms: [{ kind: 'short', name: 'u', value: { kind: 'required-attached-or-following', missingValueName: 'fd' } }],
+    summary: 'read from file descriptor fd',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const readArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: readOptions,
+  nonExecutableLongOptions: [],
+});
+const readArgvHelp = defineArgvHelpPresentation({ catalog: readArgvCatalog, rows: readOptions });
+const readArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'all',
 };
 
 function isIfsWhitespace({
@@ -121,40 +103,20 @@ type ReadCharacterLimit =
   | { kind: 'maximum', count: number }
   | { kind: 'exact', count: number };
 
-function getReadCharacterLimit({
-  occurrences,
-}: {
-  occurrences: ArgvOptionOccurrence[],
-}): ReadCharacterLimit | undefined {
-  let count: number | undefined;
-  let exactMode = false;
-
-  for (const occurrence of occurrences) {
-    if (occurrence.kind !== 'value' || typeof occurrence.value !== 'number') {
-      continue;
-    }
-
-    switch (occurrence.key) {
-    case 'maximumCharacters':
-      count = occurrence.value;
-      break;
-    case 'exactCharacters':
-      count = occurrence.value;
-      exactMode = true;
-      break;
-    default:
-      break;
-    }
-  }
-
-  if (count === undefined) {
+function getReadCharacterLimit({ parsed }: { parsed: ParsedStandardArgv<never> }): ReadCharacterLimit | undefined {
+  const lastCountAction = parsed.occurrences?.findLast(({ semantic }) => 'key' in semantic
+    && (semantic.key === 'maximumCharacters' || semantic.key === 'exactCharacters'))?.semantic;
+  if (lastCountAction === undefined || !('key' in lastCountAction)) {
     return undefined;
   }
 
-  return {
-    kind: exactMode ? 'exact' : 'maximum',
-    count,
-  };
+  const count = parsed.optionValues[lastCountAction.key];
+  if (typeof count !== 'number') {
+    return undefined;
+  }
+
+  // An earlier -N selects exact mode even when a later -n supplies the count.
+  return { kind: parsed.optionValues.exactCharacters === undefined ? 'maximum' : 'exact', count };
 }
 
 function assignReadValues({
@@ -245,11 +207,13 @@ function assignReadValues({
   return values;
 }
 
-export const readCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const readCommandImplementation = {
+  fn: async ({ context, shell }): Promise<WeshCommandResult> => {
+    const { variables } = shell;
     const parsed = parseStandardArgv({
-      args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: readArgvSpec }),
-      spec: readArgvSpec,
+      args: context.args,
+      catalog: readArgvCatalog,
+      policy: readArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -258,7 +222,7 @@ export const readCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'read',
         message: `read: ${diagnostic.message}`,
-        argvSpec: readArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: readArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -267,7 +231,7 @@ export const readCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'read',
-        argvSpec: readArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: readArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -275,14 +239,14 @@ export const readCommandImplementation: WeshCommandImplementation = {
     const fdValue = parsed.optionValues.fd;
     const fd = typeof fdValue === 'number' ? fdValue : 0;
     const rawMode = parsed.optionValues.rawMode === true;
-    const characterLimit = getReadCharacterLimit({ occurrences: parsed.occurrences });
+    const characterLimit = getReadCharacterLimit({ parsed });
     const delimiterValue = parsed.optionValues.delimiter;
     const delimiter = typeof delimiterValue === 'string'
       ? Array.from(delimiterValue)[0] ?? '\0'
       : '\n';
     const prompt = typeof parsed.optionValues.prompt === 'string' ? parsed.optionValues.prompt : undefined;
     const variableNames = parsed.positionals;
-    const ifs = context.env.get('IFS') ?? ' \t\n';
+    const ifs = variables.get({ name: 'IFS' }) ?? ' \t\n';
 
     const inputHandle = context.getFileDescriptor({ fd });
     if (inputHandle === undefined) {
@@ -294,7 +258,7 @@ export const readCommandImplementation: WeshCommandImplementation = {
       await context.text().print({ text: prompt });
     }
 
-    const characterLocaleMode = resolveCharacterLocaleMode({ env: context.env });
+    const characterLocaleMode = resolveCharacterLocaleMode({ env: { get: (name) => variables.get({ name }) } });
     const decoder = new CommandDataStreamDecoder();
     const buffer = new Uint8Array(1);
     const pendingCharacters: Array<{
@@ -414,8 +378,8 @@ export const readCommandImplementation: WeshCommandImplementation = {
     const names = variableNames.length > 0 ? variableNames : ['REPLY'];
 
     if (variableNames.length === 0) {
-      context.setEnv({
-        key: 'REPLY',
+      variables.set({
+        name: 'REPLY',
         value: line,
       });
       return { exitCode: completed ? 0 : 1 };
@@ -440,15 +404,15 @@ export const readCommandImplementation: WeshCommandImplementation = {
         return { exitCode: 1 };
       }
 
-      context.setEnv({
-        key: name,
+      variables.set({
+        name: name,
         value: fields[index] ?? '',
       });
     }
 
     return { exitCode: completed ? 0 : 1 };
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'variables'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

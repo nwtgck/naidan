@@ -14,6 +14,7 @@ describe('parseBashArgv', () => {
       argv0: 'script-name',
       positionalArgs: ['value'],
       executionOptions: {
+        allexport: false,
         errexit: false,
         nounset: false,
         pipefail: false,
@@ -23,11 +24,24 @@ describe('parseBashArgv', () => {
     });
   });
 
-  it('defaults argv0 to bash for -c without an explicit name', () => {
+  it('leaves the default -c argv0 to the executing process', () => {
     expect(parseBashArgv({ args: ['-c', 'true'] })).toMatchObject({
       kind: 'run',
-      argv0: 'bash',
+      argv0: undefined,
       positionalArgs: [],
+    });
+  });
+
+  it('preserves an explicitly empty -c argv0 and script path', () => {
+    expect(parseBashArgv({ args: ['-c', 'true', ''] })).toMatchObject({
+      kind: 'run',
+      source: { kind: 'command-string', script: 'true' },
+      argv0: '',
+    });
+    expect(parseBashArgv({ args: [''] })).toMatchObject({
+      kind: 'run',
+      source: { kind: 'file', path: '' },
+      argv0: '',
     });
   });
 
@@ -42,6 +56,25 @@ describe('parseBashArgv', () => {
         pipefail: true,
       },
       mode: 'parse-only',
+    });
+  });
+
+  it('applies short and named allexport options in argument order', () => {
+    expect(parseBashArgv({ args: ['-ac', 'true'] })).toMatchObject({
+      kind: 'run',
+      executionOptions: { allexport: true },
+    });
+    expect(parseBashArgv({ args: ['-o', 'allexport', '+a', '-c', 'true'] })).toMatchObject({
+      kind: 'run',
+      executionOptions: { allexport: false },
+    });
+    expect(parseBashArgv({ args: ['-a', '+o', 'allexport', '-c', 'true'] })).toMatchObject({
+      kind: 'run',
+      executionOptions: { allexport: false },
+    });
+    expect(parseBashArgv({ args: ['+a', '-o', 'allexport', '-c', 'true'] })).toMatchObject({
+      kind: 'run',
+      executionOptions: { allexport: true },
     });
   });
 
@@ -120,6 +153,7 @@ describe('parseBashArgv', () => {
       argv0: 'zero',
       positionalArgs: ['one'],
       executionOptions: {
+        allexport: false,
         errexit: true,
         nounset: true,
         pipefail: true,
@@ -136,6 +170,7 @@ describe('parseBashArgv', () => {
       argv0: 'zero',
       positionalArgs: ['one'],
       executionOptions: {
+        allexport: false,
         errexit: true,
         nounset: false,
         pipefail: false,
@@ -223,6 +258,7 @@ describe('parseBashArgv', () => {
       argv0: 'zero',
       positionalArgs: [],
       executionOptions: {
+        allexport: false,
         errexit: false,
         nounset: false,
         pipefail: false,
@@ -233,9 +269,10 @@ describe('parseBashArgv', () => {
     expect(parseBashArgv({ args: ['+s', '-e', 'argument'] })).toEqual({
       kind: 'run',
       source: { kind: 'stdin' },
-      argv0: 'bash',
+      argv0: undefined,
       positionalArgs: ['argument'],
       executionOptions: {
+        allexport: false,
         errexit: true,
         nounset: false,
         pipefail: false,
@@ -249,7 +286,7 @@ describe('parseBashArgv', () => {
     expect(parseBashArgv({ args: ['-s', 'one', 'two'] })).toMatchObject({
       kind: 'run',
       source: { kind: 'stdin' },
-      argv0: 'bash',
+      argv0: undefined,
       positionalArgs: ['one', 'two'],
     });
   });
@@ -258,9 +295,10 @@ describe('parseBashArgv', () => {
     expect(parseBashArgv({ args: ['-s', '-e', '-n', 'argument'] })).toEqual({
       kind: 'run',
       source: { kind: 'stdin' },
-      argv0: 'bash',
+      argv0: undefined,
       positionalArgs: ['argument'],
       executionOptions: {
+        allexport: false,
         errexit: true,
         nounset: false,
         pipefail: false,
@@ -274,7 +312,7 @@ describe('parseBashArgv', () => {
     expect(parseBashArgv({ args: [] })).toMatchObject({
       kind: 'run',
       source: { kind: 'stdin' },
-      argv0: 'bash',
+      argv0: undefined,
       positionalArgs: [],
     });
   });
@@ -556,6 +594,7 @@ describe('parseBashArgv', () => {
       argv0: '-c',
       positionalArgs: ['arg'],
       executionOptions: {
+        allexport: false,
         errexit: false,
         nounset: false,
         pipefail: false,
@@ -741,7 +780,7 @@ describe('parseBashArgv', () => {
 
   it('overlays supported SHELLOPTS and BASHOPTS after argv option state', () => {
     const parsed = parseBashArgv({
-      args: ['+e', '+u', '+n', '+o', 'pipefail', '+O', 'extglob', '-c', 'true'],
+      args: ['+a', '+e', '+u', '+n', '+o', 'pipefail', '+O', 'extglob', '-c', 'true'],
     });
     expect(parsed.kind).toBe('run');
     if (parsed.kind !== 'run') {
@@ -750,12 +789,13 @@ describe('parseBashArgv', () => {
 
     expect(applyBashStartupEnvironmentOptions({
       plan: parsed,
-      shellopts: 'errexit:nounset:noexec:pipefail:nolog',
+      shellopts: 'allexport:errexit:nounset:noexec:pipefail:nolog',
       bashopts: 'extglob:nullglob:definitely_unknown',
     })).toEqual({
       plan: {
         ...parsed,
         executionOptions: {
+          allexport: true,
           errexit: true,
           nounset: true,
           pipefail: true,

@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -44,7 +44,27 @@ describe('wesh rg', () => {
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
-    return { result, stdout: stdout.text, stderr: stderr.text };
+    return {
+      result,
+      stdout: stdout.text,
+      stdoutWrites: stdout.chunkCount,
+      get stdoutBytes() {
+        return stdout.buffer;
+      },
+      stderr: stderr.text,
+    };
+  }
+
+  function useNativeBlob({ path, data }: { path: string, data: string }) {
+    const blob = new Blob([data]);
+    const tryReadBlob = wesh.vfs.tryReadBlobEfficiently.bind(wesh.vfs);
+    const readBlob = vi.spyOn(wesh.vfs, 'tryReadBlobEfficiently').mockImplementation(async (options) => {
+      if (options.path === path) {
+        return { kind: 'blob', blob };
+      }
+      return tryReadBlob(options);
+    });
+    return { blob, [Symbol.dispose]: () => readBlob.mockRestore() };
   }
 
   it('searches files recursively and reports match exit status', async () => {
@@ -57,6 +77,175 @@ describe('wesh rg', () => {
     expect(hit.result.exitCode).toBe(0);
     expect(miss.stdout).toBe('');
     expect(miss.result.exitCode).toBe(1);
+  });
+
+  it.each([
+    { options: '-q', output: '' },
+    { options: '-l', output: 'large.txt\n' },
+    { options: '-m1', output: 'target\n' },
+  ])('stops reading a large file at the first match with $options', async ({ options, output }) => {
+    const data = `target\n${'other\n'.repeat(100_000)}`;
+    await writeFile({ path: 'large.txt', data });
+    using input = useNativeBlob({ path: '/large.txt', data });
+    using readWholeFile = vi.spyOn(input.blob, 'arrayBuffer');
+    using readRange = vi.spyOn(input.blob, 'slice');
+
+    const result = await execute({ script: `rg ${options} target large.txt` });
+
+    expect(result.result.exitCode).toBe(0);
+    expect(result.stdout).toBe(output);
+    expect(result.stderr).toBe('');
+    expect(readWholeFile).not.toHaveBeenCalled();
+    expect(readRange).toHaveBeenCalledTimes(1);
+    const [start, end] = readRange.mock.calls[0]!;
+    expect(start).toBe(0);
+    expect(end).toBeGreaterThan(0);
+    expect(end).toBeLessThanOrEqual(64 * 1024);
+  });
+
+  it('preserves UTF-8, byte offsets and CRLF context at a chunk boundary after the match limit', async () => {
+    // The BOM contributes three bytes. The two bytes of é straddle the 64 KiB boundary.
+    const data = `\uFEFF${'x'.repeat(65_522)}\r\nbefore\r\nétarget first\r\ntarget second\r\noutside\r\n`;
+    await writeFile({ path: 'boundary.txt', data });
+    using _input = useNativeBlob({ path: '/boundary.txt', data });
+
+    const result = await execute({ script: 'rg -n -b -C1 -m1 target boundary.txt' });
+
+    expect(result.stdout).toBe(`\
+2-65527-before\r
+3:65535:étarget first\r
+4-65551-target second\r
+`);
+    expect(result.stderr).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it.each([
+    { offset: 65_535, output: 'binary file matches (found "\\0" byte around offset 65535)\n' },
+    { offset: 65_536, output: 'target\n' },
+  ])('applies the binary scan limit when the NUL byte is at $offset', async ({ offset, output }) => {
+    const firstLine = 'target\n';
+    const data = `${firstLine}${'x'.repeat(offset - firstLine.length)}\0tail\n`;
+    await writeFile({ path: 'boundary.dat', data });
+    using _input = useNativeBlob({ path: '/boundary.dat', data });
+
+    const result = await execute({ script: 'rg target boundary.dat' });
+
+    expect(result.stdout).toBe(output);
+    expect(result.stderr).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('prints a sparse match before a pending Blob read and continues after the read fails', async () => {
+    const data = `target first\n${'nothing\n'.repeat(20_000)}`;
+    await writeFile({ path: 'broken.txt', data });
+    await writeFile({ path: 'next.txt', data: 'target\n' });
+    using input = useNativeBlob({ path: '/broken.txt', data });
+    const readStarted = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    using _resume = { [Symbol.dispose]: () => resume.resolve() };
+    const slice = input.blob.slice.bind(input.blob);
+    using readRange = vi.spyOn(input.blob, 'slice').mockImplementation((start, end, contentType) => {
+      const range = slice(start, end, contentType);
+      if (start !== undefined && start > 0) {
+        range.arrayBuffer = async () => {
+          readStarted.resolve();
+          await resume.promise;
+          throw new Error('later read failed');
+        };
+      }
+      return range;
+    });
+
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const execution = wesh.execute({
+      source: createTextShellSource({ text: 'rg target broken.txt next.txt' }),
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+    await readStarted.promise;
+    expect(stdout.text).toBe('broken.txt:target first\n');
+    resume.resolve();
+    const result = await execution;
+
+    expect(stdout.text).toBe(`\
+broken.txt:target first
+next.txt:target
+`);
+    expect(stderr.text).toBe('rg: broken.txt: later read failed\n');
+    expect(result.exitCode).toBe(2);
+    expect(readRange).toHaveBeenCalledTimes(2);
+  });
+
+  it('advances through a Unicode code point between zero-width matches', async () => {
+    await writeFile({ path: 'emoji.txt', data: '😀\n' });
+
+    const result = await execute({ script: "rg -nbo '' emoji.txt" });
+
+    expect(result.stdout).toBe(`\
+1:0:
+1:4:
+`);
+    expect(result.stderr).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('buffers dense numbered output while writing each matching line in order', async () => {
+    const lineCount = 1024;
+    await writeFile({ path: 'dense.txt', data: 'target\n'.repeat(lineCount) });
+
+    const result = await execute({ script: 'rg -n target dense.txt' });
+
+    expect(result.stdout).toBe(Array.from({ length: lineCount }, (_line, index) => `${index + 1}:target\n`).join(''));
+    expect(result.stdoutWrites).toBeLessThan(16);
+    expect(result.stderr).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it.each([
+    { options: '-n', match: 'target again' },
+    { options: '-no', match: 'target' },
+    { options: '--sort=none -no', match: 'target' },
+  ])('preserves raw file name bytes in $options output', async ({ options, match }) => {
+    await writeFile({ path: 'raw\udcff.txt', data: 'target again\n' });
+
+    const result = await execute({ script: `rg ${options} target .` });
+
+    const encoder = new TextEncoder();
+    expect(result.stdoutBytes).toEqual(Uint8Array.of(
+      ...encoder.encode('./raw'),
+      0xff,
+      ...encoder.encode(`.txt:1:${match}\n`),
+    ));
+    expect(result.stderr).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('stops walking a quiet directory search after the first match', async () => {
+    await writeFile({ path: 'src/a.txt', data: 'target\n' });
+    for (let index = 0; index < 260; index++) {
+      await writeFile({ path: `src/other-${index}.txt`, data: 'other\n' });
+    }
+    const directory = await rootHandle.getDirectoryHandle('src');
+    const entries = directory.entries.bind(directory);
+    const visited = vi.fn();
+    const enumeration = vi.spyOn(directory, 'entries').mockImplementation(async function* () {
+      for await (const entry of entries()) {
+        visited();
+        yield entry;
+      }
+      return undefined;
+    });
+    using _restore = { [Symbol.dispose]: () => enumeration.mockRestore() };
+
+    const hit = await execute({ script: 'rg -q --no-ignore target src' });
+
+    expect(hit.result.exitCode).toBe(0);
+    expect(hit.stdout).toBe('');
+    expect(hit.stderr).toBe('');
+    expect(visited).toHaveBeenCalledOnce();
   });
 
   it('supports fixed strings, ignore-case and files-with-matches', async () => {
@@ -113,6 +302,34 @@ three
 2:target
 3-two
 `);
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('merges overlapping context and keeps the max-count boundary', async () => {
+    await writeFile({
+      path: 'sample.txt',
+      data: `\
+before
+target first
+between
+target second
+also after
+after
+target outside
+`,
+    });
+
+    const result = await execute({ script: 'rg -n -C2 -m2 target sample.txt' });
+
+    expect(result.stdout).toBe(`\
+1-before
+2:target first
+3-between
+4:target second
+5-also after
+6-after
+`);
+    expect(result.stderr).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
 
@@ -641,6 +858,106 @@ scan/a.txt:target
     expect(explicit.stdout).toBe(`scan/z.txt:target
 scan/a.txt:target
 `);
+  });
+
+  it('starts searching before the directory walk finishes with --sort none', async () => {
+    await writeFile({ path: 'scan/z.txt', data: 'target z\n' });
+    await writeFile({ path: 'scan/a.txt', data: 'target a\n' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const directory = await rootHandle.getDirectoryHandle('scan');
+    const entries = directory.entries.bind(directory);
+    const outputDuringWalk: string[] = [];
+    const enumeration = vi.spyOn(directory, 'entries').mockImplementation(async function* () {
+      for await (const entry of entries()) {
+        yield entry;
+        outputDuringWalk.push(stdout.text);
+      }
+      return undefined;
+    });
+    using _restore = { [Symbol.dispose]: () => enumeration.mockRestore() };
+
+    const result = await wesh.execute({
+      source: createTextShellSource({ text: 'rg -n --sort path --sort none target scan' }),
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(outputDuringWalk[0]).toBe('scan/z.txt:1:target z\n');
+    expect(stdout.text).toBe(`\
+scan/z.txt:1:target z
+scan/a.txt:1:target a
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps stdin first, duplicate file operands, and context separators with --sort none', async () => {
+    await writeFile({ path: 'hit.txt', data: 'target file\n' });
+
+    const result = await execute({ script: 'rg --sort=none -n -C1 target hit.txt - hit.txt', stdin: 'target stdin\n' });
+
+    expect(result.stdout).toBe(`\
+<stdin>:1:target stdin
+--
+hit.txt:1:target file
+--
+hit.txt:1:target file
+`);
+    expect(result.stderr).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('lists matching paths in traversal order with --files --sort none', async () => {
+    await writeFile({ path: 'scan/z.txt', data: '' });
+    await writeFile({ path: 'scan/a.txt', data: '' });
+    await writeFile({ path: 'scan/.hidden', data: '' });
+
+    const result = await execute({ script: 'rg --files --sort=none -0 scan - missing scan/z.txt' });
+
+    expect(result.stdout).toBe('<stdin>\0scan/z.txt\0scan/a.txt\0scan/z.txt\0');
+    expect(result.stderr).toContain('rg: missing:');
+    expect(result.result.exitCode).toBe(2);
+  });
+
+  it('stops walking and reading files when the output pipe closes with --sort none', async () => {
+    await writeFile({ path: 'scan/dense.txt', data: 'target\n'.repeat(35000) });
+    await writeFile({ path: 'scan/next.txt', data: 'target\n' });
+    await writeFile({ path: 'later.txt', data: 'target\n' });
+    const directory = await rootHandle.getDirectoryHandle('scan');
+    const next = await directory.getFileHandle('next.txt');
+    const readNext = vi.spyOn(next, 'getFile');
+    const resolveEntry = vi.spyOn(wesh.vfs, 'resolveEntry');
+    using _restore = {
+      [Symbol.dispose]() {
+        readNext.mockRestore();
+        resolveEntry.mockRestore();
+      },
+    };
+
+    const result = await execute({ script: 'set -o pipefail; rg --sort none -n target scan later.txt | head -n 1' });
+
+    expect(result.stdout).toBe('scan/dense.txt:1:target\n');
+    expect(result.stderr).toBe('');
+    expect(result.result.exitCode).toBe(141);
+    expect(readNext).not.toHaveBeenCalled();
+    expect(resolveEntry).not.toHaveBeenCalledWith({ path: '/later.txt', finalSymlinkTreatment: 'no-follow' });
+  });
+
+  it.each([
+    { mode: 'target', firstPath: 'hit.txt' },
+    { mode: '--files', firstPath: 'hit.txt' },
+    { mode: 'target', firstPath: '-' },
+    { mode: '--files', firstPath: '-' },
+  ])('stops quiet --sort none after the first match for $mode on $firstPath', async ({ mode, firstPath }) => {
+    await writeFile({ path: 'hit.txt', data: 'target\n' });
+
+    const result = await execute({ script: `rg -q --sort none ${mode} ${firstPath} missing`, stdin: 'target\n' });
+
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('');
+    expect(result.result.exitCode).toBe(0);
   });
 
   it('uses NUL after file paths with -0 across normal and file-oriented output', async () => {

@@ -350,6 +350,20 @@ hello gzip
     await expect(rootHandle.getFileHandle('payload.gz')).rejects.toThrow();
   });
 
+  it('keeps dash-leading filenames literal in decompression and integrity-test modes', async () => {
+    await writeFile({ path: '-leading.gz', data: gzipHello });
+
+    const tested = await execute({ script: 'gzip -t -- -leading.gz', stdinText: '' });
+    expect(tested.result.exitCode).toBe(0);
+    expect(tested.stdout.text).toBe('');
+    expect(tested.stderr.text).toBe('');
+
+    const decompressed = await execute({ script: 'gzip -dc -- -leading.gz', stdinText: '' });
+    expect(decompressed.result.exitCode).toBe(0);
+    expect(decompressed.stdout.text).toBe('hello\n');
+    expect(decompressed.stderr.text).toBe('');
+  });
+
   it('supports gunzip -c and -k', async () => {
     await writeFile({ path: 'plain.txt', data: 'keep me\n' });
 
@@ -599,6 +613,49 @@ existing`);
     expect(help.stdout.text).toContain('--help');
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
+  });
+
+  it('handles gzip help and an unknown option in argument order', async () => {
+    const helpFirst = await execute({ script: 'gzip --help --naidan-unknown', stdinText: '' });
+    expect(helpFirst.result.exitCode).toBe(0);
+    expect(helpFirst.stdout.text).toContain('--help');
+    expect(helpFirst.stderr.text).toBe('');
+
+    const errorFirst = await execute({ script: 'gzip --naidan-unknown --help', stdinText: '' });
+    expect(errorFirst.result.exitCode).toBe(1);
+    expect(errorFirst.stdout.text).toBe('');
+    expect(errorFirst.stderr.text).toContain("gzip: unrecognized option '--naidan-unknown'");
+  });
+
+  it('takes a following --help as the required suffix value', async () => {
+    await writeFile({ path: 'payload', data: 'gzip data' });
+
+    const { result, stdout, stderr } = await execute({ script: 'gzip -kS --help payload', stdinText: '' });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+    await expect(rootHandle.getFileHandle('payload--help')).resolves.toBeDefined();
+  });
+
+  it('rejects an inline value for the long quiet flag', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'gzip --quiet=extra', stdinText: '' });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("gzip: option '--quiet' doesn't allow an argument");
+  });
+
+  it('handles gunzip help and an unknown option in argument order', async () => {
+    const helpFirst = await execute({ script: 'gunzip --help --naidan-unknown', stdinText: '' });
+    expect(helpFirst.result.exitCode).toBe(0);
+    expect(helpFirst.stdout.text).toContain('--help');
+    expect(helpFirst.stderr.text).toBe('');
+
+    const errorFirst = await execute({ script: 'gunzip --naidan-unknown --help', stdinText: '' });
+    expect(errorFirst.result.exitCode).toBe(1);
+    expect(errorFirst.stdout.text).toBe('');
+    expect(errorFirst.stderr.text).toContain('--naidan-unknown');
   });
 
   it('requires -f, stdout, or test mode to follow a compressed symbolic link', async () => {

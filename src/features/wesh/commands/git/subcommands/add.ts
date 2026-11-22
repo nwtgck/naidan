@@ -1,13 +1,14 @@
 import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { normalizePath } from "@/features/wesh/path";
-import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
+import type { WeshCommandContext, WeshCommandResult, WeshFileType, WeshStat } from "@/features/wesh/types";
 import { pathExists } from "@/features/wesh/commands/git/files";
 import { loadIgnoreMatcher } from "@/features/wesh/commands/git/ignore";
 import { readIndex, writeIndex } from "@/features/wesh/commands/git/index-file";
+import { matchRepositoryPathSelection } from "@/features/wesh/commands/git/pathspec";
 import { joinPath, relativeToWorktree, discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
 import { stageWorktreePaths } from "@/features/wesh/commands/git/stage";
-import { collectPathsForAdd, listWorktreeEntries, worktreeAbsolutePath } from "@/features/wesh/commands/git/worktree";
+import { collectPathsForAdd, listWorktreeEntries, lstatWorktreePath, worktreeAbsolutePath } from "@/features/wesh/commands/git/worktree";
 import { resolveContentConfigForContext } from "@/features/wesh/commands/git/content-config";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
 import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
@@ -52,6 +53,19 @@ const ADD_ARGV_POLICY: StandardArgvPolicy = {
   occurrenceRetention: 'none',
 };
 
+async function reportIgnoredPaths({ context, paths }: {
+  context: WeshCommandContext,
+  paths: Iterable<string>,
+}): Promise<WeshCommandResult> {
+  await context.text().error({ text: 'The following paths are ignored by one of your .gitignore files:\n' });
+  for (const path of paths) {
+    await context.text().error({ text: `${path}\n` });
+  }
+  await context.text().error({ text: 'hint: Use -f if you really want to add them.\n' });
+  await context.text().error({ text: 'hint: Disable this message with "git config advice.addIgnoredFile false"\n' });
+  return { exitCode: 1 };
+}
+
 export async function runAdd({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];
@@ -89,24 +103,32 @@ export async function runAdd({ context, args }: {
   const mode: 'paths' | 'all' | 'update' = allModeSeen ? 'all' : updateModeSeen ? 'update' : 'paths';
   const force = parsed.optionValues.force === true;
   const operands = parsed.positionals;
+  if (operands.includes('')) {
+    throw new Error('empty string is not a valid pathspec. please use . instead if you meant to match all paths');
+  }
   const currentEntries = await readIndex({ files: context.files, repository });
   const trackedPaths = new Set(currentEntries.map(entry => entry.path));
+  if (mode === 'paths' && operands.length === 0) {
+    await context.text().error({ text: 'Nothing specified, nothing added.\n' });
+    return { exitCode: 128 };
+  }
+  const ignoreMatcher = force || mode === 'update'
+    ? undefined
+    : await loadIgnoreMatcher({ files: context.files, repository });
   let selected: Set<string>;
   switch (mode) {
   case 'all':
-    selected = new Set(await listWorktreeEntries({ files: context.files, repository }));
-    for (const path of trackedPaths) {
-      selected.add(path);
+    selected = new Set(trackedPaths);
+    for (const path of await listWorktreeEntries({ files: context.files, repository })) {
+      if (!ignoreMatcher?.isIgnored({ path, isDirectory: false })) {
+        selected.add(path);
+      }
     }
     break;
   case 'update':
     selected = new Set(trackedPaths);
     break;
   case 'paths':
-    if (operands.length === 0) {
-      await context.text().error({ text: 'Nothing specified, nothing added.\n' });
-      return { exitCode: 128 };
-    }
     selected = await collectPathsForAdd({
       files: context.files,
       repository,
@@ -118,6 +140,68 @@ export async function runAdd({ context, args }: {
     const _ex: never = mode;
     throw new Error(`Unhandled add mode: ${_ex}`);
   }
+  }
+  const explicitIgnored = new Set<string>();
+  const hasModePathspecs = mode !== 'paths' && operands.length > 0;
+  if (hasModePathspecs) {
+    const selection = matchRepositoryPathSelection({
+      repository,
+      cwd: context.cwd,
+      operands,
+      availablePaths: selected,
+      trailingSlash: 'require-directory',
+    });
+    const ancestorTypes = new Map<string, WeshFileType | undefined>();
+    for (const { operand, path, mode: pathspecMode, exclude, requiresDirectory, matched } of selection.operands) {
+      const lookup = await lstatWorktreePath({ files: context.files, repository, path, ancestorTypes });
+      let stat: WeshStat | undefined;
+      switch (lookup.kind) {
+      case 'entry':
+        stat = lookup.stat;
+        if (requiresDirectory && stat.type === 'symlink') {
+          throw new Error(`pathspec '${operand}' is beyond a symbolic link`);
+        }
+        break;
+      case 'missing':
+        stat = undefined;
+        break;
+      case 'leading-symlink':
+        throw new Error(`pathspec '${operand}' is beyond a symbolic link`);
+      default: {
+        const _ex: never = lookup;
+        throw new Error(`Unhandled worktree path: ${JSON.stringify(_ex)}`);
+      }
+      }
+      if (exclude) {
+        continue;
+      }
+      let allowsLiteralMatch: boolean;
+      switch (pathspecMode) {
+      case 'literal':
+      case 'default':
+        allowsLiteralMatch = true;
+        break;
+      case 'glob':
+        allowsLiteralMatch = false;
+        break;
+      default: {
+        const _ex: never = pathspecMode;
+        throw new Error(`Unhandled pathspec mode: ${_ex}`);
+      }
+      }
+      // A literal may name a real path with no eligible entries, such as an untracked file under -u.
+      const isDirectory = stat?.type === 'directory';
+      if (!matched && (!allowsLiteralMatch || stat === undefined || (requiresDirectory && !isDirectory))) {
+        throw new Error(`pathspec '${operand}' did not match any files`);
+      }
+      if (path.length > 0) {
+        const ignoredPath = ignoreMatcher?.firstIgnoredPath({ path, isDirectory });
+        if (ignoredPath !== undefined && (ignoredPath !== path || (stat !== undefined && !trackedPaths.has(path)))) {
+          explicitIgnored.add(ignoredPath);
+        }
+      }
+    }
+    selected = selection.selected;
   }
   const trackedGitlinks = currentEntries.filter(entry => entry.stage === 0 && entry.mode === 0o160000);
   for (const gitlink of trackedGitlinks) {
@@ -153,61 +237,21 @@ export async function runAdd({ context, args }: {
     }
     }
   }
-  if (!force) {
-    const ignoreMatcher = await loadIgnoreMatcher({ files: context.files, repository });
-    switch (mode) {
-    case 'paths': {
-      const explicitIgnored: string[] = [];
-      for (const operand of operands) {
-        const absolutePath = normalizePath({ cwd: context.cwd, path: operand });
-        let stat;
-        try {
-          stat = await context.files.lstat({ path: absolutePath });
-        } catch {
-          continue;
-        }
-        const relativePath = relativeToWorktree({ repository, absolutePath });
-        if (relativePath.length === 0) {
-          continue;
-        }
-        let isDirectory: boolean;
-        switch (stat.type) {
-        case 'directory':
-          isDirectory = true;
-          break;
-        case 'file':
-        case 'fifo':
-        case 'chardev':
-        case 'symlink':
-          isDirectory = false;
-          break;
-        default: {
-          const _ex: never = stat.type;
-          throw new Error(`Unhandled add path type: ${_ex}`);
-        }
-        }
-        if (ignoreMatcher.isIgnored({ path: relativePath, isDirectory }) && !trackedPaths.has(relativePath)) {
-          explicitIgnored.push(relativePath);
-        }
+  if (mode === 'paths' && ignoreMatcher !== undefined) {
+    for (const operand of operands) {
+      const absolutePath = normalizePath({ cwd: context.cwd, path: operand });
+      const stat = await context.files.lstat({ path: absolutePath }).catch(() => undefined);
+      if (stat === undefined) {
+        continue;
       }
-      if (explicitIgnored.length > 0) {
-        await context.text().error({ text: 'The following paths are ignored by one of your .gitignore files:\n' });
-        for (const path of explicitIgnored) {
-          await context.text().error({ text: `${path}\n` });
-        }
-        await context.text().error({ text: 'hint: Use -f if you really want to add them.\n' });
-        await context.text().error({ text: 'hint: Disable this message with "git config advice.addIgnoredFile false"\n' });
-        return { exitCode: 1 };
+      const relativePath = relativeToWorktree({ repository, absolutePath });
+      if (relativePath.length > 0 && !trackedPaths.has(relativePath)
+        && ignoreMatcher.isIgnored({ path: relativePath, isDirectory: stat.type === 'directory' })) {
+        explicitIgnored.add(relativePath);
       }
-      break;
     }
-    case 'all':
-    case 'update':
-      break;
-    default: {
-      const _ex: never = mode;
-      throw new Error(`Unhandled add mode: ${_ex}`);
-    }
+    if (explicitIgnored.size > 0) {
+      return reportIgnoredPaths({ context, paths: explicitIgnored });
     }
     for (const path of selected) {
       if (!trackedPaths.has(path) && ignoreMatcher.isIgnored({ path, isDirectory: false })) {
@@ -215,16 +259,21 @@ export async function runAdd({ context, args }: {
       }
     }
   }
-  const stagedEntries = await stageWorktreePaths({
-    files: context.files,
-    repository,
-    currentEntries,
-    paths: selected,
-    trackedOnly: mode === 'update',
-    contentConfig: await resolveContentConfigForContext({ context, repository }),
-  });
-  await writeIndex({ files: context.files, repository, entries: stagedEntries });
-  return { exitCode: 0 };
+  if (!hasModePathspecs || selected.size > 0) {
+    const stagedEntries = await stageWorktreePaths({
+      files: context.files,
+      repository,
+      currentEntries,
+      paths: selected,
+      trackedOnly: mode === 'update',
+      contentConfig: await resolveContentConfigForContext({ context, repository }),
+      fileDirectoryChanges: allModeSeen || updateModeSeen ? 'stage' : undefined,
+    });
+    await writeIndex({ files: context.files, repository, entries: stagedEntries });
+  }
+  return explicitIgnored.size > 0
+    ? reportIgnoredPaths({ context, paths: explicitIgnored })
+    : { exitCode: 0 };
 }
 
 export const TEST_ONLY = {

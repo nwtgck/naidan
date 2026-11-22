@@ -1,9 +1,17 @@
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import { encodeCommandDataText } from '@/features/wesh/commands/_shared/data-codec';
 import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
-import { parseStandardArgv, type ArgvOptionOccurrence, type ArgvSpecialParseResult, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  parseStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvOccurrence,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { parseXargsDelimiter } from '@/features/wesh/commands/xargs/parse-input';
 import {
   iterateReadableStreamChunks,
@@ -32,514 +40,233 @@ function parseXargsInteger({
   value: string,
   minimum: number,
   label: string,
-}): { ok: true, value: number } | { ok: false, message: string } {
+}): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
   const numericText = stripLeadingCLocaleWhitespace({ value });
   if (!/^\+?\d+$/u.test(numericText)) {
-    return { ok: false, message: `invalid ${label} value '${value}'` };
+    return { kind: 'invalid', message: `invalid ${label} value '${value}'` };
   }
 
   const parsed = Number(numericText);
   if (!Number.isSafeInteger(parsed) || parsed < minimum) {
-    return { ok: false, message: `invalid ${label} value '${value}'` };
+    return { kind: 'invalid', message: `invalid ${label} value '${value}'` };
   }
 
-  return { ok: true, value: parsed };
+  return { kind: 'parsed', value: parsed };
 }
 
 function parseXargsMaxProcs({
   value,
 }: {
   value: string,
-}): { ok: true, value: number } | { ok: false, message: string } {
+}): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
   const parsed = parseXargsInteger({
     value,
     minimum: 0,
     label: 'max-procs',
   });
-  if (!parsed.ok) {
+  switch (parsed.kind) {
+  case 'invalid':
     return parsed;
+  case 'parsed':
+    return parsed.value > MAX_AUTOMATIC_PARALLELISM
+      ? { kind: 'invalid', message: `max-procs value '${value}' exceeds safety limit ${MAX_AUTOMATIC_PARALLELISM}` }
+      : parsed;
+  default: {
+    const _ex: never = parsed;
+    throw new Error(`Unhandled max-procs value: ${JSON.stringify(_ex)}`);
   }
-  if (parsed.value > MAX_AUTOMATIC_PARALLELISM) {
-    return {
-      ok: false,
-      message: `max-procs value '${value}' exceeds safety limit ${MAX_AUTOMATIC_PARALLELISM}`,
-    };
   }
-  return parsed;
 }
 
-function parseDeprecatedIOption({
-  token,
-}: {
-  token: string,
-}): ArgvSpecialParseResult | undefined {
-  if (token === '--replace') {
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [],
-      occurrences: [{ kind: 'value', option: '--replace', key: 'replace', value: '{}' }],
-    };
-  }
-
-  if (token === '-i') {
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [],
-      occurrences: [{ kind: 'value', option: '-i', key: 'replace', value: '{}' }],
-    };
-  }
-
-  if (token.startsWith('-i') && token.length > 2) {
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [],
-      occurrences: [{ kind: 'value', option: '-i', key: 'replace', value: token.slice(2) }],
-    };
-  }
-
-  return undefined;
-}
-
-function parseDeprecatedLOption({
-  token,
-}: {
-  token: string,
-}): ArgvSpecialParseResult | undefined {
-  if (token === '-l') {
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [],
-      occurrences: [{ kind: 'value', option: '-l', key: 'maxLines', value: 1 }],
-    };
-  }
-
-  if (/^-l\+?\d+$/.test(token)) {
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [],
-      occurrences: [{ kind: 'value', option: '-l', key: 'maxLines', value: Number(token.slice(2)) }],
-    };
-  }
-
-  return undefined;
-}
-
-function parseDeprecatedEOption({
-  token,
-}: {
-  token: string,
-}): ArgvSpecialParseResult | undefined {
-  if (token === '--eof') {
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [],
-      occurrences: [],
-    };
-  }
-
-  if (token === '-e') {
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [],
-      occurrences: [],
-    };
-  }
-
-  if (token.startsWith('-e') && token.length > 2) {
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [],
-      occurrences: [{ kind: 'value', option: '-e', key: 'eofString', value: token.slice(2) }],
-    };
-  }
-
-  return undefined;
-}
-
-const xargsArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: '0',
-      long: 'null',
-      effects: [{ key: 'nullDelimited', value: true }],
-      help: { summary: 'input items are terminated by NUL, not whitespace', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'a',
-      long: 'arg-file',
-      key: 'argFile',
-      valueName: 'FILE',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'read items from FILE instead of standard input', valueName: 'FILE', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'n',
-      long: 'max-args',
+const xargsArgvOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'nullDelimited', value: true }] },
+    forms: [
+      { kind: 'short', name: '0', value: { kind: 'none' } },
+      { kind: 'long', name: 'null', value: { kind: 'none' } },
+    ],
+    help: { summary: 'input items are terminated by NUL, not whitespace', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'argFile', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'a', value: { kind: 'required-attached-or-following', missingValueName: 'FILE' } },
+      { kind: 'long', name: 'arg-file', value: { kind: 'required', missingValueName: 'FILE' } },
+    ],
+    help: { summary: 'read items from FILE instead of standard input', valueName: 'FILE', category: 'common' },
+  },
+  {
+    semantic: {
+      kind: 'required-value',
       key: 'maxArgs',
-      valueName: 'MAX',
-      allowAttachedValue: true,
-      parseValue: ({ value }) => parseXargsInteger({
+      parse: ({ rawValue: value }: { rawValue: string }) => parseXargsInteger({
         value,
         minimum: 1,
         label: 'max-args',
       }),
-      help: { summary: 'use at most MAX arguments per command line', valueName: 'MAX', category: 'common' },
     },
-    {
-      kind: 'value',
-      short: 'P',
-      long: 'max-procs',
-      key: 'maxProcs',
-      valueName: 'MAX',
-      allowAttachedValue: true,
-      parseValue: ({ value }) => parseXargsMaxProcs({ value }),
-      help: { summary: 'run up to MAX processes at a time', valueName: 'MAX', category: 'advanced' },
-    },
-    {
-      kind: 'value',
-      short: 'L',
-      long: 'max-lines',
+    forms: [
+      { kind: 'short', name: 'n', value: { kind: 'required-attached-or-following', missingValueName: 'MAX' } },
+      { kind: 'long', name: 'max-args', value: { kind: 'required', missingValueName: 'MAX' } },
+    ],
+    help: { summary: 'use at most MAX arguments per command line', valueName: 'MAX', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'maxProcs', parse: ({ rawValue: value }: { rawValue: string }) => parseXargsMaxProcs({ value }) },
+    forms: [
+      { kind: 'short', name: 'P', value: { kind: 'required-attached-or-following', missingValueName: 'MAX' } },
+      { kind: 'long', name: 'max-procs', value: { kind: 'required', missingValueName: 'MAX' } },
+    ],
+    help: { summary: 'run up to MAX processes at a time', valueName: 'MAX', category: 'advanced' },
+  },
+  {
+    semantic: {
+      kind: 'required-value',
       key: 'maxLines',
-      valueName: 'MAX',
-      allowAttachedValue: true,
-      parseValue: ({ value }) => parseXargsInteger({
+      parse: ({ rawValue: value }: { rawValue: string }) => parseXargsInteger({
         value,
         minimum: 1,
         label: 'max-lines',
       }),
-      help: { summary: 'use at most MAX nonblank input lines per command line', valueName: 'MAX', category: 'common' },
     },
-    {
-      kind: 'value',
-      short: 's',
-      long: 'max-chars',
+    forms: [
+      { kind: 'short', name: 'L', value: { kind: 'required-attached-or-following', missingValueName: 'MAX' } },
+      { kind: 'long', name: 'max-lines', value: { kind: 'required', missingValueName: 'MAX' } },
+    ],
+    help: { summary: 'use at most MAX nonblank input lines per command line', valueName: 'MAX', category: 'common' },
+  },
+  {
+    semantic: {
+      kind: 'required-value',
       key: 'maxChars',
-      valueName: 'MAX',
-      allowAttachedValue: true,
-      parseValue: ({ value }) => parseXargsInteger({
+      parse: ({ rawValue: value }: { rawValue: string }) => parseXargsInteger({
         value,
         minimum: 1,
         label: 'max-chars',
       }),
-      help: { summary: 'use at most MAX characters per command line', valueName: 'MAX', category: 'common' },
     },
-    {
-      kind: 'value',
-      short: 'd',
-      long: 'delimiter',
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'required-attached-or-following', missingValueName: 'MAX' } },
+      { kind: 'long', name: 'max-chars', value: { kind: 'required', missingValueName: 'MAX' } },
+    ],
+    help: { summary: 'use at most MAX characters per command line', valueName: 'MAX', category: 'common' },
+  },
+  {
+    semantic: {
+      kind: 'required-value',
       key: 'delimiter',
-      valueName: 'DELIM',
-      allowAttachedValue: true,
-      parseValue: ({ value }) => {
+      parse: ({ rawValue: value }: { rawValue: string }) => {
         const parsed = parseXargsDelimiter({ value });
-        return parsed.ok ? { ok: true, value: parsed.delimiter } : parsed;
+        return parsed.ok ? { kind: 'parsed' as const, value: parsed.delimiter } : { kind: 'invalid' as const, message: parsed.message };
       },
-      help: { summary: 'input items are terminated by DELIM, not whitespace', valueName: 'DELIM', category: 'common' },
     },
-    {
-      kind: 'value',
-      short: 'I',
-      long: 'replace',
-      key: 'replace',
-      valueName: 'REPLSTR',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'replace REPLSTR in initial arguments with each input item', valueName: 'REPLSTR', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'E',
-      long: 'eof',
-      key: 'eofString',
-      valueName: 'EOFSTR',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'set logical end-of-file marker string', valueName: 'EOFSTR', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'o',
-      long: 'open-tty',
-      effects: [{ key: 'openTty', value: true }],
-      help: { summary: 'reopen stdin as /dev/tty in the child before executing the command', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 'p',
-      long: 'interactive',
-      effects: [{ key: 'interactive', value: true }, { key: 'trace', value: true }],
-      help: { summary: 'prompt before running each command line; implies --verbose', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 'r',
-      long: 'no-run-if-empty',
-      effects: [{ key: 'noRunIfEmpty', value: true }],
-      help: { summary: 'do not run command if there is no input', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 't',
-      long: 'verbose',
-      effects: [{ key: 'trace', value: true }],
-      help: { summary: 'print command line before executing it', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'x',
-      long: 'exit',
-      effects: [{ key: 'exitIfTooLong', value: true }],
-      help: { summary: 'exit if the size is exceeded', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'version',
-      effects: [{ key: 'version', value: true }],
-      help: { summary: 'output version information and exit', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'show-limits',
-      effects: [{ key: 'showLimits', value: true }],
-      help: { summary: 'display command-line length limits and exit', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'required-attached-or-following', missingValueName: 'DELIM' } },
+      { kind: 'long', name: 'delimiter', value: { kind: 'required', missingValueName: 'DELIM' } },
+    ],
+    help: { summary: 'input items are terminated by DELIM, not whitespace', valueName: 'DELIM', category: 'common' },
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'replace' },
+    forms: [
+      { kind: 'short', name: 'I', value: { kind: 'required-attached-or-following', missingValueName: 'REPLSTR' } },
+      { kind: 'long', name: 'replace', value: { kind: 'optional-inline' } },
+    ],
+    help: { summary: 'replace REPLSTR in initial arguments with each input item', valueName: 'REPLSTR', category: 'common' },
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'eofString' },
+    forms: [
+      { kind: 'short', name: 'E', value: { kind: 'required-attached-or-following', missingValueName: 'EOFSTR' } },
+      { kind: 'long', name: 'eof', value: { kind: 'optional-inline' } },
+    ],
+    help: { summary: 'set logical end-of-file marker string', valueName: 'EOFSTR', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'openTty', value: true }] },
+    forms: [
+      { kind: 'short', name: 'o', value: { kind: 'none' } },
+      { kind: 'long', name: 'open-tty', value: { kind: 'none' } },
+    ],
+    help: { summary: 'reopen stdin as /dev/tty in the child before executing the command', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'interactive', value: true }, { key: 'trace', value: true }] },
+    forms: [
+      { kind: 'short', name: 'p', value: { kind: 'none' } },
+      { kind: 'long', name: 'interactive', value: { kind: 'none' } },
+    ],
+    help: { summary: 'prompt before running each command line; implies --verbose', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'noRunIfEmpty', value: true }] },
+    forms: [
+      { kind: 'short', name: 'r', value: { kind: 'none' } },
+      { kind: 'long', name: 'no-run-if-empty', value: { kind: 'none' } },
+    ],
+    help: { summary: 'do not run command if there is no input', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'trace', value: true }] },
+    forms: [
+      { kind: 'short', name: 't', value: { kind: 'none' } },
+      { kind: 'long', name: 'verbose', value: { kind: 'none' } },
+    ],
+    help: { summary: 'print command line before executing it', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'exitIfTooLong', value: true }] },
+    forms: [
+      { kind: 'short', name: 'x', value: { kind: 'none' } },
+      { kind: 'long', name: 'exit', value: { kind: 'none' } },
+    ],
+    help: { summary: 'exit if the size is exceeded', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'version', value: true }] },
+    forms: [
+      { kind: 'long', name: 'version', value: { kind: 'none' } },
+    ],
+    help: { summary: 'output version information and exit', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showLimits', value: true }] },
+    forms: [
+      { kind: 'long', name: 'show-limits', value: { kind: 'none' } },
+    ],
+    help: { summary: 'display command-line length limits and exit', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [
+      { kind: 'long', name: 'help', value: { kind: 'none' } },
+    ],
+    help: { summary: 'display this help and exit', category: 'common' },
+  },
+] as const;
+
+type XargsArgvTag = 'replace' | 'eofString' | 'legacyMaxLines';
+type XargsArgvOccurrence = StandardArgvOccurrence<StandardArgvAction<XargsArgvTag>>;
+
+const xargsArgvCatalog = defineArgvCatalog<StandardArgvAction<XargsArgvTag>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    ...xargsArgvOptions,
+    // Deprecated options accept only an attached value and remain omitted from help.
+    { semantic: { kind: 'deferred', tag: 'replace' }, forms: [{ kind: 'short', name: 'i', value: { kind: 'optional-attached' } }] },
+    { semantic: { kind: 'deferred', tag: 'eofString' }, forms: [{ kind: 'short', name: 'e', value: { kind: 'optional-attached' } }] },
+    { semantic: { kind: 'deferred', tag: 'legacyMaxLines' }, forms: [{ kind: 'short', name: 'l', value: { kind: 'optional-attached' } }] },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [
-    parseDeprecatedIOption,
-    parseDeprecatedLOption,
-    parseDeprecatedEOption,
-  ],
+});
+const xargsArgvHelp = defineArgvHelpPresentation({
+  catalog: xargsArgvCatalog,
+  rows: xargsArgvOptions.map(({ forms, help }) => ({ forms, ...help })),
+});
+const xargsArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'all',
 };
-
-const XARGS_DEPRECATED_OPTIONAL_SHORT_OPTIONS = new Set(['e', 'i', 'l']);
-const XARGS_SHORT_OPTIONS = new Map(
-  xargsArgvSpec.options.flatMap((option) => option.short === undefined ? [] : [[option.short, option] as const]),
-);
-const XARGS_LONG_OPTIONS = new Map(
-  xargsArgvSpec.options.flatMap((option) => option.long === undefined ? [] : [[option.long, option] as const]),
-);
-
-function normalizeXargsDeprecatedOptionalShortBundles({
-  args,
-}: {
-  args: string[],
-}): string[] {
-  const normalized: string[] = [];
-
-  let index = 0;
-  while (index < args.length) {
-    const token = args[index];
-    if (token === undefined) {
-      break;
-    }
-
-    if (token === '--') {
-      normalized.push(...args.slice(index));
-      break;
-    }
-
-    let specialConsumeCount: number | undefined;
-    for (const specialParser of xargsArgvSpec.specialTokenParsers) {
-      const result = specialParser({
-        token,
-        nextToken: args[index + 1],
-      });
-      if (result === undefined) {
-        continue;
-      }
-      specialConsumeCount = result.consumeCount;
-      break;
-    }
-    if (specialConsumeCount !== undefined) {
-      normalized.push(...args.slice(index, index + specialConsumeCount));
-      index += specialConsumeCount;
-      continue;
-    }
-
-    if (token.startsWith('--') && token.length > 2) {
-      normalized.push(token);
-      const optionBody = token.slice(2);
-      const equalsIndex = optionBody.indexOf('=');
-      const key = equalsIndex >= 0 ? optionBody.slice(0, equalsIndex) : optionBody;
-      const option = XARGS_LONG_OPTIONS.get(key);
-      index += 1;
-      if (option?.kind === 'value' && equalsIndex < 0 && index < args.length) {
-        normalized.push(args[index]!);
-        index += 1;
-      }
-      continue;
-    }
-
-    if (token.startsWith('-') && token.length > 1 && token !== '-') {
-      const shortBody = token.slice(1);
-      let consumesNextValue = false;
-      let rewritten = false;
-
-      for (let shortIndex = 0; shortIndex < shortBody.length; shortIndex += 1) {
-        const short = shortBody[shortIndex];
-        if (short === undefined) {
-          continue;
-        }
-
-        if (shortIndex > 0 && XARGS_DEPRECATED_OPTIONAL_SHORT_OPTIONS.has(short)) {
-          normalized.push(
-            `-${shortBody.slice(0, shortIndex)}`,
-            `-${shortBody.slice(shortIndex)}`,
-          );
-          rewritten = true;
-          break;
-        }
-
-        const option = XARGS_SHORT_OPTIONS.get(short);
-        if (option === undefined) {
-          break;
-        }
-        switch (option.kind) {
-        case 'flag':
-          continue;
-        case 'value': {
-          const attachedValue = shortBody.slice(shortIndex + 1);
-          consumesNextValue = !(option.allowAttachedValue && attachedValue.length > 0);
-          shortIndex = shortBody.length;
-          break;
-        }
-        default: {
-          const _ex: never = option;
-          throw new Error(`Unhandled xargs option kind: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
-        }
-        }
-      }
-
-      if (!rewritten) {
-        normalized.push(token);
-      }
-      index += 1;
-      if (!rewritten && consumesNextValue && index < args.length) {
-        normalized.push(args[index]!);
-        index += 1;
-      }
-      continue;
-    }
-
-    normalized.push(token);
-    index += 1;
-  }
-
-  return normalized;
-}
-
-function splitXargsArguments({
-  args,
-}: {
-  args: string[],
-}): { xargsArgs: string[], commandArgs: string[] } {
-  let index = 0;
-  while (index < args.length) {
-    const token = args[index];
-    if (token === undefined) {
-      break;
-    }
-
-    if (token === '--') {
-      return {
-        xargsArgs: args.slice(0, index + 1),
-        commandArgs: args.slice(index + 1),
-      };
-    }
-
-    let specialConsumeCount: number | undefined;
-    for (const specialParser of xargsArgvSpec.specialTokenParsers) {
-      const result = specialParser({
-        token,
-        nextToken: args[index + 1],
-      });
-      if (result === undefined) {
-        continue;
-      }
-      specialConsumeCount = result.consumeCount;
-      break;
-    }
-    if (specialConsumeCount !== undefined) {
-      index += specialConsumeCount;
-      continue;
-    }
-
-    if (token.startsWith('--') && token.length > 2) {
-      const optionBody = token.slice(2);
-      const equalsIndex = optionBody.indexOf('=');
-      const key = equalsIndex >= 0 ? optionBody.slice(0, equalsIndex) : optionBody;
-      const option = XARGS_LONG_OPTIONS.get(key);
-      index += 1;
-      if (option?.kind === 'value' && equalsIndex < 0 && index < args.length) {
-        index += 1;
-      }
-      continue;
-    }
-
-    if (token.startsWith('-') && token.length > 1 && token !== '-') {
-      const shortBody = token.slice(1);
-      index += 1;
-      for (let shortIndex = 0; shortIndex < shortBody.length; shortIndex += 1) {
-        const short = shortBody[shortIndex];
-        if (short === undefined) {
-          continue;
-        }
-        const option = XARGS_SHORT_OPTIONS.get(short);
-        if (option === undefined) {
-          break;
-        }
-        switch (option.kind) {
-        case 'flag':
-          continue;
-        case 'value': {
-          const attachedValue = shortBody.slice(shortIndex + 1);
-          if (!(option.allowAttachedValue && attachedValue.length > 0) && index < args.length) {
-            index += 1;
-          }
-          shortIndex = shortBody.length;
-          break;
-        }
-        default: {
-          const _ex: never = option;
-          throw new Error(`Unhandled xargs option kind: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
-        }
-        }
-      }
-      continue;
-    }
-
-    return {
-      xargsArgs: args.slice(0, index),
-      commandArgs: args.slice(index),
-    };
-  }
-
-  return { xargsArgs: args, commandArgs: [] };
-}
 
 function shellQuote({
   text,
@@ -735,23 +462,6 @@ function describeConflictMode({
   }
 }
 
-function isValueOccurrence(
-  occurrence: ArgvOptionOccurrence,
-  key: string,
-): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> {
-  return occurrence.kind === 'value' && occurrence.key === key;
-}
-
-function getLastValueOccurrence({
-  occurrences,
-  key,
-}: {
-  occurrences: ArgvOptionOccurrence[],
-  key: string,
-}): Extract<ArgvOptionOccurrence, { kind: 'value' }> | undefined {
-  return [...occurrences].reverse().find((occurrence) => isValueOccurrence(occurrence, key));
-}
-
 type XargsInputMode =
   | { kind: 'standard' }
   | { kind: 'null' }
@@ -759,25 +469,15 @@ type XargsInputMode =
 
 type XargsExplicitDelimiterInputMode = Exclude<XargsInputMode, { kind: 'standard' }>;
 
-function resolveInputMode({
-  occurrences,
-}: {
-  occurrences: ArgvOptionOccurrence[],
+function resolveInputMode({ occurrences, delimiter }: {
+  occurrences: readonly XargsArgvOccurrence[],
+  delimiter: string | undefined,
 }): XargsInputMode {
   let mode: XargsInputMode = { kind: 'standard' };
-  for (const occurrence of occurrences) {
-    if (
-      occurrence.kind === 'value'
-      && occurrence.key === 'delimiter'
-      && typeof occurrence.value === 'string'
-    ) {
-      mode = { kind: 'delimiter', delimiter: occurrence.value };
-      continue;
-    }
-    if (
-      (occurrence.kind === 'flag' || occurrence.kind === 'special')
-      && occurrence.effects.some((effect) => effect.key === 'nullDelimited' && effect.value === true)
-    ) {
+  for (const { semantic } of occurrences) {
+    if (semantic.kind === 'required-value' && semantic.key === 'delimiter' && delimiter !== undefined) {
+      mode = { kind: 'delimiter', delimiter };
+    } else if (semantic.kind === 'effects' && semantic.effects.some(effect => effect.key === 'nullDelimited')) {
       mode = { kind: 'null' };
     }
   }
@@ -823,15 +523,51 @@ async function* iterateXargsItemsAsLogicalLines({
   }
 }
 
-type XargsModeOccurrence = Extract<ArgvOptionOccurrence, { kind: 'value' }> & {
-  key: 'replace' | 'maxArgs' | 'maxLines',
-};
+type XargsModeOccurrence =
+  | { key: 'replace', value: string }
+  | { key: 'maxArgs', value: number }
+  | { key: 'maxLines', value: number };
 
-function isXargsModeOccurrence(
-  occurrence: ArgvOptionOccurrence,
-): occurrence is XargsModeOccurrence {
-  return occurrence.kind === 'value'
-    && (occurrence.key === 'replace' || occurrence.key === 'maxArgs' || occurrence.key === 'maxLines');
+function readXargsModeOccurrence({ occurrence }: { occurrence: XargsArgvOccurrence }): XargsModeOccurrence | undefined {
+  const { semantic, value } = occurrence;
+  const rawValue = 'rawValue' in value ? value.rawValue : undefined;
+  switch (semantic.kind) {
+  case 'effects':
+    return undefined;
+  case 'required-value':
+    return rawValue !== undefined && (semantic.key === 'maxArgs' || semantic.key === 'maxLines')
+      ? { key: semantic.key, value: Number(rawValue) }
+      : undefined;
+  case 'deferred': {
+    const tag = semantic.tag;
+    switch (tag) {
+    case 'replace':
+      return { key: 'replace', value: rawValue ?? '{}' };
+    case 'legacyMaxLines':
+      return { key: 'maxLines', value: rawValue === undefined ? 1 : Number(rawValue) };
+    case 'eofString':
+      return undefined;
+    default: {
+      const _ex: never = tag;
+      throw new Error(`Unhandled xargs option: ${_ex}`);
+    }
+    }
+  }
+  default: {
+    const _ex: never = semantic;
+    throw new Error(`Unhandled xargs option: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
+function resolveEofString({ occurrences }: { occurrences: readonly XargsArgvOccurrence[] }): string | undefined {
+  let eofString: string | undefined;
+  for (const { semantic, value } of occurrences) {
+    if (semantic.kind === 'deferred' && semantic.tag === 'eofString' && value.kind !== 'none') {
+      eofString = value.rawValue;
+    }
+  }
+  return eofString;
 }
 
 async function resolveExecutionLimits({
@@ -839,35 +575,37 @@ async function resolveExecutionLimits({
   occurrences,
 }: {
   context: WeshCommandContext,
-  occurrences: ArgvOptionOccurrence[],
+  occurrences: readonly XargsArgvOccurrence[],
 }): Promise<{
   replaceValue: string | undefined,
   maxArgs: number | undefined,
   maxLines: number | undefined,
 }> {
-  const conflictingOccurrences = occurrences.filter(isXargsModeOccurrence);
-
   let replaceValue: string | undefined;
   let maxArgs: number | undefined;
   let maxLines: number | undefined;
   let activeMode: 'replace' | 'maxArgs' | 'maxLines' | undefined;
 
-  for (const occurrence of conflictingOccurrences) {
-    switch (occurrence.key) {
+  for (const occurrence of occurrences) {
+    const mode = readXargsModeOccurrence({ occurrence });
+    if (mode === undefined) {
+      continue;
+    }
+    switch (mode.key) {
     case 'replace': {
       if (activeMode !== undefined && activeMode !== 'replace') {
         await context.text().error({
           text: `xargs: warning: options --${describeConflictMode({ mode: activeMode })} and --replace/-I/-i are mutually exclusive; ignoring previous --${describeConflictMode({ mode: activeMode })} value\n`,
         });
       }
-      replaceValue = typeof occurrence.value === 'string' ? occurrence.value : undefined;
+      replaceValue = mode.value;
       maxArgs = undefined;
       maxLines = undefined;
       activeMode = 'replace';
       break;
     }
     case 'maxArgs': {
-      const nextValue = typeof occurrence.value === 'number' ? occurrence.value : undefined;
+      const nextValue = mode.value;
       if (activeMode === 'replace' && nextValue === 1) {
         break;
       }
@@ -890,12 +628,12 @@ async function resolveExecutionLimits({
       }
       replaceValue = undefined;
       maxArgs = undefined;
-      maxLines = typeof occurrence.value === 'number' ? occurrence.value : undefined;
+      maxLines = mode.value;
       activeMode = 'maxLines';
       break;
     }
     default: {
-      const _exhaustive: never = occurrence.key;
+      const _exhaustive: never = mode;
       throw new Error(`Unhandled xargs mode occurrence: ${_exhaustive}`);
     }
     }
@@ -1172,8 +910,6 @@ async function runCommand({
       command,
       args,
       stdin,
-      stdout: context.stdout,
-      stderr: context.stderr,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1305,47 +1041,44 @@ async function executeInvocationStream({
 
 export const xargsCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { xargsArgs, commandArgs } = splitXargsArguments({ args: context.args });
-    const normalizedXargsArgs = normalizeXargsDeprecatedOptionalShortBundles({
-      args: xargsArgs,
+    const parsed = parseStandardArgv({
+      args: context.args,
+      catalog: xargsArgvCatalog,
+      policy: xargsArgvPolicy,
     });
-    const parsedOwnArguments = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
-        args: normalizedXargsArgs,
-        spec: xargsArgvSpec,
-        earlyExitOptions: STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS,
-      }),
-      spec: xargsArgvSpec,
-    });
-    const parsed = {
-      ...parsedOwnArguments,
-      positionals: commandArgs,
-    };
 
+    // Only a recognized xargs option can exit early. Child arguments such as
+    // --help are already positionals, so no prefix rescans of child argv are needed.
+    const occurrences = parsed.occurrences ?? [];
+    const earlyExit = occurrences.find(({ semantic }) => semantic.kind === 'effects'
+      && semantic.effects.some(({ key }) => key === 'help' || key === 'version'));
     const diagnostic = parsed.diagnostics[0];
-    if (diagnostic !== undefined) {
+    const malformedLegacyLines = parsed.deferred.find(({ semantic, value }) =>
+      semantic.tag === 'legacyMaxLines' && value.kind !== 'none' && !/^\+?\d+$/u.test(value.rawValue));
+    const issue = malformedLegacyLines !== undefined
+      && (diagnostic === undefined || malformedLegacyLines.argvIndex < diagnostic.argvIndex)
+      ? { argvIndex: malformedLegacyLines.argvIndex, message: "invalid option -- 'l'" }
+      : diagnostic;
+    if (issue !== undefined && (earlyExit === undefined || issue.argvIndex <= earlyExit.argvIndex)) {
       await writeCommandUsageError({
         context,
         command: 'xargs',
-        message: `xargs: ${diagnostic.message}`,
-        argvSpec: xargsArgvSpec,
+        message: `xargs: ${issue.message}`,
+        usageSummary: formatArgvUsageSummary({ presentation: xargsArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
-    if (parsed.optionValues.help === true) {
-      await writeCommandHelp({
-        context,
-        command: 'xargs',
-        argvSpec: xargsArgvSpec,
-      });
-      return { exitCode: 0 };
-    }
-
-    if (parsed.optionValues.version === true) {
-      await context.text().print({
-        text: `${XARGS_VERSION}\n`,
-      });
+    if (earlyExit !== undefined && 'effects' in earlyExit.semantic) {
+      if (earlyExit.semantic.effects.some(({ key }) => key === 'help')) {
+        await writeCommandHelp({
+          context,
+          command: 'xargs',
+          optionLines: formatArgvOptionHelp({ presentation: xargsArgvHelp }),
+        });
+      } else {
+        await context.text().print({ text: `${XARGS_VERSION}\n` });
+      }
       return { exitCode: 0 };
     }
 
@@ -1377,37 +1110,15 @@ Maximum parallelism (--max-procs must be no greater): ${MAX_AUTOMATIC_PARALLELIS
       return { exitCode: 1 };
     }
 
-    const argFileOccurrence = getLastValueOccurrence({
-      occurrences: parsed.occurrences,
-      key: 'argFile',
-    });
-    const argFile = typeof argFileOccurrence?.value === 'string' ? argFileOccurrence.value : undefined;
-    const executionLimits = await resolveExecutionLimits({
-      context,
-      occurrences: parsed.occurrences,
-    });
-    const replaceValue = executionLimits.replaceValue;
-    const maxArgs = executionLimits.maxArgs;
-    const maxLines = executionLimits.maxLines;
-    const maxCharsOccurrence = getLastValueOccurrence({
-      occurrences: parsed.occurrences,
-      key: 'maxChars',
-    });
-    const maxChars = typeof maxCharsOccurrence?.value === 'number' ? maxCharsOccurrence.value : DEFAULT_MAX_CHARS;
-    const maxProcsOccurrence = getLastValueOccurrence({
-      occurrences: parsed.occurrences,
-      key: 'maxProcs',
-    });
-    const maxProcs = typeof maxProcsOccurrence?.value === 'number' ? maxProcsOccurrence.value : 1;
-    const inputMode = resolveInputMode({ occurrences: parsed.occurrences });
-    const eofOccurrence = getLastValueOccurrence({
-      occurrences: parsed.occurrences,
-      key: 'eofString',
-    });
-    const eofString = typeof eofOccurrence?.value === 'string' ? eofOccurrence.value : undefined;
+    const { argFile, delimiter } = parsed.optionValues;
+    const maxChars = typeof parsed.optionValues.maxChars === 'number' ? parsed.optionValues.maxChars : DEFAULT_MAX_CHARS;
+    const maxProcs = typeof parsed.optionValues.maxProcs === 'number' ? parsed.optionValues.maxProcs : 1;
+    const { replaceValue, maxArgs, maxLines } = await resolveExecutionLimits({ context, occurrences });
+    const inputMode = resolveInputMode({ occurrences, delimiter: typeof delimiter === 'string' ? delimiter : undefined });
+    const eofString = resolveEofString({ occurrences });
 
     const [command = 'echo', ...initialArgs] = parsed.positionals;
-    const readsItemsFromStdin = argFile === undefined || argFile === '-';
+    const readsItemsFromStdin = typeof argFile !== 'string' || argFile === '-';
     const childStdin = readsItemsFromStdin
       ? createDevNullLikeHandle()
       : context.stdin;

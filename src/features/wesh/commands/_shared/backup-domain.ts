@@ -122,18 +122,29 @@ export async function selectBackupSuffix({
   control: BackupControl,
   simpleSuffix: string,
 }): Promise<string | undefined> {
+  return (await selectBackup({ context, destinationPath, control, simpleSuffix }))?.suffix;
+}
+
+export async function selectBackup({ context, destinationPath, control, simpleSuffix }: {
+  context: WeshCommandContext,
+  destinationPath: string,
+  control: BackupControl,
+  simpleSuffix: string,
+}): Promise<{ suffix: string, numbered: boolean } | undefined> {
   switch (control) {
   case 'none':
     return undefined;
   case 'simple':
-    return simpleSuffix;
+    return { suffix: simpleSuffix, numbered: false };
   case 'numbered': {
     const highest = await findHighestNumberedBackupVersion({ context, destinationPath });
-    return `.~${(highest ?? 0n) + 1n}~`;
+    return { suffix: `.~${(highest ?? 0n) + 1n}~`, numbered: true };
   }
   case 'existing': {
     const highest = await findHighestNumberedBackupVersion({ context, destinationPath });
-    return highest === undefined ? simpleSuffix : `.~${highest + 1n}~`;
+    return highest === undefined
+      ? { suffix: simpleSuffix, numbered: false }
+      : { suffix: `.~${highest + 1n}~`, numbered: true };
   }
   default: {
     const _ex: never = control;

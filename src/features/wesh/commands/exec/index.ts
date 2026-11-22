@@ -1,30 +1,49 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
-import { isStandaloneCommandHelpRequest, writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { isStandaloneCommandHelpRequest, writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import type { WeshShellBuiltinFunction } from '@/features/wesh/types';
 
 
-const execArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'c', long: undefined, effects: [{ key: 'clearEnvironment', value: true }], help: { summary: 'execute command with an empty environment', category: 'common' } },
-    { kind: 'flag', short: 'l', long: undefined, effects: [{ key: 'loginShellArgv0', value: true }], help: { summary: 'prefix argv[0] with a dash', category: 'common' } },
-    { kind: 'value', short: 'a', long: undefined, key: 'argv0', valueName: 'NAME', allowAttachedValue: true, parseValue: undefined, help: { summary: 'pass NAME as argv[0]', valueName: 'NAME', category: 'common' } },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const execOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'clearEnvironment', value: true }] },
+    forms: [{ kind: 'short', name: 'c', value: { kind: 'none' } }],
+    summary: 'execute command with an empty environment',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'loginShellArgv0', value: true }] },
+    forms: [{ kind: 'short', name: 'l', value: { kind: 'none' } }],
+    summary: 'prefix argv[0] with a dash',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'argv0', parse: undefined },
+    forms: [{ kind: 'short', name: 'a', value: { kind: 'required-attached-or-following', missingValueName: 'NAME' } }],
+    summary: 'pass NAME as argv[0]',
+    category: 'common',
+    valueName: 'NAME',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const execArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: execOptions,
+  nonExecutableLongOptions: [],
+});
+const execArgvHelp = defineArgvHelpPresentation({ catalog: execArgvCatalog, rows: execOptions });
+const execArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'none',
 };
 
-export const execCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const execCommandImplementation = {
+  fn: async ({ context, shell }) => {
     if (isStandaloneCommandHelpRequest({
       args: context.args,
       acceptedForms: [['--help']],
@@ -32,14 +51,15 @@ export const execCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'exec',
-        argvSpec: execArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: execArgvHelp }),
       });
       return { exitCode: 0 };
     }
 
     const parsed = parseStandardArgv({
-      args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: execArgvSpec }),
-      spec: execArgvSpec,
+      args: context.args,
+      catalog: execArgvCatalog,
+      policy: execArgvPolicy,
     });
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
@@ -47,24 +67,26 @@ export const execCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'exec',
         message: `exec: ${diagnostic.message}`,
-        argvSpec: execArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: execArgvHelp }),
       });
       return { exitCode: 2 };
     }
 
-    if (parsed.positionals.length === 0) {
-      for (const [fd, handle] of context.getFileDescriptors()) {
-        await context.setFileDescriptor({ fd, handle, persist: true });
-      }
+    const [command, ...args] = parsed.positionals;
+    if (command === undefined) {
+      await shell.persistFileDescriptors();
       return { exitCode: 0 };
     }
-
-    await context.text().error({
-      text: 'exec: replacing the shell requires Wesh core exit control-flow support\n',
+    const { optionValues } = parsed;
+    return shell.exec({
+      command,
+      args,
+      argv0: typeof optionValues.argv0 === 'string' ? optionValues.argv0 : undefined,
+      login: optionValues.loginShellArgv0 === true,
+      clearEnvironment: optionValues.clearEnvironment === true,
     });
-    return { exitCode: 1 };
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'exec' | 'persistFileDescriptors'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

@@ -1,5 +1,6 @@
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { jqArgvSpec, parseJqArgv, type JqInjectedArgument } from '@/features/wesh/commands/jq/argv';
+import { formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import { getJqOptionHelp, jqArgvHelp, parseJqArgv, type JqInjectedArgument } from '@/features/wesh/commands/jq/argv';
 import type { JsonValue, JqFilter, JqPathExpression, JqUserDefinition } from '@/features/wesh/commands/jq/ast';
 import { validateJqProgram } from '@/features/wesh/commands/jq/compile';
 import { formatJsonOutput, parseJsonSequence, scanJsonSequenceIncrementally } from '@/features/wesh/commands/jq/json';
@@ -1375,43 +1376,7 @@ async function resolveVariables({
   return { ok: true, variables };
 }
 
-function resolveOutputIndentation({
-  occurrences,
-  indentValue,
-}: {
-  occurrences: readonly { option: string }[],
-  indentValue: boolean | string | number | undefined,
-}): number | '\t' {
-  let indentation: number | '\t' = 2;
-  for (const occurrence of occurrences) {
-    if (occurrence.option === '--tab') {
-      indentation = '\t';
-    }
-    if (occurrence.option === '--indent' && typeof indentValue === 'number') {
-      indentation = indentValue === -1 ? '\t' : indentValue;
-    }
-  }
-  return indentation;
-}
-
 type JqArgumentMode = 'files' | 'strings' | 'json';
-
-function resolveArgumentMode({
-  occurrences,
-}: {
-  occurrences: readonly { option: string }[],
-}): JqArgumentMode {
-  let mode: JqArgumentMode = 'files';
-  for (const occurrence of occurrences) {
-    if (occurrence.option === '--args') {
-      mode = 'strings';
-    }
-    if (occurrence.option === '--jsonargs') {
-      mode = 'json';
-    }
-  }
-  return mode;
-}
 
 function resolveArgumentConfiguration({
   mode,
@@ -1705,6 +1670,19 @@ export const jqCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedJq = parseJqArgv({ args: context.args });
     const parsed = parsedJq.standard;
+    const diagnostic = parsedJq.grammarDiagnostic ?? parsed.diagnostics[0]?.message;
+    if (diagnostic !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'jq',
+        message: `jq: ${diagnostic}`,
+        usageSummary: formatArgvUsageSummary({ presentation: jqArgvHelp }),
+      });
+      return { exitCode: 2 };
+    }
+
+    const mode = parsed.optionValues.argumentMode;
+    const argumentMode = mode === 'strings' || mode === 'json' ? mode : 'files';
 
     if (parsedJq.earlyExit !== undefined) {
       // jq validates semantic injected values that precede help/version before
@@ -1712,7 +1690,7 @@ export const jqCommandImplementation: WeshCommandImplementation = {
       // unreadable --rawfile/--slurpfile paths remain errors, while -f filter
       // files are deliberately not opened before a later early-exit sentinel.
       const earlyArgumentConfiguration = resolveArgumentConfiguration({
-        mode: resolveArgumentMode({ occurrences: parsed.occurrences }),
+        mode: argumentMode,
         // Help/version suppress filter parsing and -f file loading, but jq has
         // already interpreted operands after the filter source according to
         // --args/--jsonargs. Invalid --jsonargs JSON therefore remains an
@@ -1738,7 +1716,7 @@ export const jqCommandImplementation: WeshCommandImplementation = {
         await writeCommandHelp({
           context,
           command: 'jq',
-          argvSpec: jqArgvSpec,
+          optionLines: getJqOptionHelp(),
         });
         return { exitCode: 0 };
       case 'version':
@@ -1751,22 +1729,11 @@ export const jqCommandImplementation: WeshCommandImplementation = {
       }
     }
 
-    const diagnostic = parsedJq.grammarDiagnostic ?? parsed.diagnostics[0]?.message;
-    if (diagnostic !== undefined) {
-      await writeCommandUsageError({
-        context,
-        command: 'jq',
-        message: `jq: ${diagnostic}`,
-        argvSpec: jqArgvSpec,
-      });
-      return { exitCode: 2 };
-    }
-
     if (optionBoolean({ optionValues: parsed.optionValues, key: 'help' })) {
       await writeCommandHelp({
         context,
         command: 'jq',
-        argvSpec: jqArgvSpec,
+        optionLines: getJqOptionHelp(),
       });
       return { exitCode: 0 };
     }
@@ -1794,7 +1761,7 @@ export const jqCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'jq',
           message: 'jq: missing filter',
-          argvSpec: jqArgvSpec,
+          usageSummary: formatArgvUsageSummary({ presentation: jqArgvHelp }),
         });
         return { exitCode: 2 };
       }
@@ -1808,7 +1775,6 @@ export const jqCommandImplementation: WeshCommandImplementation = {
       return { exitCode: 3 };
     }
 
-    const argumentMode = resolveArgumentMode({ occurrences: parsed.occurrences });
     const argumentConfiguration = resolveArgumentConfiguration({
       mode: argumentMode,
       operands,
@@ -1839,16 +1805,15 @@ export const jqCommandImplementation: WeshCommandImplementation = {
       slurp: optionBoolean({ optionValues: parsed.optionValues, key: 'slurp' }),
     };
     const rawOutput0 = optionBoolean({ optionValues: parsed.optionValues, key: 'rawOutput0' });
+    const joinOutput = optionBoolean({ optionValues: parsed.optionValues, key: 'joinOutput' });
+    const indent = typeof parsed.optionValues.indent === 'number' ? parsed.optionValues.indent : 2;
     const outputOptions: JqOutputOptions = {
       compact: optionBoolean({ optionValues: parsed.optionValues, key: 'compactOutput' }),
-      raw: rawOutput0 || optionBoolean({ optionValues: parsed.optionValues, key: 'rawOutput' }),
-      join: optionBoolean({ optionValues: parsed.optionValues, key: 'joinOutput' }),
+      raw: rawOutput0 || joinOutput || optionBoolean({ optionValues: parsed.optionValues, key: 'rawOutput' }),
+      join: joinOutput,
       asciiOnly: optionBoolean({ optionValues: parsed.optionValues, key: 'asciiOutput' }),
       sortKeys: optionBoolean({ optionValues: parsed.optionValues, key: 'sortKeys' }),
-      indentation: resolveOutputIndentation({
-        occurrences: parsed.occurrences,
-        indentValue: parsed.optionValues.indent,
-      }),
+      indentation: indent === -1 ? '\t' : indent,
       nullSeparator: rawOutput0,
       unbuffered: optionBoolean({ optionValues: parsed.optionValues, key: 'unbuffered' }),
     };

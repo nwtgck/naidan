@@ -7,8 +7,7 @@ import type {
   WeshFileHandle,
 } from '@/features/wesh/types';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
-import { openHandleReadStream } from '@/features/wesh/utils/fs';
-import { canonicalizeExistingPath, resolvePath } from '@/features/wesh/path';
+import { canonicalizePathAllowingMissingLeaf, toAbsolutePath } from '@/features/wesh/path';
 
 const teeHelpOption = {
   semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
@@ -64,35 +63,84 @@ async function writeAll({
   }
 }
 
-async function closeHandle({
-  handle,
-}: {
-  handle: WeshFileHandle,
-}): Promise<void> {
-  try {
-    await handle.close();
-  } catch {
-    // Ignore close failures for tee outputs.
-  }
-}
-
-async function closeWriter({
-  writer,
-}: {
-  writer: WeshEfficientFileWriter,
-}): Promise<void> {
-  try {
-    await writer.close();
-  } catch {
-    // Ignore close failures for tee outputs.
-  }
-}
-
 type TeeOutput =
   | { kind: 'handle', path: string, handle: WeshFileHandle }
   | { kind: 'writer', path: string, writer: WeshEfficientFileWriter };
 
-async function getAppendOutputIdentity({
+async function openTeeOutput({
+  context,
+  file,
+  fullPath,
+  append,
+}: {
+  context: WeshCommandContext,
+  file: string,
+  fullPath: string,
+  append: boolean,
+}): Promise<TeeOutput> {
+  const efficient = await context.files.tryCreateFileWriterEfficiently?.({
+    path: fullPath,
+    mode: append ? 'append' : 'truncate',
+    sharedOutput: context.stdout,
+  });
+  if (efficient !== undefined) {
+    switch (efficient.kind) {
+    case 'writer':
+      return { kind: 'writer', path: file, writer: efficient.writer };
+    case 'fallback_required':
+      break;
+    default: {
+      const _ex: never = efficient;
+      throw new Error(`Unhandled efficient writer result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  const handle = await context.files.open({
+    path: fullPath,
+    flags: {
+      access: 'write',
+      creation: 'if-needed',
+      truncate: append ? 'preserve' : 'truncate',
+      append: append ? 'append' : 'preserve',
+    },
+  });
+  return { kind: 'handle', path: file, handle };
+}
+
+async function finishTeeOutput({
+  output,
+  failedWrite,
+}: {
+  output: TeeOutput,
+  failedWrite: { error: unknown } | undefined,
+}): Promise<void> {
+  switch (output.kind) {
+  case 'handle':
+    await output.handle.close();
+    return;
+  case 'writer':
+    // The writer can stage bytes until close. Discard failed writes and keep
+    // the original diagnostic if abort also rejects.
+    if (failedWrite !== undefined) {
+      await output.writer.abort({ reason: failedWrite.error }).catch(() => undefined);
+      return;
+    }
+    try {
+      await output.writer.close();
+    } catch (error: unknown) {
+      await output.writer.abort({ reason: error }).catch(() => undefined);
+      throw error;
+    }
+    return;
+  default: {
+    const _ex: never = output;
+    throw new Error(`Unhandled tee output target: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
+async function getOutputIdentity({
   context,
   fullPath,
 }: {
@@ -100,11 +148,15 @@ async function getAppendOutputIdentity({
   fullPath: string,
 }): Promise<string> {
   try {
-    return await canonicalizeExistingPath({ context, path: fullPath });
+    const entry = await context.files.resolveEntry({ path: fullPath, finalSymlinkTreatment: 'follow' });
+    return entry.fullPath;
   } catch {
-    // Preserve the open operation as the owner of missing, dangling-link, and
-    // permission diagnostics. Existing aliases share a canonical identity; a
-    // path that cannot be canonicalized remains keyed by its resolved spelling.
+    // For a new file, the existing parent is enough to identify its name.
+  }
+  try {
+    return await canonicalizePathAllowingMissingLeaf({ context, path: fullPath });
+  } catch {
+    // Let open report the original error when a parent cannot be resolved.
     return fullPath;
   }
 }
@@ -169,139 +221,102 @@ export const teeCommandImplementation: WeshCommandImplementation = {
     }
 
     const append = parsed.optionValues.append === true;
-    const outputs: TeeOutput[] = [];
-    const appendOutputsByPath = new Map<string, TeeOutput>();
+    const stdout: TeeOutput = { kind: 'handle', path: "'standard output'", handle: context.stdout };
+    const outputs: TeeOutput[] = [stdout];
+    const outputsByPath = new Map<string, TeeOutput>();
+    const failedWrites = new Map<TeeOutput, { error: unknown }>();
     let exitCode = 0;
-
-    for (const file of parsed.positionals) {
-      const fullPath = resolvePath({
-        cwd: context.cwd,
-        path: file,
-      });
-
-      const appendOutputIdentity = append
-        ? await getAppendOutputIdentity({ context, fullPath })
-        : undefined;
-      if (appendOutputIdentity !== undefined) {
-        const existingOutput = appendOutputsByPath.get(appendOutputIdentity);
-        if (existingOutput !== undefined) {
-          outputs.push(existingOutput);
-          continue;
-        }
-      }
-
-      try {
-        if (context.files.tryCreateFileWriterEfficiently !== undefined) {
-          const writerResult = await context.files.tryCreateFileWriterEfficiently({
-            path: fullPath,
-            mode: append ? 'append' : 'truncate',
-          });
-          switch (writerResult.kind) {
-          case 'writer': {
-            const output = { kind: 'writer', path: file, writer: writerResult.writer } as const;
-            outputs.push(output);
-            if (appendOutputIdentity !== undefined) {
-              appendOutputsByPath.set(appendOutputIdentity, output);
-            }
-            break;
-          }
-          case 'fallback_required': {
-            const handle = await context.files.open({
-              path: fullPath,
-              flags: {
-                access: 'write',
-                creation: 'if-needed',
-                truncate: append ? 'preserve' : 'truncate',
-                append: append ? 'append' : 'preserve',
-              },
-            });
-            const output = { kind: 'handle', path: file, handle } as const;
-            outputs.push(output);
-            if (appendOutputIdentity !== undefined) {
-              appendOutputsByPath.set(appendOutputIdentity, output);
-            }
-            break;
-          }
-          default: {
-            const _ex: never = writerResult;
-            throw new Error(`Unhandled efficient writer result: ${JSON.stringify(_ex)}`);
-          }
-          }
-        } else {
-          const handle = await context.files.open({
-            path: fullPath,
-            flags: {
-              access: 'write',
-              creation: 'if-needed',
-              truncate: append ? 'preserve' : 'truncate',
-              append: append ? 'append' : 'preserve',
-            },
-          });
-          const output = { kind: 'handle', path: file, handle } as const;
-          outputs.push(output);
-          if (appendOutputIdentity !== undefined) {
-            appendOutputsByPath.set(appendOutputIdentity, output);
-          }
-        }
-      } catch (error: unknown) {
-        exitCode = 1;
-        const message = error instanceof Error ? error.message : String(error);
-        await context.text().error({
-          text: `tee: ${file}: ${message}\n`,
-        });
-      }
-    }
-
-    const writeInputBlock = async ({
-      buffer,
+    const wasSignaled = () => context.process.getWaitStatus()?.kind === 'signaled';
+    const reportIoError = async ({
+      target,
+      error,
     }: {
-      buffer: Uint8Array,
+      target: string,
+      error: unknown,
     }): Promise<void> => {
-      try {
-        await writeAll({ handle: context.stdout, buffer });
-      } catch {
-        exitCode = 1;
-      }
-
-      for (const output of outputs) {
-        try {
-          await writeTeeOutput({ output, buffer });
-        } catch (error: unknown) {
-          exitCode = 1;
-          const message = error instanceof Error ? error.message : String(error);
-          await context.text().error({
-            text: `tee: ${output.path}: ${message}\n`,
-          });
-        }
+      exitCode = 1;
+      if (!wasSignaled()) {
+        const message = error instanceof Error ? error.message : String(error);
+        // A failure while writing the diagnostic must leave other outputs active.
+        await context.text().error({ text: `tee: ${target}: ${message}\n` }).catch(() => undefined);
       }
     };
 
-    const stdinStream = openHandleReadStream({ handle: context.stdin });
-    const reader = stdinStream.getReader();
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
+      for (const file of parsed.positionals) {
+        if (wasSignaled()) {
           break;
         }
-        await writeInputBlock({ buffer: value });
+        const fullPath = toAbsolutePath({ cwd: context.cwd, path: file });
+        const outputIdentity = parsed.positionals.length > 1
+          ? await getOutputIdentity({ context, fullPath })
+          : undefined;
+        if (outputIdentity !== undefined) {
+          const existingOutput = outputsByPath.get(outputIdentity);
+          if (existingOutput !== undefined) {
+            if (append) {
+              outputs.push(existingOutput);
+            }
+            continue;
+          }
+        }
+        try {
+          const output = await openTeeOutput({ context, file, fullPath, append });
+          outputs.push(output);
+          if (outputIdentity !== undefined) {
+            outputsByPath.set(outputIdentity, output);
+          }
+        } catch (error: unknown) {
+          await reportIoError({ target: file, error });
+        }
+      }
+
+      const outputCount = new Set(outputs).size;
+      const buffer = new Uint8Array(64 * 1024);
+      while (failedWrites.size < outputCount && !wasSignaled()) {
+        let bytesRead: number;
+        try {
+          ({ bytesRead } = await context.stdin.read({ buffer }));
+        } catch (error: unknown) {
+          await reportIoError({ target: 'read error', error });
+          break;
+        }
+        if (bytesRead === 0) {
+          break;
+        }
+        const chunk = buffer.subarray(0, bytesRead);
+        for (const output of outputs) {
+          if (wasSignaled()) {
+            break;
+          }
+          if (failedWrites.has(output)) {
+            continue;
+          }
+          try {
+            await writeTeeOutput({ output, buffer: chunk });
+          } catch (error: unknown) {
+            failedWrites.set(output, { error });
+            await reportIoError({ target: output.path, error });
+          }
+        }
       }
     } finally {
-      reader.releaseLock();
-      await Promise.all([...new Set(outputs)].map(async (output) => {
-        switch (output.kind) {
-        case 'handle':
-          await closeHandle({ handle: output.handle });
-          return;
-        case 'writer':
-          await closeWriter({ writer: output.writer });
-          return;
-        default: {
-          const _ex: never = output;
-          throw new Error(`Unhandled tee output target: ${JSON.stringify(_ex)}`);
-        }
+      // Standard descriptors are borrowed. Close each opened file output
+      // once, including files that share a writer through repeated operands.
+      const fileOutputs = [...new Set(outputs.slice(1))];
+      const closeFailures = await Promise.all(fileOutputs.map(async (output) => {
+        try {
+          await finishTeeOutput({ output, failedWrite: failedWrites.get(output) });
+          return undefined;
+        } catch (error: unknown) {
+          return { target: output.path, error };
         }
       }));
+      for (const failure of closeFailures) {
+        if (failure !== undefined) {
+          await reportIoError(failure);
+        }
+      }
     }
 
     return { exitCode };

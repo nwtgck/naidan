@@ -1,10 +1,20 @@
-import { parseStandardArgv } from '@/features/wesh/argv';
-import type { ArgvOptionOccurrence, StandardArgvParserSpec } from '@/features/wesh/argv';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type ArgvOptionDefinition,
+  type ParsedStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv-v2';
 import { createBufferedCommandDataWriter, decodeCommandDataBytes, encodeCommandDataText } from '@/features/wesh/commands/_shared/data-codec';
 import { splitByPosixLeftmostLongestMatches } from '@/features/wesh/commands/_shared/posix-regexp';
 import { compileAwkRegularExpression } from '@/features/wesh/commands/awk/regexp';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit, stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { createAwkByteCharacter, decodeAwkByteStringToText, decodeAwkDataBytes, encodeAwkTextToByteString } from '@/features/wesh/commands/awk/byte-string';
 import { parseAwkProgram } from '@/features/wesh/commands/awk/parser';
 import { createAwkRuntime, executeAwkBegin, executeAwkEnd, executeAwkRecord, flushAwkRuntimeCommandPipes, flushAwkRuntimeIo, getAwkRuntimeArrayEntryAsString, getAwkRuntimeVariableAsString, isAwkFunctionExitControl } from '@/features/wesh/commands/awk/runtime';
@@ -14,57 +24,52 @@ import { openHandleReadStream, openFileReadStream, readAllFileBytes, readAllHand
 import { createReadHandleFromStream, createWriteHandleFromStream, iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
 import { iterateByteRecordEntries } from '@/features/wesh/utils/text-records';
 
-const awkArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'F',
-      long: undefined,
-      key: 'fieldSeparator',
-      valueName: 'fs',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'use FS for the input field separator', valueName: 'FS', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'f',
-      long: undefined,
-      key: 'programFile',
-      valueName: 'file',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'read the awk program from FILE', valueName: 'FILE', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'v',
-      long: undefined,
-      key: 'assignment',
-      valueName: 'var=value',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'assign VALUE to VAR before program execution', valueName: 'VAR=VALUE', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
-};
+const awkHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const awkFieldSeparatorOption = {
+  semantic: { kind: 'required-value', key: 'fieldSeparator', parse: undefined },
+  forms: [{ kind: 'short', name: 'F', value: { kind: 'required-attached-or-following', missingValueName: 'fs' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const awkProgramFileOption = {
+  semantic: { kind: 'required-value', key: 'programFile', parse: undefined },
+  forms: [{ kind: 'short', name: 'f', value: { kind: 'required-attached-or-following', missingValueName: 'file' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const awkAssignmentOption = {
+  semantic: { kind: 'required-value', key: 'assignment', parse: undefined },
+  forms: [{ kind: 'short', name: 'v', value: { kind: 'required-attached-or-following', missingValueName: 'var=value' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
 
-function isValueOccurrenceForKey(
-  occurrence: ArgvOptionOccurrence,
-  key: string,
-): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> {
-  return occurrence.kind === 'value' && occurrence.key === key;
+const awkArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [awkHelpOption, awkFieldSeparatorOption, awkProgramFileOption, awkAssignmentOption],
+});
+const awkArgvHelp = defineArgvHelpPresentation({
+  catalog: awkArgvCatalog,
+  rows: [
+    { forms: awkHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+    { forms: awkFieldSeparatorOption.forms, summary: 'use FS for the input field separator', valueName: 'FS', category: 'common' },
+    { forms: awkProgramFileOption.forms, summary: 'read the awk program from FILE', valueName: 'FILE', category: 'common' },
+    { forms: awkAssignmentOption.forms, summary: 'assign VALUE to VAR before program execution', valueName: 'VAR=VALUE', category: 'common' },
+  ],
+});
+const awkArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'all',
+};
+const awkUsageSummary = formatArgvUsageSummary({ presentation: awkArgvHelp });
+
+function getRepeatedAwkValues({ occurrences, key }: {
+  occurrences: ParsedStandardArgv<never>['occurrences'],
+  key: 'assignment' | 'programFile',
+}): string[] {
+  return (occurrences ?? []).flatMap(({ semantic, value }) => (
+    semantic.kind === 'required-value' && semantic.key === key && value.kind !== 'none'
+      ? [value.rawValue]
+      : []
+  ));
 }
 
 function resolvePath({
@@ -371,17 +376,15 @@ function parseAssignment({
 
 export const awkCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const optionStoppedArgs = stopStandardOptionParsingAtFirstPositional({
-      args: context.args,
-      spec: awkArgvSpec,
-    });
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
-        args: optionStoppedArgs,
-        spec: awkArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+      args: stopArgvAtFirstEarlyExit({
+        args: context.args,
+        catalog: awkArgvCatalog,
+        policy: awkArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: awkArgvSpec,
+      catalog: awkArgvCatalog,
+      policy: awkArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -390,7 +393,7 @@ export const awkCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'awk',
         message: `awk: ${diagnostic.message}`,
-        argvSpec: awkArgvSpec,
+        usageSummary: awkUsageSummary,
       });
       return { exitCode: 2 };
     }
@@ -399,7 +402,7 @@ export const awkCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'awk',
-        argvSpec: awkArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: awkArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -416,11 +419,7 @@ export const awkCommandImplementation: WeshCommandImplementation = {
       }));
     }
 
-    const assignments = parsed.occurrences
-      .filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> =>
-        isValueOccurrenceForKey(occurrence, 'assignment'))
-      .map((occurrence) => occurrence.value)
-      .filter((value): value is string => typeof value === 'string');
+    const assignments = getRepeatedAwkValues({ occurrences: parsed.occurrences, key: 'assignment' });
 
     for (const assignment of assignments) {
       const parsedAssignment = parseAssignment({ raw: assignment });
@@ -429,7 +428,7 @@ export const awkCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'awk',
           message: parsedAssignment.message,
-          argvSpec: awkArgvSpec,
+          usageSummary: awkUsageSummary,
         });
         return { exitCode: 2 };
       }
@@ -437,11 +436,7 @@ export const awkCommandImplementation: WeshCommandImplementation = {
       runtimeVariables.set(parsedAssignment.name, parsedAssignment.value);
     }
 
-    const programFiles = parsed.occurrences
-      .filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> =>
-        isValueOccurrenceForKey(occurrence, 'programFile'))
-      .map((occurrence) => occurrence.value)
-      .filter((value): value is string => typeof value === 'string');
+    const programFiles = getRepeatedAwkValues({ occurrences: parsed.occurrences, key: 'programFile' });
 
     const positionals = [...parsed.positionals];
     let script = '';
@@ -470,7 +465,7 @@ export const awkCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'awk',
           message: 'awk: missing program source',
-          argvSpec: awkArgvSpec,
+          usageSummary: awkUsageSummary,
         });
         return { exitCode: 1 };
       }
@@ -621,11 +616,10 @@ export const awkCommandImplementation: WeshCommandImplementation = {
         const capture = createTextCaptureHandle();
         let exitCode: number;
         try {
-          const result = await context.executeShell({
-            script: decodeAwkByteStringToText({ text: command }),
-            stdin: context.stdin,
+          const result = await context.executeCommand({
+            command: 'sh',
+            args: ['-c', decodeAwkByteStringToText({ text: command })],
             stdout: capture.handle,
-            stderr: context.stderr,
           });
           exitCode = result.exitCode;
         } catch (error: unknown) {
@@ -709,11 +703,9 @@ export const awkCommandImplementation: WeshCommandImplementation = {
         }
         await outputWriter.flush();
         try {
-          const result = await context.executeShell({
-            script: decodeAwkByteStringToText({ text: systemScript }),
-            stdin: context.stdin,
-            stdout: context.stdout,
-            stderr: context.stderr,
+          const result = await context.executeCommand({
+            command: 'sh',
+            args: ['-c', decodeAwkByteStringToText({ text: systemScript })],
           });
           return result.exitCode;
         } catch (error: unknown) {
@@ -728,11 +720,11 @@ export const awkCommandImplementation: WeshCommandImplementation = {
       executeOutputPipe: async ({ command, input }) => {
         const capture = createTextCaptureHandle();
         try {
-          const result = await context.executeShell({
-            script: decodeAwkByteStringToText({ text: command }),
+          const result = await context.executeCommand({
+            command: 'sh',
+            args: ['-c', decodeAwkByteStringToText({ text: command })],
             stdin: createTextReadHandle({ text: input }),
             stdout: capture.handle,
-            stderr: context.stderr,
           });
           return { exitCode: result.exitCode, output: capture.readText() };
         } catch (error: unknown) {

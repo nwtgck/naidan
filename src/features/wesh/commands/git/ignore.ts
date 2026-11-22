@@ -16,6 +16,7 @@ interface GitIgnoreRule {
 
 export interface GitIgnoreMatcher {
   isIgnored: ({ path, isDirectory }: { path: string, isDirectory: boolean }) => boolean,
+  firstIgnoredPath: ({ path, isDirectory }: { path: string, isDirectory: boolean }) => string | undefined,
 }
 
 function stripUnescapedTrailingSpaces({ value }: { value: string }): string {
@@ -137,15 +138,17 @@ function parentDirectories({ path }: { path: string }): string[] {
 }
 
 function matcherFromRules({ rules }: { rules: readonly GitIgnoreRule[] }): GitIgnoreMatcher {
-  return {
-    isIgnored: ({ path, isDirectory }) => {
-      for (const parent of parentDirectories({ path })) {
-        if (evaluateRules({ rules, path: parent, isDirectory: true })) {
-          return true;
-        }
+  const firstIgnoredPath = ({ path, isDirectory }: { path: string, isDirectory: boolean }): string | undefined => {
+    for (const parent of parentDirectories({ path })) {
+      if (evaluateRules({ rules, path: parent, isDirectory: true })) {
+        return parent;
       }
-      return evaluateRules({ rules, path, isDirectory });
-    },
+    }
+    return evaluateRules({ rules, path, isDirectory }) ? path : undefined;
+  };
+  return {
+    isIgnored: ({ path, isDirectory }) => firstIgnoredPath({ path, isDirectory }) !== undefined,
+    firstIgnoredPath,
   };
 }
 

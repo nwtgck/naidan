@@ -1,13 +1,13 @@
-import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
-import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
+import type { WeshShellBuiltinFunction, WeshCommandResult } from '@/features/wesh/types';
+import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 
-export const unaliasCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const unaliasCommandImplementation = {
+  fn: async ({ context, shell }): Promise<WeshCommandResult> => {
     if (isStandaloneCommandHelpRequest({
       args: context.args,
       acceptedForms: [['--help']],
     })) {
-      await writeCommandHelp({ context, command: 'unalias' });
+      await writeCommandHelp({ context, command: 'unalias', optionLines: [] });
       return { exitCode: 0 };
     }
 
@@ -36,8 +36,8 @@ export const unaliasCommandImplementation: WeshCommandImplementation = {
     }
 
     if (removeAll) {
-      for (const alias of context.getAliases()) {
-        context.unsetAlias({ name: alias.name });
+      for (const alias of shell.getAliases()) {
+        shell.unsetAlias({ name: alias.name });
       }
       return { exitCode: 0 };
     }
@@ -50,19 +50,19 @@ export const unaliasCommandImplementation: WeshCommandImplementation = {
 
     let exitCode = 0;
     for (const name of operands) {
-      const existing = context.getAliases().find(entry => entry.name === name);
+      const existing = shell.getAliases().find(entry => entry.name === name);
       if (existing === undefined) {
         await context.text().error({ text: `unalias: ${name}: not found\n` });
         exitCode = 1;
         continue;
       }
 
-      context.unsetAlias({ name });
+      shell.unsetAlias({ name });
     }
 
     return { exitCode };
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'getAliases' | 'unsetAlias'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

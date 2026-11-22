@@ -1,4 +1,4 @@
-import { writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import {
   evaluateXPathBooleanWithContext,
   evaluateXPathNodes,
@@ -246,6 +246,7 @@ async function writeMissingOptionValue({
   valueName: string;
 }): Promise<WeshCommandResult> {
   await writeCommandUsageError({
+    usageSummary: undefined,
     context,
     command: 'xml',
     message: `xml sel: option ${option} requires ${valueName}`,
@@ -319,6 +320,7 @@ markup actions:
     case '--quiet':
       if (templateMode) {
         await writeCommandUsageError({
+          usageSummary: undefined,
           context,
           command: 'xml',
           message: `xml sel: unsupported option '${token}'`,
@@ -331,6 +333,7 @@ markup actions:
     case '--text':
       if (templateMode) {
         await writeCommandUsageError({
+          usageSummary: undefined,
           context,
           command: 'xml',
           message: `xml sel: unsupported option '${token}'`,
@@ -342,6 +345,7 @@ markup actions:
     case '-N': {
       if (templateMode) {
         await writeCommandUsageError({
+          usageSummary: undefined,
           context,
           command: 'xml',
           message: `xml sel: unsupported option '${token}'`,
@@ -359,6 +363,7 @@ markup actions:
       const separator = binding.indexOf('=');
       if (separator <= 0) {
         await writeCommandUsageError({
+          usageSummary: undefined,
           context,
           command: 'xml',
           message: `xml sel: invalid namespace binding '${binding}'`,
@@ -414,6 +419,7 @@ markup actions:
       case 'root':
       case 'match':
         await writeCommandUsageError({
+          usageSummary: undefined,
           context,
           command: 'xml',
           message: 'xml sel: elif without an open if branch',
@@ -443,6 +449,7 @@ markup actions:
       case 'root':
       case 'match':
         await writeCommandUsageError({
+          usageSummary: undefined,
           context,
           command: 'xml',
           message: 'xml sel: else without an open if branch',
@@ -511,6 +518,7 @@ markup actions:
     default:
       if (token !== '-' && token.startsWith('-')) {
         await writeCommandUsageError({
+          usageSummary: undefined,
           context,
           command: 'xml',
           message: `xml sel: unsupported option '${token}'`,
@@ -524,6 +532,7 @@ markup actions:
 
   if (!templateMode) {
     await writeCommandUsageError({
+      usageSummary: undefined,
       context,
       command: 'xml',
       message: 'xml sel: template mode (-t) is required',
@@ -533,6 +542,7 @@ markup actions:
 
   if (rootActions.length === 0) {
     await writeCommandUsageError({
+      usageSummary: undefined,
       context,
       command: 'xml',
       message: 'xml sel: at least one template action is required',

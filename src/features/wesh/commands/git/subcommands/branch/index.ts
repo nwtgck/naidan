@@ -1,16 +1,15 @@
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { readCommit } from "@/features/wesh/commands/git/commits";
-import { getConfigValue, readEffectiveConfig, shouldCreateBranchReflog, removeLocalConfigSection, renameLocalConfigSection } from "@/features/wesh/commands/git/config";
+import { getConfigValue, readEffectiveConfig, shouldCreateBranchReflog, removeLocalConfigSection } from "@/features/wesh/commands/git/config";
 import { pathExists } from "@/features/wesh/commands/git/files";
 import { compileGitWildmatch } from "@/features/wesh/commands/git/wildmatch";
 import type { GitWildmatchMatcher } from "@/features/wesh/commands/git/wildmatch";
 import { createGitCommitGraphCache, isAncestor } from "@/features/wesh/commands/git/graph";
 import { resolveGitReflogIdentity, resolveGitTimestamp } from "@/features/wesh/commands/git/identity";
-import { branchNameFromHead, createRef, deleteRef, listRefs, readHead, readRef, renameRef, setHeadSymbolic } from "@/features/wesh/commands/git/refs";
+import { branchNameFromHead, createRef, deleteRef, listRefs, readHead, readRef, renameBranch } from "@/features/wesh/commands/git/refs";
 import { discoverRepository, joinPath, discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
 import { resolveCommitRevision } from "@/features/wesh/commands/git/revision";
-import { appendReflog } from "@/features/wesh/commands/git/reflog";
 import { branchRefName } from "@/features/wesh/commands/git/branch";
 
 function matchesBranchPatterns({ name, matchers }: {
@@ -81,9 +80,27 @@ export async function runBranch({ context, args }: {
     cwd: context.cwd,
     env: context.env,
   });
+  const { showCurrent, move, deleteMode, listMode, listOnly, operands } = parseBranchArguments({ args });
+  if (move && !showCurrent) {
+    if (listOnly || isBranchDeleteMode({ mode: deleteMode })) {
+      throw new Error('options are incompatible');
+    }
+    if (operands.length === 0 || operands.length > 2) {
+      throw new Error('branch name required');
+    }
+    await renameBranch({
+      files: context.files,
+      repository,
+      oldName: operands.length === 2 ? operands[0] : undefined,
+      newName: operands.at(-1)!,
+      config,
+      env: context.env,
+    });
+    return { exitCode: 0 };
+  }
+
   const head = await readHead({ files: context.files, repository });
   const currentBranch = branchNameFromHead({ head });
-  const { showCurrent, move, deleteMode, listMode, listOnly, operands } = parseBranchArguments({ args });
   if (showCurrent) {
     if (move || listOnly || isBranchDeleteMode({ mode: deleteMode })) {
       throw new GitUsageError({ message: 'usage: git branch [<options>] [<branch-name>...]', prefix: 'none' });
@@ -91,88 +108,6 @@ export async function runBranch({ context, args }: {
     if (currentBranch !== undefined) {
       await context.text().print({ text: `${currentBranch}\n` });
     }
-    return { exitCode: 0 };
-  }
-  if (move) {
-    if (showCurrent || listOnly || isBranchDeleteMode({ mode: deleteMode })) {
-      throw new Error('options are incompatible');
-    }
-    if (operands.length === 0 || operands.length > 2) {
-      throw new Error('branch name required');
-    }
-    const oldName = operands.length === 1 ? currentBranch : operands[0];
-    const newName = operands.length === 1 ? operands[0]! : operands[1]!;
-    if (oldName === undefined) {
-      throw new Error('cannot rename the current branch while not on any branch');
-    }
-    const oldRefName = branchRefName({ name: oldName });
-    const newRefName = branchRefName({ name: newName });
-    if (await readRef({ files: context.files, repository, refName: newRefName }) !== undefined) {
-      throw new Error(`a branch named '${newName}' already exists`);
-    }
-    const objectId = await readRef({ files: context.files, repository, refName: oldRefName });
-    const renamingCurrent = head.symbolicRef === oldRefName;
-    if (objectId === undefined) {
-      if (!renamingCurrent) {
-        throw new Error(`branch '${oldName}' not found`);
-      }
-      await setHeadSymbolic({ files: context.files, repository, refName: newRefName });
-      await renameLocalConfigSection({
-        files: context.files,
-        repository,
-        section: 'branch',
-        oldSubsection: oldName,
-        newSubsection: newName,
-      });
-      return { exitCode: 0 };
-    }
-    const logAllRefUpdates = shouldCreateBranchReflog({ config });
-    const oldBranchLogPath = joinPath({ base: repository.commonDirPath, child: `logs/${oldRefName}` });
-    const updateBranchReflog = logAllRefUpdates || await pathExists({ files: context.files, path: oldBranchLogPath });
-    const identity = resolveGitReflogIdentity({ env: context.env, config });
-    const timestamp = resolveGitTimestamp({ env: context.env, role: 'COMMITTER' });
-    const message = `Branch: renamed ${oldRefName} to ${newRefName}`;
-    if (!await renameRef({
-      files: context.files,
-      repository,
-      oldRefName,
-      newRefName,
-      reflog: updateBranchReflog ? { identity, timestamp, message } : undefined,
-    })) {
-      throw new Error(`branch '${oldName}' not found`);
-    }
-    if (renamingCurrent) {
-      await setHeadSymbolic({ files: context.files, repository, refName: newRefName });
-      const headLogPath = joinPath({ base: repository.gitDirPath, child: 'logs/HEAD' });
-      if (logAllRefUpdates || await pathExists({ files: context.files, path: headLogPath })) {
-        const zero = '0000000000000000000000000000000000000000';
-        await appendReflog({
-          files: context.files,
-          path: headLogPath,
-          oldObjectId: objectId,
-          newObjectId: zero,
-          identity,
-          timestamp,
-          message,
-        });
-        await appendReflog({
-          files: context.files,
-          path: headLogPath,
-          oldObjectId: zero,
-          newObjectId: objectId,
-          identity,
-          timestamp,
-          message,
-        });
-      }
-    }
-    await renameLocalConfigSection({
-      files: context.files,
-      repository,
-      section: 'branch',
-      oldSubsection: oldName,
-      newSubsection: newName,
-    });
     return { exitCode: 0 };
   }
   if (isBranchDeleteMode({ mode: deleteMode })) {
