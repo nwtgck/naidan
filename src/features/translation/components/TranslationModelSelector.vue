@@ -92,14 +92,14 @@ async function confirmFromPanel({ model, close }: { model: LocalModel, close: ((
   }
 }
 
-function openPicker(): void {
-  selector.value?.openDropdown();
-}
-
 function closePicker(): void {
   if (open.value) {
     selector.value?.closeDropdown({ restoreFocus: true });
   }
+}
+
+function closeFromOutside(): void {
+  selector.value?.closeFromOutside();
 }
 
 const unsubscribe = llamaCppBrowserModelFiles.subscribeModelList({
@@ -117,7 +117,7 @@ onScopeDispose(() => {
   unsubscribe();
   scan?.abort();
 });
-defineExpose({ openPicker, closePicker, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
+defineExpose({ closePicker, closeFromOutside, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>

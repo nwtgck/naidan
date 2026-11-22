@@ -52,7 +52,7 @@ function fixture({ pending }: { pending: boolean }) {
     confirmSelection,
     popup,
     async open() {
-      wrapper.vm.openPicker();
+      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
       await flushPromises();

@@ -58,8 +58,10 @@ const filteredOptions = computed(() => {
   return !props.search || !needle ? props.options : props.options.filter(option => [option.label, option.value, ...option.searchTerms ?? []].some(value => value !== undefined && normalized({ value }).includes(needle)));
 });
 const menuId = useId();
+const ownerDocument = props.popupTarget?.ownerDocument ?? document;
 const popup = useAnchoredPopup({
   anchor: triggerRef,
+  ownerDocument,
   preferredWidth: {
     unit: 'rem',
     get value() {
@@ -178,7 +180,7 @@ function handleMenuKeydown({ event }: { event: KeyboardEvent }) {
     query.value += event.key;
     return;
   }
-  const index = buttons.findIndex(button => button === document.activeElement);
+  const index = buttons.findIndex(button => button === ownerDocument.activeElement);
   const nextIndex = event.key === 'ArrowDown' ? (index + 1) % buttons.length
     : event.key === 'ArrowUp' ? (index - 1 + buttons.length) % buttons.length
       : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : undefined;
@@ -205,18 +207,18 @@ watch(() => props.disabled, disabled => {
     close({ restoreFocus: false });
   }
 });
-useEventTargetListener(document, 'focusin', event => {
+useEventTargetListener(ownerDocument, 'focusin', event => {
   const target = event.target as Node;
   if (open.value && !triggerRef.value?.contains(target) && !menuRef.value?.contains(target)) {
     close({ restoreFocus: false });
   }
 });
-onClickOutside(triggerRef, () => close({ restoreFocus: false }), { ignore: [menuRef] });
+onClickOutside(triggerRef, () => close({ restoreFocus: false }), { ignore: [menuRef], window: ownerDocument.defaultView ?? window });
 
 
 watch(() => disclosureOpen?.value, value => {
   if (value === false) {
-    if (document.activeElement instanceof Node && menuRef.value?.contains(document.activeElement)) {
+    if (menuRef.value?.contains(ownerDocument.activeElement)) {
       disclosureFocusReturn?.()?.focus();
     }
     close({ restoreFocus: false });

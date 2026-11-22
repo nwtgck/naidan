@@ -1,24 +1,27 @@
 import { computed, onBeforeUnmount, onMounted, ref, toValue, type CSSProperties, type MaybeRefOrGetter, type Ref } from 'vue';
-import { useElementBounding, useWindowSize } from '@vueuse/core';
+import { useElementBounding } from '@vueuse/core';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 /** Keep a body-teleported popup inside the currently visible viewport. */
-export function useAnchoredPopup({ anchor, preferredWidth, maxWidthPx, preferredPlacement, horizontalAlignment }: {
+export function useAnchoredPopup({ anchor, preferredWidth, maxWidthPx, preferredPlacement, horizontalAlignment, ownerDocument = document }: {
   anchor: Ref<HTMLElement | null>,
   preferredWidth: { unit: 'px' | 'rem', value: number },
   maxWidthPx: number | undefined,
   preferredPlacement?: { direction: 'top' | 'bottom', minHeightPx: number },
   horizontalAlignment?: MaybeRefOrGetter<'left' | 'center'>,
+  ownerDocument?: Document,
 }) {
-  const bounds = useElementBounding(anchor);
-  const windowSize = useWindowSize();
+  const view = ownerDocument.defaultView ?? window;
+  const bounds = useElementBounding(anchor, { windowScroll: view === window, windowResize: view === window });
+  const windowSize = ref({ width: view.innerWidth, height: view.innerHeight });
   const viewport = ref<{ left: number, top: number, width: number, height: number }>();
   const rootFontSize = ref(16);
 
   function measureViewport() {
-    const visible = window.visualViewport;
+    windowSize.value = { width: view.innerWidth, height: view.innerHeight };
+    const visible = view.visualViewport;
     viewport.value = visible ? { left: visible.offsetLeft, top: visible.offsetTop, width: visible.width, height: visible.height } : undefined;
-    rootFontSize.value = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    rootFontSize.value = parseFloat(view.getComputedStyle(ownerDocument.documentElement).fontSize) || 16;
   }
 
   function refresh() {
@@ -27,26 +30,32 @@ export function useAnchoredPopup({ anchor, preferredWidth, maxWidthPx, preferred
   }
 
   function handleAncestorTransition({ event }: { event: TransitionEvent }) {
-    if (event.target instanceof HTMLElement && anchor.value && event.target.contains(anchor.value)) {
+    const target = event.target as Node | null;
+    if (anchor.value && target?.contains(anchor.value)) {
       refresh();
     }
   }
-  useEventTargetListener(document, 'transitionend', event => handleAncestorTransition({ event }), { capture: true });
+  useEventTargetListener(ownerDocument, 'transitionend', event => handleAncestorTransition({ event }), { capture: true });
+  const move = () => bounds.update();
+  if (view !== window) {
+    useEventTargetListener(view, 'scroll', move, { capture: true, passive: true });
+    useEventTargetListener(view, 'resize', move, { passive: true });
+  }
 
   onMounted(() => {
     measureViewport();
-    window.visualViewport?.addEventListener('resize', measureViewport);
-    window.visualViewport?.addEventListener('scroll', measureViewport);
-    window.addEventListener('resize', measureViewport);
+    view.visualViewport?.addEventListener('resize', measureViewport);
+    view.visualViewport?.addEventListener('scroll', measureViewport);
+    view.addEventListener('resize', measureViewport);
   });
   onBeforeUnmount(() => {
-    window.visualViewport?.removeEventListener('resize', measureViewport);
-    window.visualViewport?.removeEventListener('scroll', measureViewport);
-    window.removeEventListener('resize', measureViewport);
+    view.visualViewport?.removeEventListener('resize', measureViewport);
+    view.visualViewport?.removeEventListener('scroll', measureViewport);
+    view.removeEventListener('resize', measureViewport);
   });
 
   const placement = computed(() => {
-    const visible = viewport.value ?? { left: 0, top: 0, width: windowSize.width.value, height: windowSize.height.value };
+    const visible = viewport.value ?? { left: 0, top: 0, ...windowSize.value };
     const gap = Math.min(16, visible.width / 4, visible.height / 4);
     const preferredWidthPx = (() => {
       const unit = preferredWidth.unit;
@@ -98,7 +107,7 @@ export function useAnchoredPopup({ anchor, preferredWidth, maxWidthPx, preferred
       maxWidth: `${Math.max(0, Math.min(visible.width - gap * 2, maxWidthPx ?? Number.POSITIVE_INFINITY))}px`,
       maxHeight: `${maxHeight}px`,
       top: opensAbove ? 'auto' : `${top}px`,
-      bottom: opensAbove ? `${windowSize.height.value - top}px` : 'auto',
+      bottom: opensAbove ? `${windowSize.value.height - top}px` : 'auto',
       zIndex: 9999,
     };
     return { direction, style };

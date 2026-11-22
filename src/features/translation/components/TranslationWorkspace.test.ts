@@ -78,7 +78,7 @@ vi.mock('./TranslationModelSelector.vue', () => ({
         }
       }
       onMounted(() => emit('inventory', mocks.inventory));
-      expose({ openPicker, closePicker });
+      expose({ closePicker, closeFromOutside: closePicker });
       return { open, openPicker, select };
     },
     template: '<section data-testid="test-models"><button data-testid="test-open-models" @click="openPicker">Models</button><div v-if="open"><slot name="status" /><button data-testid="test-select-model" :disabled="disabled" @click="select">Select</button></div></section>',
@@ -97,7 +97,7 @@ beforeEach(async () => {
   downloadTarget.value = { kind: 'opfs' };
 });
 
-async function fixture() {
+async function fixture({ stubTeleport = true }: { stubTeleport?: boolean } = {}) {
   const settings = ref<Settings>({ ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: 'https://example.invalid/v1' }, storageType: 'local', defaultModelId: 'chat-default', experimental: { locale: 'en', translation: { modelId: 'first.gguf', autoTranslate: { enabled: false } } } });
   let storageGeneration = 0;
   const save = vi.fn<ReturnType<typeof useSettings>['updateExperimentalForStorage']>().mockImplementation(async ({ isCurrent, updater }) => {
@@ -119,7 +119,7 @@ async function fixture() {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/translation', component: { template: '<div />' } }] });
   await router.push('/translation?from=ja&to=en');
   await router.isReady();
-  const wrapper = mount(TranslationWorkspace, { global: { plugins: [router], stubs: { Teleport: true } } });
+  const wrapper = mount(TranslationWorkspace, { global: { plugins: [router], stubs: { Teleport: stubTeleport } } });
   await flushPromises();
   return {
     wrapper,
@@ -137,6 +137,77 @@ async function fixture() {
 }
 
 describe('translation workspace workflow', () => {
+  it('shows a disabled floating-window control without Document Picture-in-Picture', async () => {
+    using f = await fixture();
+    expect(f.wrapper.get<HTMLButtonElement>('[data-testid="translation-open-floating"]').element.disabled).toBe(true);
+  });
+
+  it('shares the draft, generation and clipboard with the floating document', async () => {
+    const frame = document.createElement('iframe');
+    document.body.append(frame);
+    const pip = frame.contentWindow!;
+    const close = vi.spyOn(pip, 'close').mockImplementation(() => {});
+    const requestWindow = vi.fn(async () => pip);
+    const floatingCopy = vi.fn<Clipboard['writeText']>().mockResolvedValue(undefined);
+    Object.defineProperty(pip.navigator, 'clipboard', { value: { writeText: floatingCopy } });
+    vi.stubGlobal('documentPictureInPicture', { requestWindow });
+    using cleanup = {
+      [Symbol.dispose]() {
+        vi.unstubAllGlobals();
+        frame.remove();
+      },
+    };
+    using f = await fixture({ stubTeleport: false });
+    const source = f.wrapper.get<HTMLTextAreaElement>('[data-testid="translation-source"]');
+    await source.setValue('原文');
+    await f.wrapper.get('[data-testid="translation-open-floating"]').trigger('click');
+    await flushPromises();
+    expect(requestWindow).toHaveBeenCalledExactlyOnceWith({ width: 450, height: 410 });
+    expect(mocks.prepare).toHaveBeenCalledOnce();
+    expect(mocks.acquire).not.toHaveBeenCalled();
+    const floatingSource = pip.document.querySelector<HTMLTextAreaElement>('[data-testid="translation-source"]')!;
+    const floatingForm = floatingSource.form!;
+    expect(floatingSource.value).toBe('原文');
+    floatingSource.value = '小窓で編集';
+    floatingSource.dispatchEvent(new Event('input', { bubbles: true }));
+    await flushPromises();
+    expect(source.element.value).toBe('小窓で編集');
+
+    const target = pip.document.querySelector<HTMLButtonElement>('[data-testid="translation-target-language"]')!;
+    target.click();
+    await flushPromises();
+    const menu = pip.document.querySelector('[data-open="true"]');
+    expect(menu?.querySelector('[data-testid="settings-select-search"]')).toBeTruthy();
+    menu?.querySelector<HTMLButtonElement>('[data-testid="settings-select-option-fr"]')?.click();
+    await flushPromises();
+    expect(f.router.currentRoute.value.query.to).toBe('fr');
+    floatingForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushPromises();
+    expect(mocks.generate).toHaveBeenCalledOnce();
+    expect(pip.document.querySelector('[data-testid="translation-current-text"]')?.textContent).toBe('Hello');
+    expect(f.wrapper.get('[data-testid="translation-current-text"]').text()).toBe('Hello');
+    pip.document.querySelector<HTMLButtonElement>('[data-testid="translation-copy"]')!.click();
+    await flushPromises();
+    expect(floatingCopy).toHaveBeenCalledExactlyOnceWith('Hello');
+
+    // A window can close without delivering compositionend to its textarea.
+    floatingSource.dispatchEvent(new Event('compositionstart', { bubbles: true }));
+    pip.dispatchEvent(new Event('pagehide'));
+    await flushPromises();
+    expect(source.element.value).toBe('小窓で編集');
+    expect(pip.document.querySelector('[data-testid="translation-floating"]')).toBeNull();
+    expect(f.wrapper.get<HTMLButtonElement>('[data-testid="translation-run"]').element.disabled).toBe(false);
+
+    await f.wrapper.get('[data-testid="translation-open-floating"]').trigger('click');
+    await flushPromises();
+    pip.document.querySelector<HTMLButtonElement>('[data-testid="translation-clear"]')!.click();
+    await flushPromises();
+    expect(source.element.value).toBe('');
+    f.wrapper.unmount();
+    expect(close).toHaveBeenCalledOnce();
+    void cleanup;
+  });
+
   it('registers independent navigation and keeps text out of saved settings', async () => {
     using f = await fixture();
     expect(useTranslationNavigation().active.value).toBeDefined();
@@ -165,7 +236,7 @@ describe('translation workspace workflow', () => {
   it('keeps the draft while visiting models, selects without creating a chat and returns to the workspace', async () => {
     using f = await fixture();
     await f.wrapper.get('[data-testid="translation-source"]').setValue('draft');
-    useTranslationNavigation().active.value!.openModels();
+    await f.wrapper.get('[data-testid="test-open-models"]').trigger('click');
     await flushPromises();
     await f.wrapper.get('[data-testid="test-select-model"]').trigger('click');
     await flushPromises();
@@ -178,7 +249,7 @@ describe('translation workspace workflow', () => {
 
   it('does not save an unsupported model or leave the picker after a failed selection', async () => {
     using f = await fixture();
-    useTranslationNavigation().active.value!.openModels();
+    await f.wrapper.get('[data-testid="test-open-models"]').trigger('click');
     await flushPromises();
     mocks.inspect.mockResolvedValueOnce({ status: 'unsupported' });
     await f.wrapper.get('[data-testid="test-select-model"]').trigger('click');
@@ -290,7 +361,7 @@ describe('translation workspace workflow', () => {
     await flushPromises();
     expect(f.settings.value.experimental?.translation?.modelId).toBe(installed.modelId);
     expect(mocks.prepare).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: installed.modelId }));
-    useTranslationNavigation().active.value!.openModels();
+    await f.wrapper.get('[data-testid="test-open-models"]').trigger('click');
     await flushPromises();
     await f.wrapper.get('[data-testid="test-select-model"]').trigger('click');
     preparation.resolve('ready');
@@ -556,7 +627,7 @@ describe('translation automatic workflow', () => {
 
   it('does not select a model whose inspection resolves after the drawer is closed', async () => {
     using f = await fixture();
-    useTranslationNavigation().active.value!.openModels();
+    await f.wrapper.get('[data-testid="test-open-models"]').trigger('click');
     await flushPromises();
     const pending = Promise.withResolvers<Awaited<ReturnType<InspectTranslationModel>>>();
     mocks.inspect.mockReturnValueOnce(pending.promise);

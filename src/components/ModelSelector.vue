@@ -259,7 +259,7 @@ useEventTargetListener(document, 'pointerdown', event => {
   const dialog = dropdownRef.value;
   const trigger = containerRef.value;
   if ((!dialog || !path.includes(dialog)) && (!trigger || !path.includes(trigger))) {
-    closeDropdown({ restoreFocus: false });
+    closeFromOutside();
   }
 }, { capture: true });
 
@@ -516,6 +516,12 @@ function closeDropdown({ restoreFocus }: { restoreFocus: boolean }) {
   }
 }
 
+function closeFromOutside(): void {
+  if (isOpen.value && !expanded.value) {
+    closeDropdown({ restoreFocus: false });
+  }
+}
+
 function handleSettingsKeydown({ event }: { event: KeyboardEvent }) {
   if (event.key === 'Escape') {
     event.preventDefault();
@@ -585,6 +591,7 @@ watch(() => disclosureOpen?.value, value => {
 defineExpose({
   openDropdown,
   closeDropdown,
+  closeFromOutside,
   isPanelOpen,
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
