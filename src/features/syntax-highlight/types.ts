@@ -1,4 +1,4 @@
-export type SyntaxLanguage = 'plain' | 'shell';
+export type SyntaxLanguage = 'plain' | 'shell' | 'javascript' | 'typescript';
 export type SyntaxTokenKind = 'plain' | 'keyword' | 'comment' | 'string' | 'variable' | 'operator' | 'command';
 export type SyntaxToken = { kind: SyntaxTokenKind, text: string };
 // Offsets count UTF-16 source code units, never tokens. Both edits replace the

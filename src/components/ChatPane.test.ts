@@ -1992,8 +1992,8 @@ Question`,
       initialPath: string[] | undefined,
     }, }];
     expect(options.kind).toBe('wesh-mounts');
-    expect(options.title).toBe('Files');
-    expect(options.rootName).toBe('Files');
+    expect(options.title).toBe('Chat file system');
+    expect(options.rootName).toBe('Chat file system');
     expect(options.initialPath).toBe(undefined);
     expect(options.mounts).toEqual([
       { type: 'directory', path: '/tmp', handle: mockTmpHandle, readOnly: false },

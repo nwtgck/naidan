@@ -10,10 +10,13 @@ import {
   PipetteIcon,
 } from 'lucide-vue-next';
 
+type OutputFormat = 'original' | 'image/png' | 'image/jpeg' | 'image/webp';
+
 interface ImageEditorProps {
   imageUrl: string,
   fileName: string,
   originalMimeType: string,
+  initialOutputFormat?: OutputFormat,
 }
 
 const props = defineProps<ImageEditorProps>();
@@ -68,8 +71,7 @@ function confirmClose() {
   emit('cancel');
 }
 
-type OutputFormat = 'original' | 'image/png' | 'image/jpeg' | 'image/webp';
-const selectedFormat = ref<OutputFormat>('image/png');
+const selectedFormat = ref<OutputFormat>(props.initialOutputFormat ?? 'image/png');
 
 type AspectRatioLock = 'locked' | 'free';
 const resizeLock = ref<AspectRatioLock>('locked');

@@ -30,6 +30,9 @@ runs:
               -v "$GITHUB_WORKSPACE:/work" \
               -v "$GITHUB_WORKSPACE/naidan-server:/work/naidan-server:ro" \
               -v "$GITHUB_WORKSPACE/package.json:/work/package.json:ro" \
+              -v "$GITHUB_WORKSPACE/scripts:/work/scripts:ro" \
+              -v "$GITHUB_WORKSPACE/build:/work/build:ro" \
+              -v "$GITHUB_WORKSPACE/.git:/work/.git:ro" \
               -v "$HOME/.npm:/npm-cache" \
               -w /work \
               -e HOME=/tmp \

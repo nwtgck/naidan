@@ -897,12 +897,13 @@ async function openChatFileExplorer() {
     chatGroupId: chat.value.groupId ?? undefined,
     naidanSysfsAccessScope: chatAreaNaidanSysfsAccessScope.value,
   });
+  const fileSystemName = await ensureStrings.fileExplorer__chat_file_system();
 
   openFileExplorer({
     options: {
       kind: 'wesh-mounts',
-      title: await ensureStrings.fileExplorer__files(),
-      rootName: await ensureStrings.fileExplorer__files(),
+      title: fileSystemName,
+      rootName: fileSystemName,
       mounts,
       initialPath: undefined,
     },

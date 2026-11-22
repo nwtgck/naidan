@@ -20,6 +20,53 @@ from changelog_format import (
 from release_start import read_text_file
 
 TAG_PATTERN = re.compile(rf'v{VERSION_CORE}')
+ATTESTATION_REFERENCE = re.compile(r'\[(attestation(?:-[1-9][0-9]*)?)\]: (\S+)')
+
+
+def split_reference_footer(*, body: str) -> tuple[str, list[str]]:
+    text = body.replace('\r\n', '\n').rstrip('\n')
+    prose, separator, footer = text.rpartition('\n\n')
+    references = footer.split('\n')
+    if separator and all(REFERENCE_PATTERN.fullmatch(line) for line in references):
+        return prose, references
+    return text, []
+
+
+def without_attestation(*, body: str, tag: str, url_pattern: re.Pattern[str]) -> tuple[str, str | None]:
+    prose, references = split_reference_footer(body=body)
+    match = ATTESTATION_REFERENCE.fullmatch(references[-1]) if references else None
+    if match is None or not url_pattern.fullmatch(match[2]):
+        return body, None
+    link = f'[Build Attestation][{match[1]}]'
+    last_line = prose.rsplit('\n', 1)[-1]
+    if last_line == f'[Full Changelog][{tag[1:]}] · {link}':
+        prose = prose.removesuffix(f' · {link}')
+    elif last_line == link:
+        prose = prose.removesuffix(link).rstrip('\n')
+    else:
+        return body, None
+    original = '\n\n'.join(filter(None, (prose, '\n'.join(references[:-1]))))
+    return original + ('\n' if original else ''), match[2]
+
+
+def with_attestation(*, body: str, tag: str, url: str) -> str:
+    prose, references = split_reference_footer(body=body)
+    labels = {reference_key(label=label) for label in re.findall(r'\[([^\[\]]+)\]', body)}
+    label = 'attestation'
+    suffix = 1
+    while label in labels:
+        label = f'attestation-{suffix}'
+        suffix += 1
+    link = f'[Build Attestation][{label}]'
+    if prose.rsplit('\n', 1)[-1] == f'[Full Changelog][{tag[1:]}]':
+        prose += f' · {link}'
+    else:
+        prose = '\n\n'.join(filter(None, (prose, link)))
+    references.append(f'[{label}]: {url}')
+    body = prose + '\n\n' + '\n'.join(references) + '\n'
+    if len(body.encode('utf-8')) > MAX_BODY_BYTES:
+        raise ValueError(f'Release {tag} exceeds the release-note size limit.')
+    return body
 
 
 def validate_releases(*, releases: object) -> list[dict]:
@@ -43,11 +90,15 @@ def validate_releases(*, releases: object) -> list[dict]:
     return releases
 
 
-def build_plan(*, changelog: str, releases: object, publish_tag: str = '', tag_changelog: str | None = None) -> dict:
+def build_plan(*, changelog: str, releases: object, publish_tag: str = '', tag_changelog: str | None = None,
+               repository: str = 'nwtgck/naidan', attestation_url: str | None = None) -> dict:
     notes = render_notes(content=changelog)
     releases = validate_releases(releases=releases)
     by_tag = {release['tag_name']: release for release in releases}
-    creation = None
+    url_pattern = re.compile(rf'https://github\.com/{re.escape(repository)}/attestations/[1-9][0-9]*')
+    if attestation_url is not None and (not publish_tag or not url_pattern.fullmatch(attestation_url)):
+        raise ValueError('Expected an attestation URL for the release repository and publication tag.')
+    creation, publication = None, None
     if publish_tag:
         if TAG_PATTERN.fullmatch(publish_tag) is None or tag_changelog is None:
             raise ValueError('Publishing requires a vX.Y.Z tag and its CHANGELOG.md.')
@@ -64,6 +115,14 @@ def build_plan(*, changelog: str, releases: object, publish_tag: str = '', tag_c
             notes[publish_tag] = tag_notes[publish_tag]
         if existing is None:
             creation = {'tag_name': publish_tag, 'body': notes[publish_tag]}
+        if attestation_url is not None:
+            previous = (existing['body'] or '') if existing is not None else ''
+            previous_body, previous_url = without_attestation(body=previous, tag=publish_tag, url_pattern=url_pattern)
+            body = notes.get(publish_tag, previous_body)
+            publication = {
+                'body': with_attestation(body=body, tag=publish_tag, url=attestation_url),
+                'reset_body': body if previous_url is not None and previous_url != attestation_url else None,
+            }
 
     updates, skipped = [], []
     for release in releases:
@@ -72,9 +131,13 @@ def build_plan(*, changelog: str, releases: object, publish_tag: str = '', tag_c
             skipped.append({'tag_name': tag, 'reason': 'draft/prerelease or absent from canonical changelog'})
             continue
         body = notes[tag]
+        _, existing_url = without_attestation(body=release['body'] or '', tag=tag, url_pattern=url_pattern)
+        if existing_url is not None:
+            body = with_attestation(body=body, tag=tag, url=existing_url)
         if (release['body'] or '') != body:
             updates.append({'id': release['id'], 'tag_name': tag, 'body': body})
     return {'updates': sorted(updates, key=lambda item: item['id']), 'create': creation,
+            'publication': publication,
             'skipped': sorted(skipped, key=lambda item: item['tag_name'])}
 
 
@@ -84,6 +147,8 @@ def main() -> int:
     parser.add_argument('--releases', type=Path, required=True)
     parser.add_argument('--publish-tag', default='')
     parser.add_argument('--tag-changelog', type=Path)
+    parser.add_argument('--repository', default='nwtgck/naidan')
+    parser.add_argument('--attestation-url')
     args = parser.parse_args()
     try:
         plan = build_plan(
@@ -91,6 +156,8 @@ def main() -> int:
             releases=json.loads(read_text_file(path=args.releases)),
             publish_tag=args.publish_tag,
             tag_changelog=read_text_file(path=args.tag_changelog) if args.tag_changelog else None,
+            repository=args.repository,
+            attestation_url=args.attestation_url,
         )
         # Emit only a complete, validated plan. The workflow owns the output file.
         print(json.dumps(plan, ensure_ascii=False, indent=2))

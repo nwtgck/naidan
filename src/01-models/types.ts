@@ -550,6 +550,18 @@ export interface Settings {
       previewMode?: 'always' | 'peek' | 'disabled',
       previewContextSize?: number | 'full',
     },
+    fileExplorer?: {
+      viewMode?: 'icon' | 'list' | 'column' | 'tree',
+      previewVisibility?: 'visible' | 'hidden',
+      previewWidthPx?: number,
+      treeVisibility?: 'visible' | 'hidden',
+      treeWidthPx?: number,
+      fileInformationVisibility?: 'visible' | 'hidden',
+      sortField?: 'name' | 'size' | 'dateModified' | 'type',
+      sortDirection?: 'ascending' | 'descending',
+      wordWrap?: 'wrap' | 'no_wrap',
+      editorLineNumbers?: 'shown' | 'hidden',
+    },
     /** Only the selected model is persisted; live conversation/media stay in memory. */
     liveConversationModelId?: string,
     /** Translation preferences only; source text, output and terminology remain in memory. */

@@ -26,7 +26,7 @@ vi.mock('@/features/audio-transcription/components/AudioTranscriptionModelSelect
 vi.mock('@/features/live-conversation/components/LiveModelLoadProgress.vue', () => ({ default: { name: 'LiveModelLoadProgress', inheritAttrs: false, render: () => null } }));
 vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadProgress.vue', () => ({ default: { name: 'LlamaCppBrowserDownloadProgress', inheritAttrs: false, render: () => null } }));
 
-function fixture({ source, phase: initialPhase }: { source: 'microphone' | 'file', phase: Phase }) {
+function fixture({ source, phase: initialPhase, file, saveText }: { source: 'microphone' | 'file', phase: Phase, file?: File, saveText?: ({ text }: { text: string }) => Promise<void> }) {
   const phase = ref<Phase>(initialPhase);
   const provisional = ref('');
   const clipboardError = ref<Workflow['clipboardError']['value']>();
@@ -99,7 +99,7 @@ function fixture({ source, phase: initialPhase }: { source: 'microphone' | 'file
   const writeText = vi.fn<(text: string) => Promise<void>>(async () => {});
   const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-  const wrapper = mount(AudioTranscriptionWorkspace, { props: { source } });
+  const wrapper = mount(AudioTranscriptionWorkspace, { props: { source, ...(file === undefined ? {} : { file }), saveText } });
   const input = mocks.workflow.mock.calls[0]?.[0];
   if (input === undefined) {
     throw new Error('Workspace did not create its transcription workflow');
@@ -286,6 +286,50 @@ describe('Audio transcription workspace workflow bindings', () => {
     expect(value.workflow.transcribeFile).toHaveBeenCalledExactlyOnceWith({ file });
     expect(vi.mocked(value.workflow.transcribeFile).mock.calls[0]?.[0].file).toBe(file);
     expect(value.workflow.start).not.toHaveBeenCalled();
+  });
+
+  it('opens the explorer file ready to transcribe and waits for the user to start', async () => {
+    const file = new File(['audio fixture'], 'explorer-recording.wav', { type: 'audio/wav' });
+    using value = fixture({ source: 'file', phase: 'idle', file });
+    expect(value.wrapper.get('[data-testid="audio-transcription-file-name"]').text()).toBe(file.name);
+    expect(value.wrapper.find('input[type="file"]').exists()).toBe(false);
+    expect(value.workflow.transcribeFile).not.toHaveBeenCalled();
+    await value.wrapper.get('[data-testid="audio-transcription-file-run"]').trigger('click');
+    expect(value.workflow.transcribeFile).toHaveBeenCalledExactlyOnceWith({ file });
+    expect(value.workflow.start).not.toHaveBeenCalled();
+  });
+
+  it('saves the current edited text without the provisional recognition and waits for the save', async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const saveText = vi.fn(() => promise);
+    using value = fixture({ source: 'file', phase: 'idle', saveText });
+    const button = value.wrapper.get('[data-testid="audio-transcription-save"]');
+    expect(button.attributes('disabled')).toBeDefined();
+    await value.wrapper.get('[data-testid="audio-transcription-editor"]').setValue('Edited text');
+    value.provisional.value = 'Provisional recognition';
+    await nextTick();
+    await button.trigger('click');
+    expect(button.attributes('disabled')).toBeDefined();
+    expect(saveText).toHaveBeenCalledExactlyOnceWith({ text: 'Edited text' });
+    resolve();
+    await flushPromises();
+    expect(button.attributes('disabled')).toBeUndefined();
+  });
+
+  it('keeps edited text available for a retry when the save fails', async () => {
+    const saveText = vi.fn<({ text }: { text: string }) => Promise<void>>().mockRejectedValueOnce(new Error('Save failed')).mockResolvedValue(undefined);
+    using value = fixture({ source: 'file', phase: 'idle', saveText });
+    const editor = value.wrapper.get<HTMLTextAreaElement>('[data-testid="audio-transcription-editor"]');
+    await editor.setValue('Edited text');
+    const button = value.wrapper.get('[data-testid="audio-transcription-save"]');
+    await button.trigger('click');
+    await flushPromises();
+    expect(value.wrapper.get('[data-testid="audio-transcription-save-error"]').text()).toBe('Could not save the transcript.');
+    expect(editor.element.value).toBe('Edited text');
+    await button.trigger('click');
+    await flushPromises();
+    expect(value.wrapper.find('[data-testid="audio-transcription-save-error"]').exists()).toBe(false);
+    expect(saveText).toHaveBeenCalledTimes(2);
   });
 
   it.each(['preparing', 'finishing'] as const)('keeps file cancellation available after removing the selected File during %s', async phase => {

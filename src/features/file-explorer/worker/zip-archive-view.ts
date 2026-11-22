@@ -47,7 +47,7 @@ function reserveIndexedNode({ path, budget }: { path: string, budget: ZipArchive
   budget.nodeCount += 1;
 }
 
-function hasZipMagic({ bytes }: { bytes: Uint8Array }): boolean {
+export function hasZipMagic({ bytes }: { bytes: Uint8Array }): boolean {
   if (bytes.byteLength < 4) {
     return false;
   }

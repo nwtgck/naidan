@@ -7,6 +7,7 @@ import { fileSystemDirectoryHandleReferenceSchema } from '@/utils/file-system-ha
 import { weshWorkerMountSchema } from '@/features/wesh/worker/types';
 import type { ManagedVolumeRemoteAccess } from '@/features/wesh/worker/managed-volume-access';
 import { remoteDirectoryEntrySchema, type RemoteDirectoryAccess } from '@/utils/remote-directory-handle';
+import type { ModelFileDetailsInspection, ModelMetadataEntry, ModelMetadataValue } from '@/logic/model-file-inspection/metadata';
 
 function isBlob(value: unknown): value is Blob {
   return typeof Blob !== 'undefined' && value instanceof Blob;
@@ -120,6 +121,10 @@ export const fileExplorerReadPreviewRequestSchema = z.object({
   sessionId: z.string().min(1),
   path: fileExplorerPathSchema,
   mode: z.union([z.literal('bounded'), z.literal('force')]),
+  format: z.object({
+    kind: z.enum(['text', 'image', 'audio', 'video']),
+    mimeType: z.string().max(128).optional(),
+  }).optional(),
 });
 
 export const fileExplorerPreviewDirectorySchema = z.object({
@@ -170,6 +175,165 @@ const downloadBlobReferenceSchema = z.custom<Blob>(value => value !== null && ty
   && 'size' in value && typeof value.size === 'number' && Number.isSafeInteger(value.size) && value.size >= 0
   && 'stream' in value && typeof value.stream === 'function'
   && 'slice' in value && typeof value.slice === 'function');
+
+const fileViewSizeSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+const fileViewRevisionSchema = z.string().min(1);
+const fileViewReadRequestBaseSchema = z.object({
+  sessionId: z.string().min(1),
+  path: fileExplorerPathSchema,
+});
+export const FILE_VIEW_PROBE_BYTES = 4100;
+export const FILE_VIEW_MAX_DISPLAY_BYTES = 16 * 1024;
+const fileViewFormatSchema = z.object({
+  kind: z.enum(['text', 'binary', 'image', 'audio', 'video', 'archive', 'model']),
+  extension: z.string().max(64).optional(),
+  mimeType: z.string().max(128).optional(),
+});
+export type FileViewFormat = z.infer<typeof fileViewFormatSchema>;
+export const fileExplorerReadFileForViewRequestSchema = z.discriminatedUnion('mode', [
+  fileViewReadRequestBaseSchema.extend({
+    mode: z.enum(['prefix', 'bounded']),
+    maxBytes: fileViewSizeSchema.max(64 * 1024 * 1024),
+  }),
+  fileViewReadRequestBaseSchema.extend({ mode: z.literal('inspect') }),
+  fileViewReadRequestBaseSchema.extend({
+    mode: z.literal('range'),
+    offset: fileViewSizeSchema,
+    maxBytes: fileViewSizeSchema.min(1).max(FILE_VIEW_MAX_DISPLAY_BYTES),
+  }),
+  fileViewReadRequestBaseSchema.extend({ mode: z.literal('snapshot') }),
+]);
+export const fileExplorerFileForViewSchema = z.object({
+  kind: z.literal('file'),
+  name: z.string(),
+  blob: downloadBlobReferenceSchema,
+  size: fileViewSizeSchema.optional(),
+  lastModified: z.number().optional(),
+  partial: z.boolean(),
+  revision: fileViewRevisionSchema.optional(),
+  format: fileViewFormatSchema.optional(),
+  rangeReadable: z.boolean().optional(),
+});
+export const fileExplorerReadFileForViewResponseSchema = z.discriminatedUnion('kind', [
+  fileExplorerFileForViewSchema,
+  z.object({ kind: z.literal('too-large'), name: z.string(), size: fileViewSizeSchema.optional() }),
+  z.object({ kind: z.literal('unsupported'), name: z.string() }),
+]);
+
+const fileExplorerSaveFileTargetSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('replace'), path: fileExplorerPathSchema, revision: fileViewRevisionSchema }),
+  z.object({
+    kind: z.literal('create'),
+    directoryPath: fileExplorerPathSchema,
+    name: z.string().min(1).refine(name => name !== '.' && name !== '..' && !/[\\/\0]/u.test(name)),
+  }),
+]);
+export const fileExplorerSaveFileForViewRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  target: fileExplorerSaveFileTargetSchema,
+  blob: downloadBlobReferenceSchema,
+});
+export const fileExplorerSaveFileForViewResponseSchema = z.object({
+  path: fileExplorerPathSchema,
+  revision: fileViewRevisionSchema.optional(),
+});
+export const fileExplorerFileViewCancelSchema = z.object({ type: z.literal('cancel') });
+export const fileExplorerFileViewProgressSchema = z.object({
+  writtenBytes: fileViewSizeSchema,
+  totalBytes: fileViewSizeSchema,
+}).refine(({ writtenBytes, totalBytes }) => writtenBytes <= totalBytes);
+
+const modelMetadataValueSchema = z.union([
+  z.string(),
+  z.custom<number>(value => typeof value === 'number'),
+  z.boolean(),
+]);
+const modelMetadataEntrySchema = z.object({
+  key: z.string(),
+  type: z.string(),
+  value: z.union([modelMetadataValueSchema, z.undefined()]),
+  count: z.union([fileViewSizeSchema, z.undefined()]),
+  elementType: z.union([z.string(), z.undefined()]),
+  range: z.union([z.object({ offset: fileViewSizeSchema, length: fileViewSizeSchema }), z.undefined()]),
+  stringOffsets: z.array(fileViewSizeSchema).optional(),
+}).transform(({ stringOffsets, ...entry }): ModelMetadataEntry => (
+  stringOffsets === undefined ? entry : { ...entry, stringOffsets }
+));
+const modelTensorDescriptorSchema = z.object({
+  name: z.string(),
+  shape: z.array(fileViewSizeSchema),
+  originalShape: z.union([z.array(fileViewSizeSchema), z.undefined()]),
+  dtype: z.string(),
+  dtypeCode: z.union([fileViewSizeSchema, z.undefined()]),
+  offset: fileViewSizeSchema,
+  byteLength: z.union([fileViewSizeSchema, z.undefined()]),
+});
+const modelWeightDetailsSchema = z.object({
+  format: z.enum(['gguf', 'safetensors']),
+  version: z.union([fileViewSizeSchema, z.undefined()]),
+  alignment: z.union([fileViewSizeSchema, z.undefined()]),
+  dataOffset: fileViewSizeSchema,
+  metadata: z.array(modelMetadataEntrySchema),
+  tensors: z.array(modelTensorDescriptorSchema),
+  split: z.union([
+    z.object({ index: fileViewSizeSchema, count: fileViewSizeSchema, tensors: fileViewSizeSchema }),
+    z.undefined(),
+  ]),
+});
+export const fileExplorerInspectModelRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  file: downloadBlobReferenceSchema,
+});
+export const fileExplorerInspectModelResponseSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('weights'), value: modelWeightDetailsSchema }),
+  z.object({ status: z.enum(['unknown', 'invalid', 'lfs-pointer']), reason: z.string() }),
+]);
+export const MODEL_OVERVIEW_LABEL_LIMIT = 4096;
+const modelOverviewLabelSchema = modelMetadataValueSchema
+  .refine(value => typeof value !== 'string' || value.length <= MODEL_OVERVIEW_LABEL_LIMIT)
+  .optional();
+const modelWeightOverviewSchema = modelWeightDetailsSchema.pick({ format: true, version: true, split: true }).extend({
+  name: modelOverviewLabelSchema,
+  architecture: modelOverviewLabelSchema,
+  metadataCount: fileViewSizeSchema,
+  tensorCount: fileViewSizeSchema,
+});
+export const fileExplorerInspectModelOverviewResponseSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('weights'), value: modelWeightOverviewSchema }),
+  z.object({ status: z.enum(['unknown', 'invalid', 'lfs-pointer']), reason: z.string().max(MODEL_OVERVIEW_LABEL_LIMIT) }),
+]);
+export type ModelWeightOverview = z.infer<typeof modelWeightOverviewSchema>;
+export type ModelFileOverviewInspection = z.infer<typeof fileExplorerInspectModelOverviewResponseSchema>;
+export const fileExplorerReadModelValueRequestSchema = fileExplorerInspectModelRequestSchema.extend({
+  entry: modelMetadataEntrySchema,
+  start: fileViewSizeSchema,
+  limit: fileViewSizeSchema.min(1).max(128),
+});
+export const fileExplorerReadModelValueResponseSchema = z.object({
+  values: z.array(modelMetadataValueSchema).max(128),
+  next: z.union([fileViewSizeSchema, z.undefined()]),
+});
+export const fileExplorerRewriteGgufRequestSchema = fileExplorerInspectModelRequestSchema.extend({
+  changes: z.record(z.string(), z.string().max(1024 * 1024)),
+});
+export const fileExplorerRewriteGgufResponseSchema = z.object({
+  header: z.custom<Uint8Array<ArrayBuffer>>(value => ArrayBuffer.isView(value)
+    && Object.prototype.toString.call(value) === '[object Uint8Array]'
+    && Object.prototype.toString.call(value.buffer) === '[object ArrayBuffer]'
+    && value.byteLength <= 16 * 1024 * 1024),
+  bodyOffset: fileViewSizeSchema,
+});
+
+export type FileExplorerReadFileForViewRequest = z.infer<typeof fileExplorerReadFileForViewRequestSchema>;
+export type FileExplorerFileForView = z.infer<typeof fileExplorerFileForViewSchema>;
+export type FileExplorerReadFileForViewResponse = z.infer<typeof fileExplorerReadFileForViewResponseSchema>;
+export type FileExplorerSaveFileTarget = z.infer<typeof fileExplorerSaveFileTargetSchema>;
+export type FileExplorerSaveFileForViewRequest = z.infer<typeof fileExplorerSaveFileForViewRequestSchema>;
+export type FileExplorerSaveFileForViewResponse = z.infer<typeof fileExplorerSaveFileForViewResponseSchema>;
+export type FileExplorerFileViewProgress = z.infer<typeof fileExplorerFileViewProgressSchema>;
+type FileExplorerInspectModelRequest = z.infer<typeof fileExplorerInspectModelRequestSchema>;
+type FileExplorerReadModelValueRequest = z.infer<typeof fileExplorerReadModelValueRequestSchema>;
+type FileExplorerRewriteGgufRequest = z.infer<typeof fileExplorerRewriteGgufRequestSchema>;
 
 export const fileExplorerPrepareFileDownloadResponseSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('file'), blob: downloadBlobReferenceSchema }),
@@ -433,6 +597,12 @@ export interface IFileExplorerWorker {
   readDirectory({ request }: { request: FileExplorerReadDirectoryRequest }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ request }: { request: FileExplorerReadPreviewRequest }): Promise<FileExplorerReadPreviewResponse>,
   readFile({ request }: { request: FileExplorerReadFileRequest }): Promise<FileExplorerReadFileResponse>,
+  readFileForView({ request, port }: WorkerTransfer<{ request: FileExplorerReadFileForViewRequest, port: MessagePort }>): Promise<FileExplorerReadFileForViewResponse>,
+  saveFileForView({ request, port }: WorkerTransfer<{ request: FileExplorerSaveFileForViewRequest, port: MessagePort }>): Promise<FileExplorerSaveFileForViewResponse>,
+  inspectModelOverviewForView({ request, port }: WorkerTransfer<{ request: FileExplorerInspectModelRequest, port: MessagePort }>): Promise<ModelFileOverviewInspection>,
+  inspectModelForView({ request, port }: WorkerTransfer<{ request: FileExplorerInspectModelRequest, port: MessagePort }>): Promise<ModelFileDetailsInspection>,
+  readModelValueForView({ request, port }: WorkerTransfer<{ request: FileExplorerReadModelValueRequest, port: MessagePort }>): Promise<{ values: ModelMetadataValue[], next: number | undefined }>,
+  rewriteGgufForView({ request, port }: WorkerTransfer<{ request: FileExplorerRewriteGgufRequest, port: MessagePort }>): Promise<{ header: Uint8Array<ArrayBuffer>, bodyOffset: number }>,
   prepareFileDownload({ request }: { request: FileExplorerReadFileRequest }): Promise<FileExplorerPrepareFileDownloadResponse>,
   streamFile({ request, port }: WorkerTransfer<{ request: FileExplorerReadFileRequest, port: MessagePort }>): Promise<void>,
   suggestArchiveExclusions({ request }: { request: FileExplorerSuggestArchiveExclusionsRequest }): Promise<FileExplorerSuggestArchiveExclusionsResponse>,
@@ -466,10 +636,28 @@ export interface FileExplorerZipUploadJob {
   cancel(): Promise<void>,
 }
 
+export interface FileExplorerModelAccess {
+  inspectModelOverview({ file, signal }: { file: Blob, signal?: AbortSignal }): Promise<ModelFileOverviewInspection>,
+  inspectModel({ file, signal }: { file: Blob, signal?: AbortSignal }): Promise<ModelFileDetailsInspection>,
+  readModelMetadataValue({ file, entry, start, limit, signal }: { file: Blob, entry: ModelMetadataEntry, start: number, limit: number, signal?: AbortSignal }): Promise<{ values: ModelMetadataValue[], next: number | undefined }>,
+  prepareGgufMetadataRewrite({ file, changes, signal }: { file: Blob, changes: Readonly<Record<string, string>>, signal?: AbortSignal }): Promise<{ header: Uint8Array<ArrayBuffer>, bodyOffset: number }>,
+}
+
+export interface FileExplorerFileAccess extends FileExplorerModelAccess {
+  read({ path, mode, signal }: { path: string, signal?: AbortSignal } & (
+    { mode: 'prefix' | 'bounded', maxBytes: number }
+    | { mode: 'inspect' }
+    | { mode: 'range', offset: number, maxBytes: number }
+  )): Promise<FileExplorerReadFileForViewResponse>,
+  openSnapshot({ path, signal }: { path: string, signal?: AbortSignal }): Promise<FileExplorerReadFileForViewResponse>,
+  save({ target, blob, signal, onProgress }: { target: FileExplorerSaveFileTarget, blob: Blob, signal?: AbortSignal, onProgress?: ({ writtenBytes, totalBytes }: { writtenBytes: number, totalBytes: number }) => void }): Promise<FileExplorerSaveFileForViewResponse>,
+}
+
 export interface FileExplorerWorkerClient {
   readDirectory({ path }: { path: string }): Promise<FileExplorerReadDirectoryResponse>,
-  readPreview({ path, mode }: { path: string, mode: 'bounded' | 'force' }): Promise<FileExplorerReadPreviewResponse>,
+  readPreview({ path, mode, format }: { path: string, mode: 'bounded' | 'force', format?: FileExplorerReadPreviewRequest['format'] }): Promise<FileExplorerReadPreviewResponse>,
   readFile({ path }: { path: string }): Promise<FileExplorerReadFileResponse>,
+  fileAccess?: FileExplorerFileAccess,
   prepareFileDownload({ path }: { path: string }): Promise<FileExplorerPrepareFileDownloadResponse>,
   openFileStream({ path }: { path: string }): Promise<ReadableStream<Uint8Array>>,
   suggestArchiveExclusions({ directoryPath, query, excludedRelativePaths }: { directoryPath: string, query: string, excludedRelativePaths: string[] }): Promise<FileExplorerSuggestArchiveExclusionsResponse>,

@@ -19,12 +19,22 @@ export function useFileExplorerOperations({
   const { addToast } = useToast();
   const renamingEntryName = ref<string | undefined>(undefined);
 
-  async function createFile({ name }: { name: string }): Promise<void> {
+  async function createFile({ directoryPath, name, blob }: { directoryPath: string, name: string, blob: Blob }): Promise<boolean> {
     try {
-      await client.createFile({ parentPath: currentDirectoryPath.value, name });
+      if (client.fileAccess !== undefined) {
+        await client.fileAccess.save({ target: { kind: 'create', directoryPath, name }, blob });
+      } else if (blob.size === 0) {
+        await client.createFile({ parentPath: directoryPath, name });
+      } else {
+        throw new Error('File writes with content are unavailable');
+      }
       await refresh();
+      return true;
     } catch (error) {
+      // A failed write may have already reserved an empty destination.
+      await refresh().catch(() => undefined);
       addToast({ message: await ensureStrings.fileExplorer__failed_to_create_file({ errorMessage: error instanceof Error ? error.message : String(error) }) });
+      return false;
     }
   }
 
@@ -37,7 +47,7 @@ export function useFileExplorerOperations({
     }
   }
 
-  async function deleteEntries({ entries }: { entries: FileExplorerEntry[] }): Promise<void> {
+  async function deleteEntries({ entries, onSuccess }: { entries: FileExplorerEntry[], onSuccess?: () => Promise<void> }): Promise<void> {
     if (entries.length === 0) {
       return;
     }
@@ -76,7 +86,7 @@ export function useFileExplorerOperations({
 
     try {
       await client.deleteEntries({ paths: entries.map(entry => entry.path) });
-      await refresh();
+      await (onSuccess ?? refresh)();
     } catch (error) {
       addToast({ message: await ensureStrings.fileExplorer__failed_to_delete({ errorMessage: error instanceof Error ? error.message : String(error) }) });
     }
@@ -85,9 +95,11 @@ export function useFileExplorerOperations({
   async function renameEntry({
     entry,
     newName,
+    onSuccess,
   }: {
     entry: FileExplorerEntry,
     newName: string,
+    onSuccess?: () => Promise<void>,
   }): Promise<void> {
     const trimmed = newName.trim();
     if (!trimmed || trimmed === entry.name) {
@@ -98,7 +110,7 @@ export function useFileExplorerOperations({
     try {
       await client.renameEntry({ path: entry.path, newName: trimmed });
       renamingEntryName.value = undefined;
-      await refresh();
+      await (onSuccess ?? refresh)();
     } catch (error) {
       addToast({ message: await ensureStrings.fileExplorer__failed_to_rename({ errorMessage: error instanceof Error ? error.message : String(error) }) });
       renamingEntryName.value = undefined;
@@ -108,16 +120,18 @@ export function useFileExplorerOperations({
   async function moveEntries({
     entries,
     targetPath,
+    onSuccess,
   }: {
     entries: FileExplorerEntry[],
     targetPath: string,
+    onSuccess?: () => Promise<void>,
   }): Promise<void> {
     try {
       await client.moveEntries({
         sourcePaths: entries.map(entry => entry.path),
         targetDirectoryPath: targetPath,
       });
-      await refresh();
+      await (onSuccess ?? refresh)();
     } catch (error) {
       addToast({ message: await ensureStrings.fileExplorer__failed_to_move_items({ errorMessage: error instanceof Error ? error.message : String(error) }) });
     }
@@ -126,16 +140,18 @@ export function useFileExplorerOperations({
   async function copyEntriesToDir({
     entries,
     targetPath,
+    onSuccess,
   }: {
     entries: FileExplorerEntry[],
     targetPath: string,
+    onSuccess?: () => Promise<void>,
   }): Promise<void> {
     try {
       await client.copyEntries({
         sourcePaths: entries.map(entry => entry.path),
         targetDirectoryPath: targetPath,
       });
-      await refresh();
+      await (onSuccess ?? refresh)();
     } catch (error) {
       addToast({ message: await ensureStrings.fileExplorer__failed_to_copy_items({ errorMessage: error instanceof Error ? error.message : String(error) }) });
     }

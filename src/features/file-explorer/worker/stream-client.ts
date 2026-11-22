@@ -1,9 +1,19 @@
 import { receiveByteStream } from '@/utils/byte-stream-port';
-import { workerTransfer, type WorkerRemote } from '@/utils/worker-transport';
+import { createValidatedMessagePort, workerTransfer, type WorkerRemote } from '@/utils/worker-transport';
 import {
   fileExplorerCreateDirectoryArchiveResponseSchema,
+  fileExplorerFileViewCancelSchema,
+  fileExplorerFileViewProgressSchema,
+  fileExplorerInspectModelOverviewResponseSchema,
+  fileExplorerInspectModelResponseSchema,
   fileExplorerPrepareFileDownloadResponseSchema,
+  fileExplorerReadFileForViewResponseSchema,
+  fileExplorerReadModelValueRequestSchema,
+  fileExplorerReadModelValueResponseSchema,
+  fileExplorerRewriteGgufResponseSchema,
+  fileExplorerSaveFileForViewResponseSchema,
   type FileExplorerDirectoryArchiveJob,
+  type FileExplorerFileAccess,
   type IFileExplorerWorker,
 } from './types';
 
@@ -39,7 +49,138 @@ export function createFileExplorerStreamClient({ remote, sessionId, worker }: {
     void receiver.completed.catch(() => undefined).finally(() => active.delete(receiver));
     return receiver;
   };
+
+  async function runFileViewOperation<TResult>({ signal, onProgress, run }: {
+    signal: AbortSignal | undefined,
+    onProgress: (({ writtenBytes, totalBytes }: { writtenBytes: number, totalBytes: number }) => void) | undefined,
+    run: ({ port }: { port: MessagePort }) => Promise<TResult>,
+  }): Promise<TResult> {
+    if (failure) {
+      throw failure;
+    }
+    signal?.throwIfAborted();
+    const ports = new MessageChannel();
+    function onAbort() {
+      channel.send({ message: { type: 'cancel' }, transferables: [] });
+    }
+    const channel = createValidatedMessagePort({
+      port: ports.port1,
+      incomingSchema: fileExplorerFileViewProgressSchema,
+      outgoingSchema: fileExplorerFileViewCancelSchema,
+      onMessage({ message }) {
+        onProgress?.(message);
+      },
+      onError: onAbort,
+    });
+    signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      // Await the worker's disposition so cancellation cannot hide a save
+      // that has already closed and committed the writable stream.
+      return await Promise.race([interrupted.promise, run({ port: ports.port2 })]);
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+      channel.close();
+      ports.port2.close();
+    }
+  }
+
+  const fileAccess = {
+    read({ signal, ...request }) {
+      return runFileViewOperation({
+        signal,
+        onProgress: undefined,
+        async run({ port }) {
+          const result = await remote.readFileForView(workerTransfer({
+            value: { request: { sessionId, ...request }, port },
+            transferables: [port],
+          }));
+          return fileExplorerReadFileForViewResponseSchema.parse(result);
+        },
+      });
+    },
+    openSnapshot({ path, signal }) {
+      return runFileViewOperation({
+        signal,
+        onProgress: undefined,
+        async run({ port }) {
+          const result = await remote.readFileForView(workerTransfer({
+            value: { request: { sessionId, path, mode: 'snapshot' }, port },
+            transferables: [port],
+          }));
+          return fileExplorerReadFileForViewResponseSchema.parse(result);
+        },
+      });
+    },
+    save({ target, blob, signal, onProgress }) {
+      return runFileViewOperation({
+        signal,
+        onProgress,
+        async run({ port }) {
+          const result = await remote.saveFileForView(workerTransfer({
+            value: { request: { sessionId, target, blob }, port },
+            transferables: [port],
+          }));
+          return fileExplorerSaveFileForViewResponseSchema.parse(result);
+        },
+      });
+    },
+    inspectModelOverview({ file, signal }) {
+      return runFileViewOperation({
+        signal,
+        onProgress: undefined,
+        async run({ port }) {
+          const result = await remote.inspectModelOverviewForView(workerTransfer({
+            value: { request: { sessionId, file }, port },
+            transferables: [port],
+          }));
+          return fileExplorerInspectModelOverviewResponseSchema.parse(result);
+        },
+      });
+    },
+    inspectModel({ file, signal }) {
+      return runFileViewOperation({
+        signal,
+        onProgress: undefined,
+        async run({ port }) {
+          const result = await remote.inspectModelForView(workerTransfer({
+            value: { request: { sessionId, file }, port },
+            transferables: [port],
+          }));
+          return fileExplorerInspectModelResponseSchema.parse(result);
+        },
+      });
+    },
+    readModelMetadataValue({ file, entry, start, limit, signal }) {
+      return runFileViewOperation({
+        signal,
+        onProgress: undefined,
+        async run({ port }) {
+          const request = fileExplorerReadModelValueRequestSchema.parse({ sessionId, file, entry, start, limit });
+          const result = await remote.readModelValueForView(workerTransfer({
+            value: { request, port },
+            transferables: [port],
+          }));
+          return fileExplorerReadModelValueResponseSchema.parse(result);
+        },
+      });
+    },
+    prepareGgufMetadataRewrite({ file, changes, signal }) {
+      return runFileViewOperation({
+        signal,
+        onProgress: undefined,
+        async run({ port }) {
+          const result = await remote.rewriteGgufForView(workerTransfer({
+            value: { request: { sessionId, file, changes }, port },
+            transferables: [port],
+          }));
+          return fileExplorerRewriteGgufResponseSchema.parse(result);
+        },
+      });
+    },
+  } satisfies FileExplorerFileAccess;
+
   return {
+    fileAccess,
     async prepareFileDownload({ path }: { path: string }) {
       if (failure) {
         throw failure;

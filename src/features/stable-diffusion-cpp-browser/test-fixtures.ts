@@ -1,11 +1,15 @@
 /** Synthetic inputs only; no real model or inference is represented by these fixtures. */
 import type { Artifact, Parameters, Request } from './types';
 
-export function ggufFile(): File {
+export function ggufHeaderFixture(): Uint8Array<ArrayBuffer> {
   const header = new Uint8Array(24);
   new DataView(header.buffer).setUint32(0, 0x46554747, true);
   new DataView(header.buffer).setUint32(4, 3, true);
-  return new File([header], 'model.gguf');
+  return header;
+}
+
+export function ggufFile(): File {
+  return new File([ggufHeaderFixture()], 'model.gguf');
 }
 
 export function artifactFixture(): Artifact {

@@ -7,6 +7,7 @@ import FileExplorer from './FileExplorer.vue';
 
 const { closeFileExplorer, fileExplorerOptions } = useFileExplorerModal();
 const panel = useTemplateRef<HTMLElement>('panel');
+const explorer = useTemplateRef<InstanceType<typeof FileExplorer>>('explorer');
 const titleId = useId();
 const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
 const initializationError = ref<string>();
@@ -30,18 +31,42 @@ async function focusExplorer(): Promise<void> {
   }
 }
 
+async function close(): Promise<void> {
+  if (await (explorer.value?.allowClose?.() ?? true)) {
+    closeFileExplorer();
+  }
+}
+
 function trapFocus({ event }: { event: KeyboardEvent }): void {
-  const controls = [...(panel.value?.querySelectorAll<HTMLElement>(':is(button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"]))') ?? [])]
-    .filter(control => !control.closest('[inert], [hidden]'));
-  const first = controls[0];
-  const last = controls.at(-1);
-  if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.value)) {
+  const dialog = panel.value;
+  if (dialog === null || event.isComposing || !(event.target instanceof Element) || event.target.closest('[role="dialog"], [role="alertdialog"]') !== dialog) {
+    return;
+  }
+  const controls = [...dialog.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, summary, [tabindex]')];
+  const first = controls.find(control => isDialogTabStop({ control, dialog }));
+  const last = controls.findLast(control => isDialogTabStop({ control, dialog }));
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
     event.preventDefault();
     last?.focus();
   } else if (!event.shiftKey && document.activeElement === last) {
     event.preventDefault();
     first?.focus();
   }
+}
+
+function isDialogTabStop({ control, dialog }: { control: HTMLElement, dialog: HTMLElement }): boolean {
+  if (control.tabIndex < 0 || control.matches(':disabled') || control.closest('[inert], [hidden]')) {
+    return false;
+  }
+  for (let element: HTMLElement | null = control; element && element !== dialog; element = element.parentElement) {
+    if (element.matches('details:not([open])') && !element.querySelector(':scope > summary')?.contains(control)) {
+      return false;
+    }
+    if (getComputedStyle(element).display === 'none') {
+      return false;
+    }
+  }
+  return getComputedStyle(control).visibility === 'visible';
 }
 
 const initialLocked = computed(() => {
@@ -124,9 +149,9 @@ defineExpose({
     <div
       tw-class="fixed inset-0 z-[130] flex items-center justify-center bg-black/40 p-2 backdrop-blur-[2px] sm:p-4"
       data-testid="file-explorer-modal"
-      @click.self="closeFileExplorer()"
+      @click.self="close()"
     >
-      <div ref="panel" role="dialog" aria-modal="true" :aria-labelledby="titleId" tabindex="-1" data-testid="file-explorer-modal-panel" tw-class="flex h-[95dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-2xl shadow-gray-950/10 outline-none dark:border-gray-700/80 dark:bg-gray-900 dark:shadow-black/35 md:h-[90dvh]" @keydown.stop @keydown.tab="trapFocus({ event: $event })">
+      <div ref="panel" role="dialog" aria-modal="true" :aria-labelledby="titleId" tabindex="-1" data-testid="file-explorer-modal-panel" tw-class="flex h-[95dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-2xl shadow-gray-950/10 outline-none dark:border-gray-700/80 dark:bg-gray-900 dark:shadow-black/35 md:h-[90dvh]" @keydown.stop @keydown.tab.capture="trapFocus({ event: $event })">
         <div tw-class="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200/60 bg-gray-50/70 px-4 py-3 dark:border-gray-700/50 dark:bg-gray-800/30">
           <div tw-class="flex min-w-0 items-center gap-2.5">
             <component :is="fileExplorerOptions.kind === 'archive-root' ? FileArchiveIcon : FolderOpenIcon" aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
@@ -138,7 +163,7 @@ defineExpose({
             :title="lazyStrings.fileExplorer__close()"
             :aria-label="lazyStrings.fileExplorer__close()"
             data-testid="file-explorer-modal-close"
-            @click="closeFileExplorer()"
+            @click="close()"
           >
             <XIcon aria-hidden="true" tw-class="h-4 w-4" />
           </button>
@@ -156,6 +181,7 @@ defineExpose({
           </div>
           <Suspense v-else @resolve="focusExplorer">
             <FileExplorer
+              ref="explorer"
               :root="root"
               :remote-mounts="remoteMounts"
               :initial-path="initialPath"

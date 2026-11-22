@@ -27,6 +27,31 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+## [0.73.0] - 2026-11-22
+
+### Added
+
+- Switch to Tree and contents alongside the icon, list, and column views to browse the folder tree while reading or editing. Click a breadcrumb to reveal its folder in the tree. File Explorer remembers the selected view, pane visibility and widths, and sort order. Previews and EditorV4 share the saved line-wrapping preference, and EditorV4 remembers whether to show line numbers.
+- Preview supported files by their contents, even when the extension is missing or misleading. Browse the internal files of ZIP, JAR, and ZIP-based Office documents in File Explorer. Switch between the format preview and bytes, display more bytes as hex, ASCII, or UTF-8, and jump to a byte offset in native files.
+- Open writable text directly for editing, including empty files with or without extensions. Open binary files in the text editor when needed and save a UTF-8 copy when editing cannot preserve the original encoding or line endings.
+- Paste text, an image, or a copied file into the New File dialog to save it in the current folder.
+- Preview CSV and TSV files as tables and edit individual cells. Edit text and Markdown with find and replace and multiple cursors that can move together. Preview Markdown alongside the editor and save changes to the original or a new file.
+- View syntax-highlighted JSON and source files in the Tree and contents preview.
+- Inspect GGUF and Safetensors metadata and tensor details from the preview pane or Tree and contents. Edit supported GGUF metadata, including chat templates, and save the updated model.
+- Edit supported images, transcribe audio into text files, and view patch files with highlighted additions and deletions from File Explorer.
+- Verify downloads from GitHub Releases and Actions build candidates using `naidan-release-integrity.yaml`, which records file hashes and a reproducible source fingerprint. Release notes link to the build attestation, and Actions candidates include the attestation bundle for offline verification.
+
+### Changed
+
+- The file explorer opened from a chat uses **Chat file system** as the title and root label for the combined file tree available to that chat.
+
+### Fixed
+
+- Avoid flashes in File Explorer when changing folders or opening a file preview. Keep the current listing visible while a folder loads and retain the preview when reopening an unchanged file.
+- Scroll to the selected file's column when switching to column view.
+- Keep files intact when they are cut and pasted back into the same folder. Copy, move, and rename report destination name conflicts instead of replacing another file. Folder transfers also check that the destination is outside the source before copying.
+- Keep the current columns visible while opening another folder in column view, then show the new folder as soon as its listing is ready.
+
 ## [0.72.0] - 2026-11-21
 
 ### Added
@@ -1241,7 +1266,8 @@ Do not add entries directly here during ordinary development.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.72.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.73.0...develop
+[0.73.0]: https://github.com/nwtgck/naidan/compare/v0.72.0...v0.73.0
 [0.72.0]: https://github.com/nwtgck/naidan/compare/v0.71.0...v0.72.0
 [0.71.0]: https://github.com/nwtgck/naidan/compare/v0.70.0...v0.71.0
 [0.70.0]: https://github.com/nwtgck/naidan/compare/v0.69.0...v0.70.0

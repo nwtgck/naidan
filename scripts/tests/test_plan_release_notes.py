@@ -31,6 +31,7 @@ LINKS = '''
 [0.1.0]: https://example.test/tag/v0.1.0
 '''
 CHANGELOG = PREAMBLE + HISTORY + LINKS
+ATTESTATION_URL = 'https://github.com/nwtgck/naidan/attestations/123'
 
 
 def release(*, release_id: int = 1, tag: str = 'v0.2.0', body: str | None = 'old', **extra) -> dict:
@@ -178,6 +179,77 @@ class PlanTests(unittest.TestCase):
         plan = self.plan([], publish_tag='v0.2.0', tag_changelog=old)
         self.assertIn('New **feature**', plan['create']['body'])
         self.assertEqual(plan['create']['tag_name'], 'v0.2.0')
+
+    def test_publication_footer_is_preserved_next_to_full_changelog_on_sync(self):
+        created = self.plan([], publish_tag='v0.2.0', tag_changelog=CHANGELOG, attestation_url=ATTESTATION_URL)
+        body = created['publication']['body']
+        self.assertIsNone(created['publication']['reset_body'])
+        self.assertNotIn('Build Attestation', created['create']['body'])
+        self.assertTrue(body.endswith(
+            '[Full Changelog][0.2.0] · [Build Attestation][attestation]\n\n'
+            '[0.2.0]: https://example.test/compare/v0.1.0...v0.2.0\n'
+            f'[attestation]: {ATTESTATION_URL}\n'
+        ))
+        self.assertEqual(self.plan([release(body=body)])['updates'], [])
+        updated = planner.build_plan(changelog=CHANGELOG.replace('New **feature**', 'Edited notes'),
+                                     releases=[release(body=body), release(release_id=2, tag='v0.1.0')])['updates']
+        self.assertIn('Edited notes', updated[0]['body'])
+        self.assertIn(ATTESTATION_URL, updated[0]['body'])
+        self.assertNotIn('Build Attestation', updated[1]['body'])
+
+    def test_retry_keeps_existing_link_in_sync_and_stages_new_link_for_publication_only(self):
+        old = self.plan([], publish_tag='v0.2.0', tag_changelog=CHANGELOG,
+                        attestation_url=ATTESTATION_URL)['publication']['body']
+        new_url = ATTESTATION_URL + '4'
+        retry = self.plan([release(body=old)], publish_tag='v0.2.0', tag_changelog=CHANGELOG,
+                          attestation_url=new_url)
+        self.assertEqual(retry['updates'], [])
+        self.assertEqual(retry['publication']['body'], old.replace(ATTESTATION_URL, new_url))
+        self.assertEqual(retry['publication']['reset_body'], planner.render_notes(content=CHANGELOG)['v0.2.0'])
+        same_candidate = self.plan([release(body=old)], publish_tag='v0.2.0', tag_changelog=CHANGELOG,
+                                   attestation_url=ATTESTATION_URL)
+        self.assertIsNone(same_candidate['publication']['reset_body'])
+
+    def test_missing_canonical_section_preserves_existing_prose_and_replaces_provisional_link(self):
+        tag_changelog = PREAMBLE + '## [0.3.0] - 2026-11-05\n\n- Stale tagged notes.\n'
+        url = ATTESTATION_URL + '4'
+        existing = release(tag='v0.3.0', body=f'Existing prose.\n\n[Build Attestation][attestation]\n\n'
+                                             f'[attestation]: {ATTESTATION_URL}\n')
+        plan = self.plan([existing], publish_tag='v0.3.0', tag_changelog=tag_changelog, attestation_url=url)
+        self.assertEqual(plan['updates'], [])
+        self.assertEqual(plan['publication']['body'], existing['body'].replace(ATTESTATION_URL, url))
+        self.assertEqual(plan['publication']['reset_body'], 'Existing prose.\n')
+
+    def test_publication_link_uses_free_reference_label(self):
+        changelog = CHANGELOG.replace('- New **feature**', '- [Guide][attestation] and new **feature**')
+        changelog += '[attestation]: https://example.test/guide\n'
+        plan = planner.build_plan(changelog=changelog, releases=[], publish_tag='v0.2.0', tag_changelog=changelog,
+                                  attestation_url=ATTESTATION_URL)
+        body = plan['publication']['body']
+        self.assertIn('[attestation]: https://example.test/guide', body)
+        self.assertIn(f'[attestation-1]: {ATTESTATION_URL}', body)
+        self.assertIn('[Full Changelog][0.2.0] · [Build Attestation][attestation-1]', body)
+        self.assertEqual(planner.build_plan(changelog=changelog, releases=[release(body=body)])['updates'], [])
+
+    def test_publication_link_keeps_unresolved_bracketed_prose_as_text(self):
+        changelog = CHANGELOG.replace('- New **feature**', '- The term [Attestation]')
+        plan = planner.build_plan(changelog=changelog, releases=[], publish_tag='v0.2.0', tag_changelog=changelog,
+                                  attestation_url=ATTESTATION_URL)
+        body = plan['publication']['body']
+        self.assertIn('[Attestation] with Unicode', body)
+        self.assertIn(f'[attestation-1]: {ATTESTATION_URL}', body)
+        self.assertNotIn('[attestation]:', body)
+
+    def test_only_same_repository_attestation_urls_are_accepted(self):
+        for url in ['', ATTESTATION_URL.replace('nwtgck/', 'other/'), ATTESTATION_URL + '\nnew line']:
+            with self.subTest(url=url), self.assertRaisesRegex(ValueError, 'attestation URL'):
+                self.plan([], publish_tag='v0.2.0', tag_changelog=CHANGELOG, attestation_url=url)
+        with self.assertRaisesRegex(ValueError, 'publication tag'):
+            self.plan([], attestation_url=ATTESTATION_URL)
+        foreign = (f'[Full Changelog][0.2.0] · [Build Attestation][attestation]\n\n'
+                   f'[attestation]: {ATTESTATION_URL.replace("nwtgck/", "other/")}\n')
+        self.assertEqual(self.plan([release(body=foreign)])['updates'][0]['body'],
+                         planner.render_notes(content=CHANGELOG)['v0.2.0'])
 
     def test_tag_fallback_is_limited_to_requested_missing_version(self):
         tag_content = PREAMBLE + '## [0.3.0] - 2026-11-05\n\n- Just released.\n\n' + HISTORY.replace('Old fix.', 'Stale history.') + LINKS

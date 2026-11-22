@@ -1,11 +1,18 @@
 import { expect, it, vi } from 'vitest';
 import { runImageGeneration, createImageGenerationSession, effectiveVaeTile, nativeVaeTile } from './session';
 import type { Core, CoreModule, HostHelpers, NativeApi } from './core-types';
-import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
-import { fixtureReader, ggufFixture, zImageTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
+import { ggufHeaderFixture, requestFixture as baseRequestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
+import { fixtureReader, ggufFixture, sparseFile, zImageTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 import { minimaxH3ImageTensors, minimaxH3PrunedTextTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/minimax-h3-weights.test-support';
 import { imageLoraRequests } from '@/features/stable-diffusion-cpp-browser/lora-form';
 import type { ImageEngineInspection } from '@/features/stable-diffusion-cpp-browser/engine-state';
+
+function requestFixture() {
+  const request = baseRequestFixture();
+  const header = ggufHeaderFixture();
+  request.models[0]!.file = sparseFile({ name: 'model.gguf', header, size: header.length }).file;
+  return request;
+}
 
 /** This is a mocked native boundary, not a model or WebGPU inference test. */
 function harness({ pointerBytes, outcome, channels }: {
@@ -196,12 +203,7 @@ function harness({ pointerBytes, outcome, channels }: {
     }),
   };
   const reader = {
-    readAsArrayBuffer: vi.fn((_blob: Blob) => {
-      const header = new ArrayBuffer(24), view = new DataView(header);
-      view.setUint32(0, 0x46554747, true);
-      view.setUint32(4, 3, true);
-      return header;
-    }),
+    readAsArrayBuffer: vi.fn(fixtureReader.readAsArrayBuffer),
   };
   return { core, api, helpers, reader, fields, recordPointers, strings, events, callbacks, registrations, previewWrites, generationProgress, samplingProgress, nativeOptions };
 }
@@ -785,7 +787,7 @@ it('validates borrowed structured progress and ignores legacy tile counters or a
 
 it('does not mount or initialize a native model when the selected file header is invalid', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
-  h.reader.readAsArrayBuffer.mockReturnValue(new ArrayBuffer(24));
+  h.reader.readAsArrayBuffer.mockImplementation(blob => new ArrayBuffer(blob.size));
   await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() })).rejects.toThrow('Unrecognized weight format');
   expect(h.helpers.mountReadOnlyFile).not.toHaveBeenCalled();
   expect(h.api.new_sd_ctx).not.toHaveBeenCalled();

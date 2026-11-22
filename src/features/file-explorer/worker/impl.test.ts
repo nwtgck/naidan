@@ -3,6 +3,7 @@ import { Secret } from '@/utils/secret';
 import { WeshVFS } from '@/features/wesh/vfs';
 import { TEXT_PREVIEW_SIZE_LIMIT } from '@/features/file-explorer/logic/constants';
 import { receiveByteStream } from '@/utils/byte-stream-port';
+import { createRemoteDirectoryAccess, type RemoteDirectoryEntry } from '@/utils/remote-directory-handle';
 import { MessageChannel } from 'node:worker_threads';
 import JSZip from 'jszip';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -902,6 +903,298 @@ describe('file-explorer.worker.impl', () => {
     await expect(targetHandle.getDirectoryHandle('inner.data')).rejects.toThrow();
   });
 
+  it.each(['copyEntries', 'moveEntries'] as const)('preserves files and folders when %s targets their current parent', async operation => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const file = await root.getFileHandle('note.txt', { create: true });
+    const folder = await root.getDirectoryHandle('folder', { create: true });
+    const nested = await folder.getFileHandle('child.txt', { create: true });
+    file.content = new TextEncoder().encode('original');
+    nested.content = new TextEncoder().encode('nested original');
+    using write = vi.spyOn(file, 'createWritable');
+    using remove = vi.spyOn(root, 'removeEntry');
+    const { sessionId } = await worker.prepareSession({
+      request: { root: { kind: 'native-directory', rootName: 'Files', handle: root as unknown as FileSystemDirectoryHandle, readOnly: false } },
+    });
+    await using _session = {
+      async [Symbol.asyncDispose]() {
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+
+    await worker[operation]({ request: { sessionId, sourcePaths: ['/note.txt', '/folder'], targetDirectoryPath: '//' } });
+
+    expect(await (await root.getFileHandle('note.txt')).getFile().then(value => value.text())).toBe('original');
+    expect(await (await folder.getFileHandle('child.txt')).getFile().then(value => value.text())).toBe('nested original');
+    expect(write).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it.each(['copyEntries', 'moveEntries'] as const)('rejects %s into a descendant reached through another mount before making any changes', async operation => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const parent = await root.getDirectoryHandle('project', { create: true });
+    const descendant = await parent.getDirectoryHandle('child', { create: true });
+    const file = await root.getFileHandle('other.txt', { create: true });
+    file.content = new TextEncoder().encode('original');
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          mounts: [
+            { type: 'directory', path: '/drive', handle: root as unknown as FileSystemDirectoryHandle, readOnly: false },
+            { type: 'directory', path: '/alias', handle: descendant as unknown as FileSystemDirectoryHandle, readOnly: false },
+          ],
+        },
+      },
+    });
+    await using _session = {
+      async [Symbol.asyncDispose]() {
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+
+    await expect(worker[operation]({
+      request: { sessionId, sourcePaths: ['/drive/other.txt', '/drive/project'], targetDirectoryPath: '/alias' },
+    })).rejects.toMatchObject({ name: 'InvalidModificationError' });
+    await expect(descendant.getFileHandle('other.txt')).rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect(descendant.getDirectoryHandle('project')).rejects.toMatchObject({ name: 'NotFoundError' });
+    expect(await (await root.getFileHandle('other.txt')).getFile().then(value => value.text())).toBe('original');
+  });
+
+  it.each(['copyEntries', 'moveEntries'] as const)('rejects %s on a distinct same-name file or directory before changing a batch', async operation => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const target = await root.getDirectoryHandle('target', { create: true });
+    await root.getFileHandle('first.txt', { create: true });
+    const sourceFile = await root.getFileHandle('same.txt', { create: true });
+    const targetFile = await target.getFileHandle('same.txt', { create: true });
+    sourceFile.content = new TextEncoder().encode('source');
+    targetFile.content = new TextEncoder().encode('destination');
+    const sourceFolder = await root.getDirectoryHandle('folder', { create: true });
+    await sourceFolder.getFileHandle('inside.txt', { create: true });
+    const targetFolder = await target.getDirectoryHandle('folder', { create: true });
+    const { sessionId } = await worker.prepareSession({
+      request: { root: { kind: 'native-directory', rootName: 'Files', handle: root as unknown as FileSystemDirectoryHandle, readOnly: false } },
+    });
+    await using _session = {
+      async [Symbol.asyncDispose]() {
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+
+    for (const collision of ['/same.txt', '/folder']) {
+      await expect(worker[operation]({
+        request: { sessionId, sourcePaths: ['/first.txt', collision], targetDirectoryPath: '/target' },
+      })).rejects.toMatchObject({ name: 'InvalidModificationError' });
+    }
+    await expect(target.getFileHandle('first.txt')).rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect(targetFolder.getFileHandle('inside.txt')).rejects.toMatchObject({ name: 'NotFoundError' });
+    expect(await targetFile.getFile().then(value => value.text())).toBe('destination');
+    expect(await sourceFile.getFile().then(value => value.text())).toBe('source');
+    await expect(root.getFileHandle('first.txt')).resolves.toBeDefined();
+  });
+
+  it('rejects directory transfers across opaque remote grants and copies within a single grant', async () => {
+    const root = { id: '/', name: 'root', kind: 'directory' } as const;
+    const source = { id: '/source', name: 'source', kind: 'directory' } as const;
+    const target = { id: '/target', name: 'target', kind: 'directory' } as const;
+    const entries = new Map<string, RemoteDirectoryEntry>([[root.id, root], [source.id, source], [target.id, target]]);
+    const access = createRemoteDirectoryAccess({
+      async dispatch({ request }) {
+        switch (request.type) {
+        case 'get_file':
+          throw new DOMException('File not found', 'NotFoundError');
+        case 'get_directory': {
+          const prefix = request.parentId === '/' ? '' : request.parentId;
+          const id = `${prefix}/${request.name}`;
+          const entry = entries.get(id);
+          if (entry !== undefined) {
+            return { kind: 'entry', entry };
+          }
+          if (!request.create) {
+            throw new DOMException('Directory not found', 'NotFoundError');
+          }
+          const created = { id, name: request.name, kind: 'directory' } as const;
+          entries.set(id, created);
+          return { kind: 'entry', entry: created };
+        }
+        case 'list':
+          return { kind: 'entries', entries: [] };
+        case 'is_same_entry':
+          return { kind: 'boolean', value: request.firstId === request.secondId };
+        case 'resolve': {
+          const prefix = request.directoryId === '/' ? '/' : `${request.directoryId}/`;
+          return {
+            kind: 'path',
+            path: request.targetId === request.directoryId ? []
+              : request.targetId.startsWith(prefix) ? request.targetId.slice(prefix.length).split('/') : null,
+          };
+        }
+        default:
+          throw new Error('Unexpected remote operation');
+        }
+      },
+    });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          mounts: [],
+          remoteMounts: [
+            { path: '/remote', root, readOnly: false },
+            { path: '/alias', root: source, readOnly: false },
+          ],
+        },
+      },
+    }, undefined, {
+      async getRoot() {
+        return root;
+      },
+      request({ request }) {
+        return access.request({ request });
+      },
+    });
+    await using _session = {
+      async [Symbol.asyncDispose]() {
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+
+    await expect(worker.copyEntries({
+      request: { sessionId, sourcePaths: ['/remote/source'], targetDirectoryPath: '/alias' },
+    })).rejects.toMatchObject({ name: 'NotSupportedError' });
+    expect(entries.has('/source/source')).toBe(false);
+
+    await worker.copyEntries({ request: { sessionId, sourcePaths: ['/remote/source'], targetDirectoryPath: '/remote/target' } });
+    expect(entries.has('/target/source')).toBe(true);
+  });
+
+  it('serializes competing cut and paste without blocking a different name', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const left = await root.getDirectoryHandle('left', { create: true });
+    const right = await root.getDirectoryHandle('right', { create: true });
+    const target = await root.getDirectoryHandle('target', { create: true });
+    const firstFile = await left.getFileHandle('same.txt', { create: true });
+    const secondFile = await right.getFileHandle('same.txt', { create: true });
+    firstFile.content = new TextEncoder().encode('first');
+    secondFile.content = new TextEncoder().encode('second');
+    await left.getFileHandle('independent.txt', { create: true });
+    const { sessionId } = await worker.prepareSession({
+      request: { root: { kind: 'native-directory', rootName: 'Files', handle: root as unknown as FileSystemDirectoryHandle, readOnly: false } },
+    });
+    await using _session = {
+      async [Symbol.asyncDispose]() {
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+    const creating = Promise.withResolvers<void>();
+    const waiting = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const open = target.getFileHandle.bind(target);
+    let firstCreate = true;
+    using _open = vi.spyOn(target, 'getFileHandle').mockImplementation(async (name, options) => {
+      if (name === 'same.txt') {
+        if (options?.create && firstCreate) {
+          firstCreate = false;
+          creating.resolve();
+          await release.promise;
+        } else if (!options?.create && !firstCreate) {
+          waiting.resolve();
+        }
+      }
+      return open(name, options);
+    });
+
+    const first = worker.moveEntries({ request: { sessionId, sourcePaths: ['/left/same.txt'], targetDirectoryPath: '/target' } });
+    await creating.promise;
+    const second = worker.moveEntries({ request: { sessionId, sourcePaths: ['/right/same.txt'], targetDirectoryPath: '/target' } });
+    const outcomes = Promise.allSettled([first, second]);
+    try {
+      await waiting.promise;
+      await worker.moveEntries({ request: { sessionId, sourcePaths: ['/left/independent.txt'], targetDirectoryPath: '/target' } });
+    } finally {
+      release.resolve();
+    }
+
+    expect(await outcomes).toEqual([
+      { status: 'fulfilled', value: undefined },
+      { status: 'rejected', reason: expect.objectContaining({ name: 'InvalidModificationError' }) },
+    ]);
+    await expect(left.getFileHandle('same.txt')).rejects.toMatchObject({ name: 'NotFoundError' });
+    expect(await (await right.getFileHandle('same.txt')).getFile().then(file => file.text())).toBe('second');
+    expect(await (await target.getFileHandle('same.txt')).getFile().then(file => file.text())).toBe('first');
+    await expect(target.getFileHandle('independent.txt')).resolves.toBeDefined();
+  });
+
+  it('retains a source file changed after the destination commits', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const target = await root.getDirectoryHandle('target', { create: true });
+    const source = await root.getFileHandle('note.txt', { create: true });
+    source.content = new TextEncoder().encode('saved before copy');
+    const open = target.getFileHandle.bind(target);
+    using _open = vi.spyOn(target, 'getFileHandle').mockImplementation(async (name, options) => {
+      const handle = await open(name, options);
+      if (options?.create) {
+        const createWritable = handle.createWritable.bind(handle);
+        handle.createWritable = async () => {
+          const writer = await createWritable();
+          const close = writer.close.bind(writer);
+          writer.close = async () => {
+            await close();
+            // Keep the length and timestamp the same to exercise the fingerprint.
+            source.content = new TextEncoder().encode('external revision');
+          };
+          return writer;
+        };
+      }
+      return handle;
+    });
+    const { sessionId } = await worker.prepareSession({
+      request: { root: { kind: 'native-directory', rootName: 'Files', handle: root as unknown as FileSystemDirectoryHandle, readOnly: false } },
+    });
+    await using _session = {
+      async [Symbol.asyncDispose]() {
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+
+    await expect(worker.moveEntries({
+      request: { sessionId, sourcePaths: ['/note.txt'], targetDirectoryPath: '/target' },
+    })).rejects.toMatchObject({ name: 'InvalidModificationError' });
+    expect(await (await root.getFileHandle('note.txt')).getFile().then(file => file.text())).toBe('external revision');
+    expect(await (await target.getFileHandle('note.txt')).getFile().then(file => file.text())).toBe('saved before copy');
+  });
+
+  it('keeps files and folders intact when rename targets an existing name', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const original = await root.getFileHandle('first.txt', { create: true });
+    const destination = await root.getFileHandle('second.txt', { create: true });
+    original.content = new TextEncoder().encode('original');
+    destination.content = new TextEncoder().encode('destination');
+    const sourceDirectory = await root.getDirectoryHandle('source', { create: true });
+    await sourceDirectory.getFileHandle('child.txt', { create: true });
+    const targetDirectory = await root.getDirectoryHandle('target', { create: true });
+    const { sessionId } = await worker.prepareSession({
+      request: { root: { kind: 'native-directory', rootName: 'Files', handle: root as unknown as FileSystemDirectoryHandle, readOnly: false } },
+    });
+    await using _session = {
+      async [Symbol.asyncDispose]() {
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+
+    await expect(worker.renameEntry({ request: { sessionId, path: '/first.txt', newName: 'second.txt' } })).rejects.toMatchObject({ name: 'InvalidModificationError' });
+    await expect(worker.renameEntry({ request: { sessionId, path: '/source', newName: 'target' } })).rejects.toMatchObject({ name: 'InvalidModificationError' });
+    await worker.renameEntry({ request: { sessionId, path: '/first.txt', newName: 'first.txt' } });
+    expect(await original.getFile().then(file => file.text())).toBe('original');
+    expect(await destination.getFile().then(file => file.text())).toBe('destination');
+    await expect(targetDirectory.getFileHandle('child.txt')).rejects.toMatchObject({ name: 'NotFoundError' });
+
+    await worker.renameEntry({ request: { sessionId, path: '/source', newName: 'renamed' } });
+    await expect(root.getDirectoryHandle('source')).rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect((await root.getDirectoryHandle('renamed')).getFileHandle('child.txt')).resolves.toBeDefined();
+  });
+
   it('creates, copies, moves, and deletes entries inside a session', async () => {
     const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     await rootHandle.getDirectoryHandle('target', { create: true });
@@ -941,6 +1234,7 @@ describe('file-explorer.worker.impl', () => {
     });
     expect(targetListing.entries.map(entry => entry.name)).toContain('source.txt');
 
+    await worker.deleteEntries({ request: { sessionId, paths: ['/target/source.txt'] } });
     await worker.moveEntries({
       request: {
         sessionId,

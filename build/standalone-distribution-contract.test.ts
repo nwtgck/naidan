@@ -22,13 +22,15 @@ describe('standalone distribution contract', () => {
     expect(workflow).toContain('test -f "dist/naidan-standalone-${LOCALE}.zip"');
   });
 
-  it('publishes every locale package to GitHub Release without renaming the universal public convention', () => {
-    const workflow = readRepositoryFile({ fileName: '.github/workflows/sync-release-notes.yml' });
-    expect(workflow).toContain('for zip_path in dist/naidan-standalone-*.zip; do');
-    expect(workflow).toContain('mv "$zip_path" "${zip_path%.zip}-${PUBLISH_TAG}.zip"');
-    expect(workflow).toContain('mv dist/naidan-standalone.zip "dist/naidan-standalone-${PUBLISH_TAG}.zip"');
-    expect(workflow).toContain('dist/naidan-standalone-${{ inputs.publish-tag }}.zip');
-    expect(workflow).toContain('dist/naidan-standalone-*-${{ inputs.publish-tag }}.zip');
+  it('publishes every staged package from the same signed candidate to GitHub Releases', () => {
+    const workflow = readRepositoryFile({ fileName: '.github/workflows/main.yml' });
+    const stable = readRepositoryFile({ fileName: '.github/workflows/sync-release-notes.yml' });
+    const prerelease = workflow.split('  prerelease_to_github:\n')[1];
+    expect(workflow).toContain('distribution-artifact-id: ${{ needs.prepare_release.outputs.artifact-id }}');
+    expect(stable).toContain('artifact-ids: ${{ inputs.distribution-artifact-id }}');
+    expect(stable).toContain('files: ${{ runner.temp }}/distribution/assets/*');
+    expect(prerelease).toContain('artifact-ids: ${{ needs.prepare_release.outputs.artifact-id }}');
+    expect(prerelease).toContain('gh release create "$TAG" "$RUNNER_TEMP"/distribution/assets/*');
   });
 
   it('serves locale packages but intentionally keeps them out of PWA precache', () => {

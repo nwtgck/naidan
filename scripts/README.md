@@ -266,8 +266,9 @@ repository JavaScript into the credentialed steps or add networking to the plann
   becomes release notes. Unrelated pushes do not run this synchronizer.
 - A tag push first builds and tests the release tooling in `main.yml`, then calls
   this reusable job. It validates the entire plan before creating the requested
-  release with reviewed notes, updates differing historical bodies, and finally
-  uploads the existing distributions and runs GoReleaser. Only an explicit
+  release with reviewed notes, updates differing historical bodies, and uploads
+  the staged distribution. After the payload upload, the job sets the build
+  attestation link before uploading the signed YAML. Only an explicit
   `vX.Y.Z` tag-push publication can create a release; a changelog-only sync cannot.
 - Manual `workflow_dispatch` on `develop` defaults to **dry-run**. Inspect the
   `release-note-plan-<run>-<attempt>` artifact, then run again with dry-run disabled
@@ -285,9 +286,7 @@ not suppressed by this change.
 All paths use the same job-level concurrency group, with `cancel-in-progress:
 false` and `queue: max`. Up to 100 pending jobs are retained instead of replacing
 pending tag publications. The lock spans fetching, planning, mutations, AND asset
-publishing: GoReleaser 2.7.0's `keep-existing` still resends a fetched existing body.
-Without this shared lock, it could undo a newer synchronization. GoReleaser's
-changelog generator is disabled; it does not author release notes.
+publishing, including the final body update that adds the attestation link.
 
 The canonical changelog is fetched from current `develop` **after acquiring the
 lock**, not from the triggering commit. For a new tag, the tagged changelog must
@@ -306,8 +305,10 @@ write prose, or migrate formats. Prerelease version headings are not supported b
 the existing release-preparation contract and are not introduced here.
 
 Each release body contains its section's original Markdown (without the version
-heading), then its optional `Full Changelog` reference link. Dates remain in the
-canonical document rather than being repeated in the body. Outer blank lines and
+heading), then its optional `Full Changelog` reference link. A `Build Attestation`
+link from a signed publication is placed beside it and retained on later syncs.
+Prereleases link to their build attestation without reading `CHANGELOG.md`.
+Dates remain in the canonical document. Outer blank lines and
 CRLF (carriage return + line feed) endings are normalized; hard line breaks and
 other formatting are preserved. Notes may be deliberately empty, as supported by
 `release_start.py --allow-empty-changelog`; no synthetic change entry is invented.
@@ -343,6 +344,11 @@ comparison recovers the rest. There is no cross-release transaction or automatic
 rollback. New publication stops before asset uploads if synchronization fails.
 After an asset-publishing failure, rerun the failed publication job; the planner
 recognizes existing notes and does not create duplicate releases.
+If GitHub leaves a zero-byte `naidan-release-integrity.yaml` asset in the
+`starter` state, the guard reports that asset's ID. Remove the empty asset
+before rerunning the failed publication job.
+When a retry uses another candidate and the signed YAML is absent, the job
+clears the previous attestation link before replacing payload files.
 
 The default `GITHUB_TOKEN` needs `contents: write`; no personal token is required
 by this workflow. Creation deliberately omits `target_commitish`: the tag already
@@ -374,7 +380,7 @@ node --test scripts/tests/release-notes-workflow.test.mjs
 ```
 
 The JavaScript tests execute the **actual inline scripts extracted from YAML**
-with mocked GitHub endpoints; they do not maintain a second implementation.
+with mocked GitHub endpoints and a local `gh` stub.
 Python integration tests require Git. The tooling check uses the full Python
 image (which includes Git), while production planning uses the smaller, pinned
 image. Both test processes run with networking disabled in Actions.
