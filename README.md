@@ -105,6 +105,12 @@ A portable executable that serves the application locally without requiring Pyth
 - **Download:** [naidan-server](https://github.com/nwtgck/naidan/releases)
 - **Update:** Replace the old binary with the new one. Your data is preserved in your browser.
 
+GitHub Releases and successful Actions distribution builds include
+`naidan-release-integrity.yaml`. It binds distribution hashes and a
+reproducible source fingerprint to a GitHub Actions attestation. See
+[release integrity verification](./scripts/release-integrity.md) for the
+expected signer, verification commands, and coverage.
+
 ### Option 4: Online Version
 **Instant access with zero setup.**
 Run Naidan directly from the web. Your data remains local, stored in your browser.
