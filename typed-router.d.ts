@@ -172,13 +172,6 @@ declare module 'vue-router/auto-routes' {
       '/translation',
       Record<never, never>,
       Record<never, never>,
-      | '/translation/models'
-    >,
-    '/translation/models': RouteRecordInfo<
-      '/translation/models',
-      '/translation/models',
-      Record<never, never>,
-      Record<never, never>,
       | never
     >,
     '/workflows': RouteRecordInfo<
@@ -386,15 +379,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/translation.vue': {
       routes:
         | '/translation'
-        | '/translation/models'
-      views:
-        | 'default'
-      pathParamNames:
-        | never
-    }
-    'src/pages/translation/models.vue': {
-      routes:
-        | '/translation/models'
       views:
         | never
       pathParamNames:

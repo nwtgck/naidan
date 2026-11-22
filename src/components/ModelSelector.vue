@@ -43,6 +43,7 @@ const props = defineProps<{
   chevronVisibility?: 'visible' | 'hidden',
   refreshVisibility?: 'visible' | 'hidden',
   refreshAfterFileExplorer?: () => void,
+  confirmSelection?: ({ modelId }: { modelId: string | undefined }) => Promise<boolean>,
   inheritedModel?: { id: string | undefined, source: SettingsSourcePresentation | undefined },
   modelSelection?: 'available' | 'unavailable',
 }>();
@@ -124,6 +125,7 @@ const groupedModels = computed(() => groupStoredModelVariants({
 }));
 
 const isOpen = ref(false);
+let openRevision = 0;
 const expanded = ref(false);
 const sizeButton = ref<HTMLButtonElement>();
 const popupId = useId();
@@ -300,6 +302,7 @@ function openDropdown(): void {
   scrollPositions.clear();
   tabIndicator.value = undefined;
   animateTabIndicator.value = false;
+  openRevision++;
   isOpen.value = true;
   panelView.value = 'models';
   if (props.initialPanel !== undefined) {
@@ -328,6 +331,16 @@ function isPanelOpen({ id }: { id: string }): boolean {
 
 function selectModel({ model, keepOpen }: { model: string | undefined, keepOpen?: boolean }) {
   if (!isOpen.value || modelSelectionUnavailable.value || (model !== undefined && !availableModels.value.includes(model))) {
+    return;
+  }
+  const confirm = props.confirmSelection;
+  if (confirm !== undefined) {
+    const revision = openRevision;
+    void confirm({ modelId: model }).then(accepted => {
+      if (accepted && !keepOpen && isOpen.value && revision === openRevision) {
+        closeDropdown({ restoreFocus: true });
+      }
+    });
     return;
   }
   emit('update:modelValue', model);
@@ -398,7 +411,7 @@ function scrollToHighlighted() {
 }
 
 function handleKeydown({ event }: { event: KeyboardEvent }) {
-  if (props.disabled || event.isComposing || event.keyCode === 229) {
+  if (event.defaultPrevented || props.disabled || event.isComposing || event.keyCode === 229) {
     return;
   }
   if (!isOpen.value) {
@@ -571,6 +584,7 @@ watch(() => disclosureOpen?.value, value => {
 });
 defineExpose({
   openDropdown,
+  closeDropdown,
   isPanelOpen,
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {

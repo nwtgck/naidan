@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { flushPromises, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -30,7 +30,7 @@ async function fixture() {
 }
 
 describe('Translation sidebar content', () => {
-  it('delegates navigation and updates the selected page without replacing its owner', async () => {
+  it('delegates the model shortcut and keeps translation as the current page', async () => {
     using f = await fixture();
     const owner = f.wrapper.element;
     const workspace = f.wrapper.get('[data-testid="translation-nav-workspace"]');
@@ -38,11 +38,10 @@ describe('Translation sidebar content', () => {
     expect(workspace.attributes('aria-current')).toBe('page');
     await models.trigger('click');
     expect(f.navigation.openModels).toHaveBeenCalledOnce();
-    await f.router.push('/translation/models');
-    await flushPromises();
     expect(f.wrapper.element).toBe(owner);
-    expect(models.attributes('aria-current')).toBe('page');
-    expect(workspace.attributes('aria-current')).toBeUndefined();
+    expect(models.attributes('aria-haspopup')).toBe('dialog');
+    expect(workspace.attributes('aria-current')).toBe('page');
+    expect(f.router.currentRoute.value.path).toBe('/translation');
     await workspace.trigger('click');
     expect(f.navigation.openWorkspace).toHaveBeenCalledOnce();
   });
