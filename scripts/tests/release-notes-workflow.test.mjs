@@ -1,11 +1,13 @@
 // Execute the actual inline workflow JavaScript with mocked GitHub methods.
 // No copied implementation, npm packages, credentials, or network are needed.
+// !!! ALLOW-EXTERNAL-COMMAND bash -e:* !!! -- Exercise the prerelease shell with a local gh stub.
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {it} from 'node:test';
+import {runCommandSync} from '../../build/command.ts';
 
 const require = createRequire(import.meta.url);
 const root = new URL('../../', import.meta.url);
@@ -32,11 +34,17 @@ function inlineScript(stepId) {
 
 const fetchNotes = inlineScript('fetch_notes');
 const applyNotes = inlineScript('apply_notes');
+const publicationBody = `\
+[Full Changelog][0.2.0] · [Build Attestation][attestation]
+
+[0.2.0]: https://github.com/nwtgck/naidan/compare/v0.1.0...v0.2.0
+[attestation]: https://github.com/nwtgck/naidan/attestations/123
+`;
 const release = (id = 1, tag_name = 'v0.2.0', extra = {}) => ({
   id, tag_name, body: 'old', draft: false, prerelease: false, ...extra,
 });
 const update = (id = 1, tag_name = 'v0.2.0', body = 'new\n') => ({id, tag_name, body});
-const plan = (updates = [update()], create = null) => ({updates, create, skipped: []});
+const plan = (updates = [update()], create = null, publication = null) => ({updates, create, publication, skipped: []});
 
 async function harness(t, {releases = [release()], updates = plan(), publishTag = '', dryRun = false} = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'naidan-release-notes-'));
@@ -47,7 +55,7 @@ async function harness(t, {releases = [release()], updates = plan(), publishTag 
   await save('input/source.json', {
     repository: 'nwtgck/naidan', changelog_blob: 'test-blob', publish_tag: publishTag,
   });
-  await save('updates.json', updates);
+  await save('updates.json', {...updates, publication: publishTag ? {body: publicationBody, reset_body: null} : null});
   const calls = [], logs = [], delays = [];
   const context = {
     repo: {owner: 'nwtgck', repo: 'naidan'}, eventName: 'push',
@@ -171,6 +179,18 @@ it('only an explicitly authorized tag push may create a release with reviewed no
     body: 'reviewed', draft: false, prerelease: false,
     generate_release_notes: false,
   }}]);
+});
+
+it('validates the publication bodies before any writes', async t => {
+  for (const [publishTag, invalidPublication] of [
+    ['v0.2.0', null], ['v0.2.0', {body: '', reset_body: null}],
+    ['v0.2.0', {body: publicationBody, reset_body: []}], ['', {body: publicationBody, reset_body: null}],
+  ]) {
+    const h = await harness(t, {publishTag});
+    await h.save('updates.json', plan([update()], null, invalidPublication));
+    await assert.rejects(h.execute(applyNotes), /bodies are required only for tag publication/);
+    assert.deepEqual(h.calls, []);
+  }
 });
 
 it('rejects unauthorized creation before updating other releases', async t => {
@@ -309,6 +329,7 @@ it('shares the signed candidate across branch builds and both Release destinatio
   assert.match(candidate, /--network none[\s\S]*goreleaser release --skip=publish --clean/);
   assert.match(candidate, /GOTMPDIR=\/work\/dist/);
   assert.match(candidate, /subject-digest: sha256:\$\{\{ steps\.prepare\.outputs\.sha256 \}\}/);
+  assert.match(candidate, /attestation-url: \$\{\{ steps\.attest\.outputs\.attestation-url \}\}/);
   assert.match(candidate, /attestation\.bundle\.json/);
   assert.match(candidate, /name: naidan-integrity-\$\{\{ github\.run_attempt \}\}\n +path: \$\{\{ runner\.temp \}\}\/distribution\/naidan-release-integrity\.yaml/);
   assert.match(candidate, /NAIDAN_WORKFLOW_ARTIFACTS: \$\{\{ needs\.build\.outputs\.artifact-digests \}\}/);
@@ -316,12 +337,51 @@ it('shares the signed candidate across branch builds and both Release destinatio
   assert.match(candidate, /path: \$\{\{ runner\.temp \}\}\/distribution\//);
   assert.match(stable, /!contains\(github\.ref_name, '-'\)/);
   assert.match(stable, /distribution-artifact-id: \$\{\{ needs\.prepare_release\.outputs\.artifact-id \}\}/);
+  assert.match(stable, /attestation-url: \$\{\{ needs\.prepare_release\.outputs\.attestation-url \}\}/);
+  assert.match(workflow, /--attestation-url "\$ATTESTATION_URL"/);
   assert.match(prerelease, /&& contains\(github\.ref_name, '-'\)/);
   assert.match(prerelease, /artifact-ids: \$\{\{ needs\.prepare_release\.outputs\.artifact-id \}\}/);
   assert.match(prerelease, /--verify-tag --prerelease --latest=false/);
+  assert.match(prerelease, /ATTESTATION_URL: \$\{\{ needs\.prepare_release\.outputs\.attestation-url \}\}/);
+  assert.match(prerelease, /\[Build Attestation\]\[attestation\]/);
+  assert.match(prerelease, /--notes "\$notes"/);
   assert.match(prerelease, /commits\/refs%2Ftags%2F\$TAG"\)" = "\$GITHUB_SHA"/);
   assert.match(prerelease, /distribution\/naidan-release-integrity\.yaml/);
   assert.doesNotMatch(publications, /attestations: write|goreleaser|actions\/attest/);
+});
+
+it('publishes prerelease notes with the build attestation when no changelog is present', async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'naidan-prerelease-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  const main = await readFile(new URL('.github/workflows/main.yml', root), 'utf8');
+  const run = main.match(/- name: Publish the candidate as a GitHub prerelease\n[\s\S]*?\n {8}run: \|\n((?: {10}[^\n]*\n)+)/)?.[1];
+  assert.ok(run);
+  const stub = `\
+gh() {
+  if [[ "$1" == api ]]; then
+    printf '%s\\n' "$GITHUB_SHA"
+  else
+    printf '%s\\0' "$@"
+  fi
+}
+`;
+  const tag = 'v0.72.1-release-trigger-2';
+  const runPrerelease = ({url}) => runCommandSync({
+    argv: ['bash', '-e', '-c', stub + run],
+    options: {
+      cwd: directory, encoding: 'utf8', timeout: 10000,
+      env: {ATTESTATION_URL: url, GITHUB_REPOSITORY: 'nwtgck/naidan', GITHUB_SHA: 'a'.repeat(40), RUNNER_TEMP: directory, TAG: tag},
+    },
+  });
+  const url = 'https://github.com/nwtgck/naidan/attestations/123';
+  const result = runPrerelease({url});
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  const args = result.stdout.split('\0');
+  assert.deepEqual(args.slice(0, 3), ['release', 'create', tag]);
+  assert.equal(args[args.indexOf('--notes') + 1], `[Build Attestation][attestation]\n\n[attestation]: ${url}\n`);
+  const invalid = runPrerelease({url: ''});
+  assert.equal(invalid.status, 1);
+  assert.equal(invalid.stdout, '');
 });
 
 it('action lockfile covers every dependency moved into the reusable workflow', async () => {

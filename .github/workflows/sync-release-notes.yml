@@ -25,6 +25,10 @@ on:
         description: 'ID of the signed release candidate from this run'
         type: string
         default: ''
+      attestation-url:
+        description: 'Build attestation URL for the signed candidate YAML'
+        type: string
+        default: ''
       dry-run:
         type: boolean
         default: false
@@ -132,11 +136,13 @@ jobs:
 
       - name: Plan all release-note changes offline
         shell: bash
+        env:
+          ATTESTATION_URL: ${{ inputs.attestation-url }}
         run: |
           set -euo pipefail
           args=()
           if [ -n "$PUBLISH_TAG" ]; then
-            args+=(--publish-tag "$PUBLISH_TAG" --tag-changelog /input/tag-CHANGELOG.md)
+            args+=(--publish-tag "$PUBLISH_TAG" --tag-changelog /input/tag-CHANGELOG.md --attestation-url "$ATTESTATION_URL")
           fi
           docker run --rm --pull=never \
             --network none --read-only --cap-drop=ALL \
@@ -146,7 +152,7 @@ jobs:
             --mount "type=bind,source=$PWD/scripts,target=/scripts,readonly" \
             --mount "type=bind,source=$NOTES_DIR/input,target=/input,readonly" \
             "$PLANNER_IMAGE" python /scripts/plan_release_notes.py \
-            --changelog /input/CHANGELOG.md --releases /input/releases.json \
+            --changelog /input/CHANGELOG.md --releases /input/releases.json --repository "$GITHUB_REPOSITORY" \
             "${args[@]}" > "$NOTES_DIR/updates.json"
 
       - name: Validate the complete plan and update only changed release bodies
@@ -184,8 +190,13 @@ jobs:
               byId.set(release.id, release);
               tags.add(release.tag_name);
             }
-            assert(keysAre(plan, ['updates', 'create', 'skipped']) && Array.isArray(plan.updates) &&
+            assert(keysAre(plan, ['updates', 'create', 'publication', 'skipped']) && Array.isArray(plan.updates) &&
               Array.isArray(plan.skipped), 'Invalid plan');
+            const publication = plan.publication;
+            assert(publishTag ? keysAre(publication, ['body', 'reset_body']) &&
+              validBody(publication.body) && publication.body.length > 0 &&
+              (publication.reset_body === null || validBody(publication.reset_body)) : publication === null,
+              'Valid release bodies are required only for tag publication');
             const seen = new Set();
             // Validate ALL destinations and payloads before the first write.
             for (const update of plan.updates) {
@@ -263,7 +274,7 @@ jobs:
           path: ${{ runner.temp }}/distribution
           digest-mismatch: error
 
-      - name: Refuse to overwrite an already signed publication
+      - name: Guard the release and clear a stale attestation link before retrying
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
         id: guard_publication
         uses: actions/github-script@v9.0.0
@@ -283,13 +294,22 @@ jobs:
             const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
               ...context.repo, release_id: release.id, per_page: 100,
             });
-            if (assets.some(asset => asset.name === 'naidan-release-integrity.yaml')) {
+            const integrity = assets.find(asset => asset.name === 'naidan-release-integrity.yaml');
+            if (integrity?.state === 'starter' && integrity.size === 0) {
+              throw new Error(`GitHub left an empty starter asset for naidan-release-integrity.yaml (asset ID ${integrity.id}). Remove that empty asset and rerun the failed publication job.`);
+            }
+            if (integrity) {
               throw new Error('This release already has signed integrity evidence. No payload assets were changed; use a new version for a new publication.');
             }
             const fs = require('node:fs/promises');
             const candidates = new Set(await fs.readdir(process.env.RUNNER_TEMP + '/distribution/assets'));
             const unexpected = assets.find(asset => !candidates.has(asset.name));
             if (unexpected) throw new Error(`Unexpected existing Release Asset: ${unexpected.name}`);
+            const {publication} = JSON.parse(await fs.readFile(process.env.NOTES_DIR + '/updates.json', 'utf8'));
+            // A different candidate must not overwrite assets while the previous link is visible.
+            if (publication.reset_body !== null && release.body !== publication.reset_body) {
+              await github.rest.repos.updateRelease({...context.repo, release_id: release.id, body: publication.reset_body});
+            }
             core.setOutput('release-id', String(release.id));
 
       - name: Upload candidate assets to the existing Release
@@ -300,7 +320,7 @@ jobs:
           files: ${{ runner.temp }}/distribution/assets/*
           fail_on_unmatched_files: true
 
-      - name: Upload the signed YAML to the Release
+      - name: Set the attestation link and upload the signed YAML to the Release
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
         id: publish_integrity
         uses: actions/github-script@v9.0.0
@@ -312,7 +332,11 @@ jobs:
             const fs = require('node:fs/promises');
             const name = 'naidan-release-integrity.yaml';
             const data = await fs.readFile(process.env.RUNNER_TEMP + '/distribution/' + name);
+            const {publication} = JSON.parse(await fs.readFile(process.env.NOTES_DIR + '/updates.json', 'utf8'));
+            const release_id = Number(process.env.RELEASE_ID);
+            // Publish the link first so the signed YAML never locks a release without its link.
+            await github.rest.repos.updateRelease({...context.repo, release_id, body: publication.body});
             await github.rest.repos.uploadReleaseAsset({
-              ...context.repo, release_id: Number(process.env.RELEASE_ID), name, data,
+              ...context.repo, release_id, name, data,
               headers: {'content-type': 'application/yaml', 'content-length': data.length},
             });

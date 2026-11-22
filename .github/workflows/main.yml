@@ -815,6 +815,7 @@ jobs:
       attestations: write
     outputs:
       artifact-id: ${{ steps.distribution.outputs.artifact-id }}
+      attestation-url: ${{ steps.attest.outputs.attestation-url }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -930,6 +931,7 @@ jobs:
     with:
       publish-tag: ${{ github.ref_name }}
       distribution-artifact-id: ${{ needs.prepare_release.outputs.artifact-id }}
+      attestation-url: ${{ needs.prepare_release.outputs.attestation-url }}
 
   prerelease_to_github:
     needs: prepare_release
@@ -948,8 +950,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+          ATTESTATION_URL: ${{ needs.prepare_release.outputs.attestation-url }}
         run: |
+          [[ "$ATTESTATION_URL" =~ ^https://github\.com/"$GITHUB_REPOSITORY"/attestations/[1-9][0-9]*$ ]]
+          printf -v notes '[Build Attestation][attestation]\n\n[attestation]: %s\n' "$ATTESTATION_URL"
           test "$(gh api -H 'Accept: application/vnd.github.sha' "repos/$GITHUB_REPOSITORY/commits/refs%2Ftags%2F$TAG")" = "$GITHUB_SHA"
           gh release create "$TAG" "$RUNNER_TEMP"/distribution/assets/* \
             "$RUNNER_TEMP/distribution/naidan-release-integrity.yaml" \
-            --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease --latest=false --notes ""
+            --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease --latest=false --notes "$notes"

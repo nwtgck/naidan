@@ -17,8 +17,9 @@ cannot influence a build, or that a reproducible rebuild produces equal bytes.
 
 Choose the expected source ref and revision independently. On the Actions run,
 download the YAML from `naidan-integrity-<attempt>` or get it with the complete
-distribution from `naidan-distribution-<attempt>`. GitHub Releases also offer
-the YAML alongside their assets. Verify the YAML **before trusting its data
+distribution from `naidan-distribution-<attempt>`. GitHub Releases offer the YAML
+alongside their assets and link to its **Build Attestation** in the release notes.
+Verify the YAML **before trusting its data
 or running a command copied from it**:
 
 ```bash

@@ -284,11 +284,18 @@ it('rejects a malformed tag before naming the candidate', () => {
   }
 });
 
-it('guards stable releases and uploads the exact signed candidate YAML by Release ID', async t => {
+it('guards stable releases, writes the attestation link, and uploads the exact signed YAML by Release ID', async t => {
   const {root, directory, prepareIntegrity} = await candidateFixture({t, sourceRef: 'refs/tags/v1.2.3'});
   prepareIntegrity();
-  const release = {id: 42, tag_name: 'v1.2.3', draft: false, prerelease: false};
-  const assets = [], uploads = [], outputs = {};
+  const release = {id: 42, tag_name: 'v1.2.3', draft: false, prerelease: false, body: ''};
+  const assets = [], writes = [], outputs = {};
+  const body = `\
+[Build Attestation][attestation]
+
+[attestation]: https://github.com/nwtgck/naidan/attestations/123
+`;
+  const planPath = path.join(root, 'updates.json');
+  await writeFile(planPath, JSON.stringify({publication: {body, reset_body: null}}));
   const context = {repo: {owner: 'nwtgck', repo: 'naidan'}};
   const github = {rest: {repos: {
     getReleaseByTag: async args => {
@@ -298,8 +305,12 @@ it('guards stable releases and uploads the exact signed candidate YAML by Releas
     listReleaseAssets: () => {
       throw new Error('Pagination required');
     },
+    updateRelease: async payload => {
+      writes.push({method: 'PATCH', payload});
+      release.body = payload.body;
+    },
     uploadReleaseAsset: async payload => {
-      uploads.push(payload);
+      writes.push({method: 'UPLOAD', payload});
       assets.push({name: payload.name});
     },
   }}, paginate: async (method, args) => {
@@ -310,7 +321,7 @@ it('guards stable releases and uploads the exact signed candidate YAML by Releas
   const core = {setOutput: (name, value) => {
     outputs[name] = value;
   }};
-  const env = {PUBLISH_TAG: 'v1.2.3', RUNNER_TEMP: root, DISTRIBUTION_ARTIFACT_ID: '', RELEASE_ID: '42'};
+  const env = {PUBLISH_TAG: 'v1.2.3', NOTES_DIR: root, RUNNER_TEMP: root, DISTRIBUTION_ARTIFACT_ID: '', RELEASE_ID: '42'};
   const run = ({stepId}) => inlineScript({stepId})(github, context, core, require, {env});
   await assert.rejects(run({stepId: 'guard_publication'}), /artifact ID/);
   env.DISTRIBUTION_ARTIFACT_ID = '100';
@@ -321,12 +332,36 @@ it('guards stable releases and uploads the exact signed candidate YAML by Releas
   await assert.rejects(run({stepId: 'guard_publication'}), /Unexpected existing Release Asset/);
   assets.pop();
   assets.push({name: 'naidan-hosted-v1.2.3.zip'});
+  assets.push({id: 5, name: integrityName, state: 'starter', size: 0});
+  await assert.rejects(run({stepId: 'guard_publication'}), /empty starter asset.*asset ID 5.*rerun/);
+  assert.deepEqual(writes, []);
+  assets.pop();
   await run({stepId: 'guard_publication'});
   assert.equal(outputs['release-id'], '42');
+  assert.deepEqual(writes, []);
+
+  release.body = body.replace('/123', '/456');
+  const resetBody = 'Changelog notes\n';
+  await writeFile(planPath, JSON.stringify({publication: {body, reset_body: resetBody}}));
+  await run({stepId: 'guard_publication'});
+  assert.deepEqual(writes, [{method: 'PATCH', payload: {...context.repo, release_id: 42, body: resetBody}}]);
+  writes.length = 0;
+
+  const updateRelease = github.rest.repos.updateRelease;
+  github.rest.repos.updateRelease = async () => {
+    throw new Error('cannot update notes');
+  };
+  await assert.rejects(run({stepId: 'publish_integrity'}), /cannot update notes/);
+  assert.deepEqual(writes, []);
+
+  github.rest.repos.updateRelease = updateRelease;
   await run({stepId: 'publish_integrity'});
-  assert.equal(uploads.length, 1);
-  assert.equal(uploads[0].release_id, 42);
-  assert.equal(uploads[0].name, integrityName);
-  assert.deepEqual(uploads[0].data, await readFile(path.join(directory, integrityName)));
+  const data = await readFile(path.join(directory, integrityName));
+  assert.deepEqual(writes, [
+    {method: 'PATCH', payload: {...context.repo, release_id: 42, body}},
+    {method: 'UPLOAD', payload: {...context.repo, release_id: 42, name: integrityName, data,
+      headers: {'content-type': 'application/yaml', 'content-length': data.length}}},
+  ]);
   await assert.rejects(run({stepId: 'guard_publication'}), /already has signed/);
+  assert.equal(release.body, body);
 });
