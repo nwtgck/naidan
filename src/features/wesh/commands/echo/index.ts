@@ -1,20 +1,19 @@
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp } from '@/features/wesh/argv';
+import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 import { writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 
-const echoHelpArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'n', long: undefined, effects: [{ key: 'noNewline', value: true }], help: { summary: 'do not output the trailing newline' } },
-    { kind: 'flag', short: 'e', long: undefined, effects: [{ key: 'escapeMode', value: 'enable' }], help: { summary: 'enable interpretation of backslash escapes' } },
-    { kind: 'flag', short: 'E', long: undefined, effects: [{ key: 'escapeMode', value: 'disable' }], help: { summary: 'disable interpretation of backslash escapes' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
-};
+const echoOptions = [
+  { semantic: undefined, forms: [{ kind: 'short', name: 'n', value: { kind: 'none' } }], summary: 'do not output the trailing newline' },
+  { semantic: undefined, forms: [{ kind: 'short', name: 'e', value: { kind: 'none' } }], summary: 'enable interpretation of backslash escapes' },
+  { semantic: undefined, forms: [{ kind: 'short', name: 'E', value: { kind: 'none' } }], summary: 'disable interpretation of backslash escapes' },
+  { semantic: undefined, forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }], summary: 'display this help and exit', category: 'common' },
+] as const;
+
+const echoArgvHelp = defineArgvHelpPresentation({
+  catalog: defineArgvCatalog({ definitions: echoOptions, nonExecutableLongOptions: [] }),
+  rows: echoOptions,
+});
 
 function isOctalByte({ value }: { value: number }): boolean {
   return value >= 0x30 && value <= 0x37;
@@ -292,7 +291,7 @@ export const echoCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'echo',
-        argvSpec: echoHelpArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: echoArgvHelp }),
       });
       return { exitCode: 0 };
     }

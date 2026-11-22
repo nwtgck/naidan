@@ -46,6 +46,24 @@ describe('printf command', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('distinguishes option-like formats from standalone help and variable assignment', async () => {
+    const literal = await execute({ script: 'printf -- --help' });
+    const assigned = await execute({ script: "printf -vvalue -- '-%s' data; printf '%s' \"$value\"" });
+    const missing = await execute({ script: 'printf -v' });
+    const repeated = await execute({ script: 'printf -v value -v other %s data' });
+
+    expect(literal.result.exitCode).toBe(0);
+    expect(literal.stdout.text).toBe('--help');
+    expect(literal.stderr.text).toBe('');
+    expect(assigned.result.exitCode).toBe(0);
+    expect(assigned.stdout.text).toBe('-data');
+    expect(assigned.stderr.text).toBe('');
+    expect(missing.result.exitCode).toBe(2);
+    expect(missing.stderr.text).toContain('printf: -v: option requires an argument');
+    expect(repeated.result.exitCode).toBe(2);
+    expect(repeated.stderr.text).toContain('printf: -v: invalid option');
+  });
+
   it('formats strings, integers, escapes, and percent signs without a trailing newline', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

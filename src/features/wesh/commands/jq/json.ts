@@ -1278,7 +1278,7 @@ export function formatJsonOutput({
   numberOrigin?: JqNumberOrigin,
 }): string {
   const separator = nullSeparator ? '\0' : join ? '' : '\n';
-  if (raw && typeof value === 'string') {
+  if (raw && !asciiOnly && typeof value === 'string') {
     return `${value}${separator}`;
   }
 

@@ -1,9 +1,9 @@
-import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type ParsedStandardArgv, type StandardArgvAction, type StandardArgvPolicy, type StandardArgvRawValue, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type ParsedStandardArgv, type StandardArgvAction, type StandardArgvPolicy, type StandardArgvRawValue, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/features/wesh/types';
 import { createAffirmativeResponseReader } from '@/features/wesh/commands/_shared/confirmation';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
-import { resolvePath } from '@/features/wesh/path';
+import { toAbsolutePath } from '@/features/wesh/path';
 
 type RmInteractiveMode = 'never' | 'always' | 'once';
 
@@ -547,11 +547,12 @@ export const rmCommandImplementation: WeshCommandImplementation = {
       try {
         const trimmedOperand = operand.replace(/\/+$/u, '') || '/';
         const finalComponent = trimmedOperand.slice(trimmedOperand.lastIndexOf('/') + 1);
-        if (recursive && (finalComponent === '.' || finalComponent === '..')) {
+        if ((recursive || removeEmptyDirectories) && (finalComponent === '.' || finalComponent === '..')) {
           throw new Error(`refusing to remove '.' or '..' directory: skipping '${operand}'`);
         }
 
-        const fullPath = resolvePath({ cwd: context.cwd, path: operand });
+        // GNU rm handles a trailing slash separately from the entry lookup.
+        const fullPath = toAbsolutePath({ cwd: context.cwd, path: operand.endsWith('/') ? trimmedOperand : operand });
         if (recursive && fullPath === '/') {
           throw new Error("it is dangerous to operate recursively on '/'");
         }
@@ -560,6 +561,9 @@ export const rmCommandImplementation: WeshCommandImplementation = {
           path: fullPath,
           finalSymlinkTreatment: 'no-follow',
         });
+        if (recursive && entry.fullPath === '/') {
+          throw new Error("it is dangerous to operate recursively on '/'");
+        }
         if (operand.length > 1 && operand.endsWith('/')) {
           const stat = await context.files.statEntry({ entry });
           if (stat.type === 'symlink' && recursive) {

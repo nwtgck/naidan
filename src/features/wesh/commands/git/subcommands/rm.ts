@@ -8,7 +8,7 @@ import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repo
 import { removeWorktreePaths } from "@/features/wesh/commands/git/worktree";
 import { collectStatus } from "@/features/wesh/commands/git/status";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 
 const RM_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
   nonExecutableLongOptions: [

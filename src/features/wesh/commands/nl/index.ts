@@ -1,10 +1,19 @@
-import { parseStandardArgv, type ArgvDiagnostic, type ParsedStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  parseStandardArgv,
+  type ParsedStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv';
 import { decodeCommandDataBytes } from '@/features/wesh/commands/_shared/data-codec';
 import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import { compileBasicRegularExpression } from '@/features/wesh/commands/_shared/posix-regexp';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/features/wesh/types';
 import { openHandleReadStream, openFileReadStream } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
@@ -74,120 +83,209 @@ function parseIntegerOption({
   value: string,
   label: string,
   minimum: number | undefined,
-}): { ok: true, value: number } | { ok: false, message: string } {
+}): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
   const numericText = stripLeadingCLocaleWhitespace({ value });
   if (!/^[+-]?\d+$/.test(numericText)) {
-    return { ok: false, message: `invalid ${label}: '${value}'` };
+    return { kind: 'invalid', message: `invalid ${label}: '${value}'` };
   }
 
   const parsed = Number(numericText);
   if (!Number.isSafeInteger(parsed)) {
-    return { ok: false, message: `invalid ${label}: '${value}'` };
+    return { kind: 'invalid', message: `invalid ${label}: '${value}'` };
   }
 
   if (minimum !== undefined && parsed < minimum) {
-    return { ok: false, message: `invalid ${label}: '${value}'` };
+    return { kind: 'invalid', message: `invalid ${label}: '${value}'` };
   }
 
-  return { ok: true, value: parsed };
+  return { kind: 'parsed', value: parsed };
 }
 
 function parseNumberWidth({
   value,
 }: {
   value: string,
-}): { ok: true, value: number } | { ok: false, message: string } {
+}): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
   const parsed = parseIntegerOption({
     value,
     label: 'line number field width',
     minimum: 1,
   });
-  if (!parsed.ok || parsed.value <= NL_MAX_NUMBER_WIDTH) {
+  if (parsed.kind === 'invalid' || parsed.value <= NL_MAX_NUMBER_WIDTH) {
     return parsed;
   }
   return {
-    ok: false,
+    kind: 'invalid',
     message: `line number field width exceeds safety limit ${NL_MAX_NUMBER_WIDTH}`,
   };
 }
 
-const nlArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'value', short: 'b', long: 'body-numbering', key: 'bodyNumbering', valueName: 'STYLE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'use STYLE for numbering body lines', valueName: 'STYLE', category: 'common' } },
-    { kind: 'value', short: 'd', long: 'section-delimiter', key: 'sectionDelimiter', valueName: 'CC', allowAttachedValue: true, parseValue: undefined, help: { summary: 'use CC for logical page delimiters', valueName: 'CC', category: 'advanced' } },
-    { kind: 'value', short: 'f', long: 'footer-numbering', key: 'footerNumbering', valueName: 'STYLE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'use STYLE for numbering footer lines', valueName: 'STYLE', category: 'advanced' } },
-    { kind: 'value', short: 'h', long: 'header-numbering', key: 'headerNumbering', valueName: 'STYLE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'use STYLE for numbering header lines', valueName: 'STYLE', category: 'advanced' } },
-    { kind: 'value', short: 'i', long: 'line-increment', key: 'increment', valueName: 'NUMBER', allowAttachedValue: true, parseValue: ({ value }) => parseIntegerOption({ value, label: 'line number increment', minimum: undefined }), help: { summary: 'line number increment at each numbered line', valueName: 'NUMBER', category: 'common' } },
-    { kind: 'value', short: 'l', long: 'join-blank-lines', key: 'joinBlankLines', valueName: 'NUMBER', allowAttachedValue: true, parseValue: ({ value }) => parseIntegerOption({ value, label: 'line number of blank lines', minimum: 0 }), help: { summary: 'group NUMBER empty lines as one numbered line', valueName: 'NUMBER', category: 'advanced' } },
-    { kind: 'value', short: 'n', long: 'number-format', key: 'numberFormat', valueName: 'FORMAT', allowAttachedValue: true, parseValue: undefined, help: { summary: 'use FORMAT for line numbers: ln, rn, or rz', valueName: 'FORMAT', category: 'common' } },
-    { kind: 'flag', short: 'p', long: 'no-renumber', effects: [{ key: 'noRenumber', value: true }], help: { summary: 'do not reset line numbers at logical pages', category: 'advanced' } },
-    { kind: 'value', short: 's', long: 'number-separator', key: 'separator', valueName: 'STRING', allowAttachedValue: true, parseValue: undefined, help: { summary: 'add STRING after each line number', valueName: 'STRING', category: 'common' } },
-    { kind: 'value', short: 'v', long: 'starting-line-number', key: 'startingLineNumber', valueName: 'NUMBER', allowAttachedValue: true, parseValue: ({ value }) => parseIntegerOption({ value, label: 'starting line number', minimum: undefined }), help: { summary: 'first line number on each logical page', valueName: 'NUMBER', category: 'common' } },
-    { kind: 'value', short: 'w', long: 'number-width', key: 'numberWidth', valueName: 'NUMBER', allowAttachedValue: true, parseValue: ({ value }) => parseNumberWidth({ value }), help: { summary: 'use NUMBER columns for line numbers', valueName: 'NUMBER', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const nlOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'bodyNumbering', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'b', value: { kind: 'required-attached-or-following', missingValueName: 'STYLE' } },
+      { kind: 'long', name: 'body-numbering', value: { kind: 'required', missingValueName: 'STYLE' } },
+    ],
+    summary: 'use STYLE for numbering body lines',
+    valueName: 'STYLE',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'sectionDelimiter', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'required-attached-or-following', missingValueName: 'CC' } },
+      { kind: 'long', name: 'section-delimiter', value: { kind: 'required', missingValueName: 'CC' } },
+    ],
+    summary: 'use CC for logical page delimiters',
+    valueName: 'CC',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'footerNumbering', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'required-attached-or-following', missingValueName: 'STYLE' } },
+      { kind: 'long', name: 'footer-numbering', value: { kind: 'required', missingValueName: 'STYLE' } },
+    ],
+    summary: 'use STYLE for numbering footer lines',
+    valueName: 'STYLE',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'headerNumbering', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'h', value: { kind: 'required-attached-or-following', missingValueName: 'STYLE' } },
+      { kind: 'long', name: 'header-numbering', value: { kind: 'required', missingValueName: 'STYLE' } },
+    ],
+    summary: 'use STYLE for numbering header lines',
+    valueName: 'STYLE',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'increment', parse: ({ rawValue }: { rawValue: string }) => parseIntegerOption({ value: rawValue, label: 'line number increment', minimum: undefined }) },
+    forms: [
+      { kind: 'short', name: 'i', value: { kind: 'required-attached-or-following', missingValueName: 'NUMBER' } },
+      { kind: 'long', name: 'line-increment', value: { kind: 'required', missingValueName: 'NUMBER' } },
+    ],
+    summary: 'line number increment at each numbered line',
+    valueName: 'NUMBER',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'joinBlankLines', parse: ({ rawValue }: { rawValue: string }) => parseIntegerOption({ value: rawValue, label: 'line number of blank lines', minimum: 0 }) },
+    forms: [
+      { kind: 'short', name: 'l', value: { kind: 'required-attached-or-following', missingValueName: 'NUMBER' } },
+      { kind: 'long', name: 'join-blank-lines', value: { kind: 'required', missingValueName: 'NUMBER' } },
+    ],
+    summary: 'group NUMBER empty lines as one numbered line',
+    valueName: 'NUMBER',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'numberFormat', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'n', value: { kind: 'required-attached-or-following', missingValueName: 'FORMAT' } },
+      { kind: 'long', name: 'number-format', value: { kind: 'required', missingValueName: 'FORMAT' } },
+    ],
+    summary: 'use FORMAT for line numbers: ln, rn, or rz',
+    valueName: 'FORMAT',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'noRenumber', value: true }] },
+    forms: [
+      { kind: 'short', name: 'p', value: { kind: 'none' } },
+      { kind: 'long', name: 'no-renumber', value: { kind: 'none' } },
+    ],
+    summary: 'do not reset line numbers at logical pages',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'separator', parse: undefined },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'required-attached-or-following', missingValueName: 'STRING' } },
+      { kind: 'long', name: 'number-separator', value: { kind: 'required', missingValueName: 'STRING' } },
+    ],
+    summary: 'add STRING after each line number',
+    valueName: 'STRING',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'startingLineNumber', parse: ({ rawValue }: { rawValue: string }) => parseIntegerOption({ value: rawValue, label: 'starting line number', minimum: undefined }) },
+    forms: [
+      { kind: 'short', name: 'v', value: { kind: 'required-attached-or-following', missingValueName: 'NUMBER' } },
+      { kind: 'long', name: 'starting-line-number', value: { kind: 'required', missingValueName: 'NUMBER' } },
+    ],
+    summary: 'first line number on each logical page',
+    valueName: 'NUMBER',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'numberWidth', parse: ({ rawValue }: { rawValue: string }) => parseNumberWidth({ value: rawValue }) },
+    forms: [
+      { kind: 'short', name: 'w', value: { kind: 'required-attached-or-following', missingValueName: 'NUMBER' } },
+      { kind: 'long', name: 'number-width', value: { kind: 'required', missingValueName: 'NUMBER' } },
+    ],
+    summary: 'use NUMBER columns for line numbers',
+    valueName: 'NUMBER',
+    category: 'common',
+  },
+] as const;
+
+const nlArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: nlOptions,
+  nonExecutableLongOptions: [],
+});
+const nlArgvHelp = defineArgvHelpPresentation({ catalog: nlArgvCatalog, rows: nlOptions });
+const nlArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'all',
 };
 
 
-interface ParsedNlArgv {
-  readonly parsed: ParsedStandardArgv,
-  readonly parsedArgs: string[],
-  readonly helpMode: 'normal' | 'after-unknown-options',
-}
 
-function isUnknownOptionDiagnostic({
-  diagnostic,
-}: {
-  diagnostic: ArgvDiagnostic,
-}): boolean {
-  switch (diagnostic.kind) {
-  case 'unknown_short_option':
-  case 'unknown_long_option':
-    return true;
-  case 'missing_option_value':
-  case 'invalid_option_value':
-    return false;
-  default: {
-    const _ex: never = diagnostic.kind;
-    throw new Error(`Unhandled nl argv diagnostic kind: ${_ex}`);
-  }
-  }
-}
+type NlArgvDiagnostic = ParsedStandardArgv<never>['diagnostics'][number];
 
-function parseNlArgv({
-  args,
-}: {
-  args: string[],
-}): ParsedNlArgv {
+function parseNlArgv({ args }: { args: readonly string[] }): {
+  parsed: ParsedStandardArgv<never>,
+  precedingUnknownOptions: readonly NlArgvDiagnostic[],
+} {
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] !== '--help') {
       continue;
     }
 
-    const parsedPrefix = parseStandardArgv({
-      args: args.slice(0, index + 1),
-      spec: nlArgvSpec,
-    });
-    if (
-      parsedPrefix.optionValues.help === true
-      && parsedPrefix.diagnostics.every((diagnostic) => isUnknownOptionDiagnostic({ diagnostic }))
-    ) {
-      return {
-        parsed: parsedPrefix,
-        parsedArgs: args.slice(0, index + 1),
-        helpMode: parsedPrefix.diagnostics.length === 0 ? 'normal' : 'after-unknown-options',
-      };
+    const prefix = args.slice(0, index + 1);
+    const result = parseStandardArgv({ args: prefix, catalog: nlArgvCatalog, policy: nlArgvPolicy });
+    if (result.diagnostics.some(diagnostic => diagnostic.kind !== 'unknown_short_option' && diagnostic.kind !== 'unknown_long_option')) {
+      continue;
+    }
+
+    // Unknown options preceding --help still produce diagnostics. Parse the remaining
+    // tokens again so help handling never depends on the values of a failed parse.
+    const unknownIndices = new Set(result.diagnostics.map(diagnostic => diagnostic.argvIndex));
+    const parsed = unknownIndices.size === 0
+      ? result
+      : parseStandardArgv({
+        args: prefix.map((token, argvIndex) => unknownIndices.has(argvIndex) ? '' : token),
+        catalog: nlArgvCatalog,
+        policy: nlArgvPolicy,
+      });
+    if (parsed.diagnostics.length === 0 && parsed.optionValues.help === true) {
+      return { parsed, precedingUnknownOptions: result.diagnostics };
     }
   }
 
   return {
-    parsed: parseStandardArgv({ args, spec: nlArgvSpec }),
-    parsedArgs: args,
-    helpMode: 'normal',
+    parsed: parseStandardArgv({ args, catalog: nlArgvCatalog, policy: nlArgvPolicy }),
+    precedingUnknownOptions: [],
   };
 }
 
@@ -252,6 +350,7 @@ function parseNumberFormat({
 }
 
 interface NlPreHelpSemanticDiagnostic {
+  readonly argvIndex: number,
   readonly message: string,
   readonly fatal: boolean,
 }
@@ -260,18 +359,19 @@ function collectNlPreHelpSemanticDiagnostics({
   parsed,
   characterLocaleMode,
 }: {
-  parsed: ParsedStandardArgv,
+  parsed: ParsedStandardArgv<never>,
   characterLocaleMode: WeshCharacterLocaleMode,
 }): readonly NlPreHelpSemanticDiagnostic[] {
   const diagnostics: NlPreHelpSemanticDiagnostic[] = [];
 
-  for (const occurrence of parsed.occurrences) {
-    if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') {
+  for (const occurrence of parsed.occurrences ?? []) {
+    const { semantic, value, argvIndex } = occurrence;
+    if (semantic.kind !== 'required-value' || value.kind === 'none') {
       continue;
     }
 
     const styleLabel = (() => {
-      switch (occurrence.key) {
+      switch (semantic.key) {
       case 'bodyNumbering':
         return 'body numbering style';
       case 'footerNumbering':
@@ -285,12 +385,13 @@ function collectNlPreHelpSemanticDiagnostics({
 
     if (styleLabel !== undefined) {
       const style = parseNumberingStyle({
-        value: occurrence.value,
+        value: value.rawValue,
         label: styleLabel,
         characterLocaleMode,
       });
       if (!style.ok) {
         diagnostics.push({
+          argvIndex,
           message: style.message,
           fatal: style.message === 'invalid regular expression',
         });
@@ -301,62 +402,15 @@ function collectNlPreHelpSemanticDiagnostics({
       continue;
     }
 
-    if (occurrence.key === 'numberFormat') {
-      const format = parseNumberFormat({ value: occurrence.value });
+    if (semantic.key === 'numberFormat') {
+      const format = parseNumberFormat({ value: value.rawValue });
       if (!format.ok) {
-        diagnostics.push({ message: format.message, fatal: false });
+        diagnostics.push({ argvIndex, message: format.message, fatal: false });
       }
     }
   }
 
   return diagnostics;
-}
-
-interface NlOrderedPreHelpDiagnostic {
-  readonly message: string,
-  readonly fatal: boolean,
-}
-
-function collectNlMixedPreHelpDiagnosticsInArgvOrder({
-  args,
-  characterLocaleMode,
-}: {
-  args: string[],
-  characterLocaleMode: WeshCharacterLocaleMode,
-}): readonly NlOrderedPreHelpDiagnostic[] {
-  const ordered: NlOrderedPreHelpDiagnostic[] = [];
-  let unknownCount = 0;
-  let semanticCount = 0;
-
-  for (let end = 1; end <= args.length; end += 1) {
-    const parsedPrefix = parseStandardArgv({ args: args.slice(0, end), spec: nlArgvSpec });
-    const unknownDiagnostics = parsedPrefix.diagnostics.filter((diagnostic) => (
-      isUnknownOptionDiagnostic({ diagnostic })
-    ));
-    const semanticDiagnostics = collectNlPreHelpSemanticDiagnostics({
-      parsed: parsedPrefix,
-      characterLocaleMode,
-    });
-
-    for (; unknownCount < unknownDiagnostics.length; unknownCount += 1) {
-      const diagnostic = unknownDiagnostics[unknownCount];
-      if (diagnostic !== undefined) {
-        ordered.push({ message: diagnostic.message, fatal: false });
-      }
-    }
-    for (; semanticCount < semanticDiagnostics.length; semanticCount += 1) {
-      const diagnostic = semanticDiagnostics[semanticCount];
-      if (diagnostic === undefined) {
-        continue;
-      }
-      ordered.push(diagnostic);
-      if (diagnostic.fatal) {
-        return ordered;
-      }
-    }
-  }
-
-  return ordered;
 }
 
 function parseSectionDelimiter({
@@ -396,7 +450,7 @@ function buildOptions({
   optionValues,
   characterLocaleMode,
 }: {
-  optionValues: Record<string, boolean | string | number>,
+  optionValues: ParsedStandardArgv<never>['optionValues'],
   characterLocaleMode: WeshCharacterLocaleMode,
 }): { ok: true, options: NlOptions } | { ok: false, message: string } {
   const bodyStyle = parseNumberingStyle({
@@ -888,37 +942,7 @@ function shouldForwardSignal({
 
 export const nlCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsedArgv = parseNlArgv({ args: context.args });
-    const { parsed, parsedArgs, helpMode } = parsedArgv;
-
-    const characterLocaleMode = resolveCharacterLocaleMode({ env: context.env });
-
-    switch (helpMode) {
-    case 'after-unknown-options': {
-      const orderedDiagnostics = collectNlMixedPreHelpDiagnosticsInArgvOrder({
-        args: parsedArgs,
-        characterLocaleMode,
-      });
-      for (const diagnostic of orderedDiagnostics) {
-        await context.text().error({ text: `nl: ${diagnostic.message}\n` });
-        if (diagnostic.fatal) {
-          return { exitCode: 1 };
-        }
-      }
-      await writeCommandHelp({
-        context,
-        command: 'nl',
-        argvSpec: nlArgvSpec,
-      });
-      return { exitCode: 0 };
-    }
-    case 'normal':
-      break;
-    default: {
-      const _ex: never = helpMode;
-      throw new Error(`Unhandled nl help mode: ${_ex}`);
-    }
-    }
+    const { parsed, precedingUnknownOptions } = parseNlArgv({ args: context.args });
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
@@ -926,17 +950,24 @@ export const nlCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'nl',
         message: `nl: ${diagnostic.message}`,
-        argvSpec: nlArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: nlArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
     if (parsed.optionValues.help === true) {
-      const semanticDiagnostics = collectNlPreHelpSemanticDiagnostics({
-        parsed,
-        characterLocaleMode,
-      });
-      for (const semanticDiagnostic of semanticDiagnostics) {
+      const diagnostics = [
+        ...precedingUnknownOptions.map(diagnostic => ({
+          argvIndex: diagnostic.argvIndex,
+          message: diagnostic.message,
+          fatal: false,
+        })),
+        ...collectNlPreHelpSemanticDiagnostics({
+          parsed,
+          characterLocaleMode: resolveCharacterLocaleMode({ env: context.env }),
+        }),
+      ].sort((first, second) => first.argvIndex - second.argvIndex);
+      for (const semanticDiagnostic of diagnostics) {
         await context.text().error({ text: `nl: ${semanticDiagnostic.message}\n` });
         if (semanticDiagnostic.fatal) {
           return { exitCode: 1 };
@@ -945,21 +976,21 @@ export const nlCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'nl',
-        argvSpec: nlArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: nlArgvHelp }),
       });
       return { exitCode: 0 };
     }
 
     const builtOptions = buildOptions({
       optionValues: parsed.optionValues,
-      characterLocaleMode,
+      characterLocaleMode: resolveCharacterLocaleMode({ env: context.env }),
     });
     if (!builtOptions.ok) {
       await writeCommandUsageError({
         context,
         command: 'nl',
         message: `nl: ${builtOptions.message}`,
-        argvSpec: nlArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: nlArgvHelp }),
       });
       return { exitCode: 1 };
     }

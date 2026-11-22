@@ -774,4 +774,19 @@ zz
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('preserves dash-prefixed input names after the option boundary', async () => {
+    await writeFile({ path: '-plain', data: 'abc' });
+    const { result, stdout, stderr } = await execute({
+      script: 'xxd -c1 -p -- -plain',
+    });
+
+    expect(stdout.text).toBe(`\
+61
+62
+63
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 });

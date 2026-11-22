@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -6,6 +6,11 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+import { shoptCommandDefinition } from './definition';
+
+beforeAll(async () => {
+  await shoptCommandDefinition.loadShellBuiltin();
+});
 
 describe('shopt command', () => {
   let wesh: Wesh;
@@ -67,6 +72,35 @@ shopt -s globstar
 shopt -s nullglob
 0
 1
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('shares execution option state with set -o', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+set -a
+shopt -o allexport
+shopt -po allexport
+shopt -uo allexport
+shopt -qo allexport
+printf 'query=%s\\n' "$?"
+shopt -so allexport pipefail
+shopt -qop allexport pipefail
+printf 'query=%s\\n' "$?"
+set +o`,
+    });
+
+    expect(stdout.text).toBe(`\
+allexport      \ton
+set -o allexport
+query=1
+query=0
+set -o allexport
+set +o errexit
+set +o nounset
+set -o pipefail
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
@@ -173,5 +207,13 @@ printf 'query=%s\n' "$?"`,
     expect(stdout.text).toBe('1|1\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('reports an option-like operand after -- as a shell option name', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'shopt -- -s' });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('shopt: -s: invalid shell option name\n');
+    expect(result.exitCode).toBe(1);
   });
 });

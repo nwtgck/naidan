@@ -5,7 +5,7 @@ import { collectStatus, type GitStatus, type GitStatusEntry } from "@/features/w
 import { formatPorcelainV1Branch, printLongStatus, renderPorcelainV1, renderPorcelainV2, renderShortStatus } from "@/features/wesh/commands/git/status-output";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
 import { matchRepositoryPathSelection } from "@/features/wesh/commands/git/pathspec";
-import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 
 type StatusDeferredSemantic = 'short' | 'porcelain' | 'branch' | 'nul';
 

@@ -1,6 +1,7 @@
+import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import { bytesToHex, compareBytes, concatBytes, writeHexBytes } from './bytes';
 import type { GitFiles } from './files';
-import { pathExists, readFileBytes, replaceFileViaLock } from './files';
+import { readFileBytes, replaceFileViaLock } from './files';
 import { readOffsetVariableWidth, writeOffsetVariableWidth } from './offset-varint';
 import type { GitRepository } from './repository';
 import { joinPath } from './repository';
@@ -342,12 +343,23 @@ export function serializeIndexFile({ entries, version }: {
   return result;
 }
 
+async function resolveIndexEntry({ files, path }: { files: GitFiles, path: string }) {
+  try {
+    return await files.resolveEntry({ path, finalSymlinkTreatment: 'no-follow', pinBacking: true });
+  } catch (error: unknown) {
+    if (isPathNotFoundError({ error })) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export async function readIndexRaw({ files, repository }: {
   files: GitFiles,
   repository: GitRepository,
 }): Promise<GitRawIndexEntry[]> {
   const indexPath = joinPath({ base: repository.gitDirPath, child: 'index' });
-  if (!await pathExists({ files, path: indexPath })) {
+  if (await resolveIndexEntry({ files, path: indexPath }) === null) {
     return [];
   }
   return parseIndexFileRaw({ bytes: await readFileBytes({ files, path: indexPath }) });
@@ -372,22 +384,33 @@ export function collectUnmergedPaths({ entries }: {
   return paths;
 }
 
-export async function writeIndex({ files, repository, entries }: {
+export async function writeIndex({ files, repository, entries, update }: {
   files: GitFiles,
   repository: GitRepository,
-  entries: readonly GitIndexEntry[],
-}): Promise<void> {
+} & ({ entries: readonly GitIndexEntry[], update?: never } | {
+  entries?: never,
+  update: ({ entries }: { entries: GitIndexEntry[] }) => Promise<readonly GitIndexEntry[]>,
+})): Promise<void> {
   const indexPath = joinPath({ base: repository.gitDirPath, child: 'index' });
-  let version: GitIndexVersion = 2;
-  if (await pathExists({ files, path: indexPath })) {
-    const state = parseIndexState({ bytes: await readFileBytes({ files, path: indexPath }) });
-    assertWritableIndexExtensions({ extensions: state.extensions });
-    version = state.version;
-  }
   await replaceFileViaLock({
     files,
     path: indexPath,
-    bytes: serializeIndexFile({ entries, version }),
+    prepareBytes: async () => {
+      const expectedDestination = await resolveIndexEntry({ files, path: indexPath });
+      const current = expectedDestination === null
+        ? undefined
+        : parseIndexState({ bytes: await readFileBytes({ files, path: indexPath }) });
+      if (current !== undefined) {
+        assertWritableIndexExtensions({ extensions: current.extensions });
+      }
+      const nextEntries = update === undefined
+        ? entries
+        : await update({ entries: current?.entries.map(entry => decodeIndexEntry({ entry })) ?? [] });
+      return {
+        bytes: serializeIndexFile({ entries: nextEntries, version: current?.version ?? 2 }),
+        expectedDestination: { entry: expectedDestination ?? undefined },
+      };
+    },
   });
 }
 

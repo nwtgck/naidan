@@ -13,7 +13,7 @@ import { integrateDivergentMerge } from "@/features/wesh/commands/git/merge-oper
 import { resolveContentConfigForContext } from "@/features/wesh/commands/git/content-config";
 import { printCheckoutConflicts } from "@/features/wesh/commands/git/checkout-like";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 
 const PULL_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
   nonExecutableLongOptions: [

@@ -1,10 +1,13 @@
-import { standardSemanticIssuePrecedesDiagnostic } from '@/features/wesh/commands/_shared/argv';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
-import type {
-  ArgvOptionOccurrence,
-  StandardArgvParserSpec,
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  parseStandardArgv,
+  type ParsedStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvOccurrence,
+  type StandardArgvPolicy,
 } from '@/features/wesh/argv';
-import { parseStandardArgv } from '@/features/wesh/argv';
 import type { DuOutputFormat } from './format';
 import {
   parseDuBlockSize,
@@ -37,71 +40,247 @@ export type DuOptionsParseResult =
   | {
       ok: true,
       options: DuOptions,
-      operands: string[],
-      helpRequested: boolean,
+      operands: readonly string[],
+      helpRequested: false,
+    }
+  | {
+      ok: true,
+      helpRequested: true,
       preHelpDiagnostics: readonly string[],
+      excludePatterns: readonly string[],
+      excludeFromFiles: readonly string[],
     }
   | {
       ok: false,
       message: string,
     };
 
-function parseNonNegativeInteger({ value }: { value: string }):
-  | { ok: true, value: number }
-  | { ok: false, message: string } {
-  const numericText = stripLeadingCLocaleWhitespace({ value });
+function parseNonNegativeInteger({ rawValue }: { rawValue: string }):
+  | { kind: 'parsed', value: number }
+  | { kind: 'invalid', message: string } {
+  const numericText = stripLeadingCLocaleWhitespace({ value: rawValue });
   if (!/^\+?[0-9]+$/u.test(numericText)) {
     return {
-      ok: false,
-      message: `invalid maximum depth '${value}'`,
+      kind: 'invalid',
+      message: `invalid maximum depth '${rawValue}'`,
     };
   }
 
   const parsed = Number(numericText);
   if (!Number.isSafeInteger(parsed)) {
     return {
-      ok: false,
-      message: `maximum depth is too large: '${value}'`,
+      kind: 'invalid',
+      message: `maximum depth is too large: '${rawValue}'`,
     };
   }
 
-  return { ok: true, value: parsed };
+  return { kind: 'parsed', value: parsed };
 }
 
-export const duArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: '0', long: 'null', effects: [{ key: 'recordTerminator', value: 'null' }], help: { summary: 'end each output line with NUL, not newline', category: 'common' } },
-    { kind: 'flag', short: 'a', long: 'all', effects: [{ key: 'showAll', value: true }], help: { summary: 'write counts for all files, not just directories', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'apparent-size', effects: [{ key: 'apparentSize', value: true }], help: { summary: 'use logical file sizes (the Wesh default)', category: 'advanced' } },
-    { kind: 'flag', short: 'b', long: 'bytes', effects: [{ key: 'outputMode', value: 'bytes' }], help: { summary: 'equivalent to --apparent-size --block-size=1', category: 'common' } },
-    { kind: 'value', short: 'B', long: 'block-size', key: 'blockSize', valueName: 'SIZE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'scale sizes by SIZE before printing', valueName: 'SIZE', category: 'common' } },
-    { kind: 'flag', short: 'c', long: 'total', effects: [{ key: 'showTotal', value: true }], help: { summary: 'produce a grand total', category: 'common' } },
-    { kind: 'flag', short: 'D', long: 'dereference-args', effects: [{ key: 'symlinkMode', value: 'command-line' }], help: { summary: 'dereference only command-line symbolic links', category: 'advanced' } },
-    { kind: 'flag', short: 'H', long: undefined, effects: [{ key: 'symlinkMode', value: 'command-line' }], help: { summary: 'equivalent to --dereference-args', category: 'advanced' } },
-    { kind: 'value', short: 'd', long: 'max-depth', key: 'maxDepth', valueName: 'N', allowAttachedValue: true, parseValue: parseNonNegativeInteger, help: { summary: 'print entries only if they are N or fewer levels below an argument', valueName: 'N', category: 'common' } },
-    { kind: 'value', short: undefined, long: 'files0-from', key: 'files0From', valueName: 'FILE', allowAttachedValue: false, parseValue: undefined, help: { summary: 'read NUL-terminated file names from FILE', valueName: 'FILE', category: 'advanced' } },
-    { kind: 'flag', short: 'h', long: 'human-readable', effects: [{ key: 'outputMode', value: 'human-1024' }], help: { summary: 'print sizes in powers of 1024', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'si', effects: [{ key: 'outputMode', value: 'human-1000' }], help: { summary: 'print sizes in powers of 1000', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'inodes', effects: [{ key: 'metric', value: 'inodes' }], help: { summary: 'list entry counts instead of byte usage', category: 'advanced' } },
-    { kind: 'flag', short: 'k', long: undefined, effects: [{ key: 'outputMode', value: 'kibibytes' }], help: { summary: 'like --block-size=1K', category: 'common' } },
-    { kind: 'flag', short: 'L', long: 'dereference', effects: [{ key: 'symlinkMode', value: 'logical' }], help: { summary: 'dereference all symbolic links', category: 'advanced' } },
-    { kind: 'flag', short: 'l', long: 'count-links', effects: [{ key: 'countLinks', value: true }], help: { summary: 'count repeated resolved entries multiple times', category: 'advanced' } },
-    { kind: 'flag', short: 'm', long: undefined, effects: [{ key: 'outputMode', value: 'mebibytes' }], help: { summary: 'like --block-size=1M', category: 'common' } },
-    { kind: 'flag', short: 'P', long: 'no-dereference', effects: [{ key: 'symlinkMode', value: 'physical' }], help: { summary: 'do not follow symbolic links (the default)', category: 'advanced' } },
-    { kind: 'flag', short: 'S', long: 'separate-dirs', effects: [{ key: 'separateDirs', value: true }], help: { summary: 'for directories, exclude subdirectory sizes from displayed values', category: 'advanced' } },
-    { kind: 'flag', short: 's', long: 'summarize', effects: [{ key: 'summarize', value: true }], help: { summary: 'display only a total for each argument', category: 'common' } },
-    { kind: 'value', short: 't', long: 'threshold', key: 'threshold', valueName: 'SIZE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'exclude entries outside the SIZE threshold', valueName: 'SIZE', category: 'advanced' } },
-    { kind: 'value', short: 'X', long: 'exclude-from', key: 'excludeFrom', valueName: 'FILE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'exclude entries matching patterns from FILE', valueName: 'FILE', category: 'advanced' } },
-    { kind: 'value', short: undefined, long: 'exclude', key: 'excludePattern', valueName: 'PATTERN', allowAttachedValue: false, parseValue: undefined, help: { summary: 'exclude entries matching PATTERN', valueName: 'PATTERN', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const duOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'recordTerminator', value: 'null' }] },
+    forms: [
+      { kind: 'short', name: '0', value: { kind: 'none' } },
+      { kind: 'long', name: 'null', value: { kind: 'none' } },
+    ],
+    summary: 'end each output line with NUL, not newline',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showAll', value: true }] },
+    forms: [
+      { kind: 'short', name: 'a', value: { kind: 'none' } },
+      { kind: 'long', name: 'all', value: { kind: 'none' } },
+    ],
+    summary: 'write counts for all files, not just directories',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'apparentSize', value: true }] },
+    forms: [{ kind: 'long', name: 'apparent-size', value: { kind: 'none' } }],
+    summary: 'use logical file sizes (the Wesh default)',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'outputMode', value: 'bytes' }] },
+    forms: [
+      { kind: 'short', name: 'b', value: { kind: 'none' } },
+      { kind: 'long', name: 'bytes', value: { kind: 'none' } },
+    ],
+    summary: 'equivalent to --apparent-size --block-size=1',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'blockSize', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'B', value: { kind: 'required-attached-or-following', missingValueName: 'SIZE' } },
+      { kind: 'long', name: 'block-size', value: { kind: 'required', missingValueName: 'SIZE' } },
+    ],
+    summary: 'scale sizes by SIZE before printing',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showTotal', value: true }] },
+    forms: [
+      { kind: 'short', name: 'c', value: { kind: 'none' } },
+      { kind: 'long', name: 'total', value: { kind: 'none' } },
+    ],
+    summary: 'produce a grand total',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'symlinkMode', value: 'command-line' }] },
+    forms: [
+      { kind: 'short', name: 'D', value: { kind: 'none' } },
+      { kind: 'long', name: 'dereference-args', value: { kind: 'none' } },
+    ],
+    summary: 'dereference only command-line symbolic links',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'symlinkMode', value: 'command-line' }] },
+    forms: [{ kind: 'short', name: 'H', value: { kind: 'none' } }],
+    summary: 'equivalent to --dereference-args',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'maxDepth', parse: parseNonNegativeInteger },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'required-attached-or-following', missingValueName: 'N' } },
+      { kind: 'long', name: 'max-depth', value: { kind: 'required', missingValueName: 'N' } },
+    ],
+    summary: 'print entries only if they are N or fewer levels below an argument',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'files0From', parse: undefined },
+    forms: [{ kind: 'long', name: 'files0-from', value: { kind: 'required', missingValueName: 'FILE' } }],
+    summary: 'read NUL-terminated file names from FILE',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'outputMode', value: 'human-1024' }] },
+    forms: [
+      { kind: 'short', name: 'h', value: { kind: 'none' } },
+      { kind: 'long', name: 'human-readable', value: { kind: 'none' } },
+    ],
+    summary: 'print sizes in powers of 1024',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'outputMode', value: 'human-1000' }] },
+    forms: [{ kind: 'long', name: 'si', value: { kind: 'none' } }],
+    summary: 'print sizes in powers of 1000',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'metric', value: 'inodes' }] },
+    forms: [{ kind: 'long', name: 'inodes', value: { kind: 'none' } }],
+    summary: 'list entry counts instead of byte usage',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'outputMode', value: 'kibibytes' }] },
+    forms: [{ kind: 'short', name: 'k', value: { kind: 'none' } }],
+    summary: 'like --block-size=1K',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'symlinkMode', value: 'logical' }] },
+    forms: [
+      { kind: 'short', name: 'L', value: { kind: 'none' } },
+      { kind: 'long', name: 'dereference', value: { kind: 'none' } },
+    ],
+    summary: 'dereference all symbolic links',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'countLinks', value: true }] },
+    forms: [
+      { kind: 'short', name: 'l', value: { kind: 'none' } },
+      { kind: 'long', name: 'count-links', value: { kind: 'none' } },
+    ],
+    summary: 'count repeated resolved entries multiple times',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'outputMode', value: 'mebibytes' }] },
+    forms: [{ kind: 'short', name: 'm', value: { kind: 'none' } }],
+    summary: 'like --block-size=1M',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'symlinkMode', value: 'physical' }] },
+    forms: [
+      { kind: 'short', name: 'P', value: { kind: 'none' } },
+      { kind: 'long', name: 'no-dereference', value: { kind: 'none' } },
+    ],
+    summary: 'do not follow symbolic links (the default)',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'separateDirs', value: true }] },
+    forms: [
+      { kind: 'short', name: 'S', value: { kind: 'none' } },
+      { kind: 'long', name: 'separate-dirs', value: { kind: 'none' } },
+    ],
+    summary: 'for directories, exclude subdirectory sizes from displayed values',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'summarize', value: true }] },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'none' } },
+      { kind: 'long', name: 'summarize', value: { kind: 'none' } },
+    ],
+    summary: 'display only a total for each argument',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'threshold', parse: undefined },
+    forms: [
+      { kind: 'short', name: 't', value: { kind: 'required-attached-or-following', missingValueName: 'SIZE' } },
+      { kind: 'long', name: 'threshold', value: { kind: 'required', missingValueName: 'SIZE' } },
+    ],
+    summary: 'exclude entries outside the SIZE threshold',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'excludeFrom', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'X', value: { kind: 'required-attached-or-following', missingValueName: 'FILE' } },
+      { kind: 'long', name: 'exclude-from', value: { kind: 'required', missingValueName: 'FILE' } },
+    ],
+    summary: 'exclude entries matching patterns from FILE',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'excludePattern', parse: undefined },
+    forms: [{ kind: 'long', name: 'exclude', value: { kind: 'required', missingValueName: 'PATTERN' } }],
+    summary: 'exclude entries matching PATTERN',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const duArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: duOptions,
+  nonExecutableLongOptions: [],
+});
+export const duArgvHelp = defineArgvHelpPresentation({ catalog: duArgvCatalog, rows: duOptions });
+const duArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'all',
 };
 
-function getDefaultOutputFormat({ env }: { env: Map<string, string> }): DuOutputFormat {
+function getDefaultOutputFormat({ env }: { env: ReadonlyMap<string, string> }): DuOutputFormat {
   for (const key of ['DU_BLOCK_SIZE', 'BLOCK_SIZE', 'BLOCKSIZE']) {
     const raw = env.get(key);
     if (raw === undefined) {
@@ -123,9 +302,11 @@ function getDefaultOutputFormat({ env }: { env: Map<string, string> }): DuOutput
 
 function applyOccurrence({
   occurrence,
+  args,
   state,
 }: {
-  occurrence: ArgvOptionOccurrence,
+  occurrence: StandardArgvOccurrence<StandardArgvAction<never>>,
+  args: readonly string[],
   state: {
     outputFormat: DuOutputFormat,
     symlinkMode: DuSymlinkMode,
@@ -136,10 +317,9 @@ function applyOccurrence({
     threshold: DuThreshold | undefined,
   },
 }): { ok: true } | { ok: false, message: string } {
-  switch (occurrence.kind) {
-  case 'flag':
-  case 'special': {
-    for (const effect of occurrence.effects) {
+  switch (occurrence.semantic.kind) {
+  case 'effects': {
+    for (const effect of occurrence.semantic.effects) {
       switch (effect.key) {
       case 'outputMode':
         switch (effect.value) {
@@ -184,13 +364,24 @@ function applyOccurrence({
     }
     return { ok: true };
   }
-  case 'value':
-    switch (occurrence.key) {
-    case 'blockSize': {
-      if (typeof occurrence.value !== 'string') {
-        return { ok: false, message: 'du: invalid block size' };
+  case 'required-value': {
+    const { value } = occurrence;
+    const rawValue = (() => {
+      switch (value.kind) {
+      case 'inline':
+      case 'next-argv':
+        return value.rawValue;
+      case 'none':
+        throw new Error('Missing value for du option occurrence');
+      default: {
+        const _ex: never = value;
+        throw new Error(`Unhandled du option value: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
       }
-      const parsed = parseDuBlockSize({ value: occurrence.value });
+      }
+    })();
+    switch (occurrence.semantic.key) {
+    case 'blockSize': {
+      const parsed = parseDuBlockSize({ value: rawValue });
       if (!parsed.ok) {
         return { ok: false, message: `du: ${parsed.message}` };
       }
@@ -198,24 +389,18 @@ function applyOccurrence({
       return { ok: true };
     }
     case 'excludePattern':
-      if (typeof occurrence.value === 'string') {
-        state.excludePatterns.push(occurrence.value);
-      }
+      state.excludePatterns.push(rawValue);
       return { ok: true };
     case 'excludeFrom':
-      if (typeof occurrence.value === 'string') {
-        state.excludeFromFiles.push(occurrence.value);
-      }
+      state.excludeFromFiles.push(rawValue);
       return { ok: true };
     case 'threshold': {
-      if (typeof occurrence.value !== 'string') {
-        return { ok: false, message: 'du: invalid threshold' };
-      }
-      const parsed = parseDuThreshold({ value: occurrence.value });
+      const parsed = parseDuThreshold({ value: rawValue });
       if (!parsed.ok) {
+        const option = args[occurrence.argvIndex]?.startsWith('--') ? '--threshold' : '-t';
         return {
           ok: false,
-          message: `du: invalid ${occurrence.option} argument '${occurrence.value}'`,
+          message: `du: invalid ${option} argument '${rawValue}'`,
         };
       }
       state.threshold = parsed.threshold;
@@ -227,67 +412,47 @@ function applyOccurrence({
     default:
       return { ok: true };
     }
+  }
+  case 'deferred':
+    throw new Error('Unexpected deferred du option');
   default: {
-    const _ex: never = occurrence;
+    const _ex: never = occurrence.semantic;
     throw new Error(`Unhandled du option occurrence: ${_ex}`);
   }
   }
 }
 
-function truncateArgsAtHelp({ args }: { args: string[] }): string[] {
+function parseDuArgv({ args }: { args: readonly string[] }): {
+  parsed: ParsedStandardArgv<never>,
+  helpRequested: boolean,
+} {
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] !== '--help') {
       continue;
     }
     const prefix = args.slice(0, index + 1);
-    const parsedPrefix = parseStandardArgv({ args: prefix, spec: duArgvSpec });
-    if (parsedPrefix.optionValues.help === true) {
-      return prefix;
+    const parsed = parseStandardArgv({ args: prefix, catalog: duArgvCatalog, policy: duArgvPolicy });
+    // GNU du reports some diagnostics and still processes a later --help.
+    // Only a recorded occurrence makes this token a help option.
+    if (parsed.occurrences?.some(occurrence => occurrence.argvIndex === index)) {
+      return { parsed, helpRequested: true };
     }
   }
-  return args;
+  return {
+    parsed: parseStandardArgv({ args, catalog: duArgvCatalog, policy: duArgvPolicy }),
+    helpRequested: false,
+  };
 }
 
 export function parseDuOptions({
   args,
   env,
 }: {
-  args: string[],
-  env: Map<string, string>,
+  args: readonly string[],
+  env: ReadonlyMap<string, string>,
 }): DuOptionsParseResult {
-  const parsedArgs = truncateArgsAtHelp({ args });
-  const parsed = parseStandardArgv({ args: parsedArgs, spec: duArgvSpec });
-  const helpRequested = parsed.optionValues.help === true;
+  const { parsed, helpRequested } = parseDuArgv({ args });
   const diagnostic = parsed.diagnostics[0];
-  const semanticIssuePrecedesDiagnostic = !helpRequested && standardSemanticIssuePrecedesDiagnostic({
-    args: parsedArgs,
-    spec: duArgvSpec,
-    parsed,
-    findSemanticIssue: ({ parsed: candidate }) => {
-      const candidateState = {
-        outputFormat: getDefaultOutputFormat({ env }),
-        symlinkMode: 'physical' as DuSymlinkMode,
-        metric: 'logical-bytes' as DuMetric,
-        excludePatterns: [] as string[],
-        excludeFromFiles: [] as string[],
-        logicalSizeOptionRequested: false,
-        threshold: undefined,
-      };
-      for (const occurrence of candidate.occurrences) {
-        const result = applyOccurrence({ occurrence, state: candidateState });
-        if (!result.ok) {
-          return result.message;
-        }
-      }
-      return undefined;
-    },
-  });
-  if (diagnostic !== undefined && !helpRequested && !semanticIssuePrecedesDiagnostic) {
-    return {
-      ok: false,
-      message: `du: ${diagnostic.message}`,
-    };
-  }
 
   const state = {
     outputFormat: getDefaultOutputFormat({ env }),
@@ -299,11 +464,30 @@ export function parseDuOptions({
     threshold: undefined,
   };
 
-  for (const occurrence of parsed.occurrences) {
-    const result = applyOccurrence({ occurrence, state });
+  for (const occurrence of parsed.occurrences ?? []) {
+    if (!helpRequested && diagnostic !== undefined && (
+      diagnostic.argvIndex < occurrence.argvIndex
+      || (diagnostic.argvIndex === occurrence.argvIndex && diagnostic.tokenOffset <= occurrence.tokenStart)
+    )) {
+      break;
+    }
+    const result = applyOccurrence({ occurrence, args, state });
     if (!result.ok) {
       return result;
     }
+  }
+
+  if (helpRequested) {
+    return {
+      ok: true,
+      helpRequested: true,
+      preHelpDiagnostics: parsed.diagnostics.map(value => `du: ${value.message}`),
+      excludePatterns: state.excludePatterns,
+      excludeFromFiles: state.excludeFromFiles,
+    };
+  }
+  if (diagnostic !== undefined) {
+    return { ok: false, message: `du: ${diagnostic.message}` };
   }
 
   const showAll = parsed.optionValues.showAll === true;
@@ -312,33 +496,25 @@ export function parseDuOptions({
   const maxDepth = typeof maxDepthValue === 'number' ? maxDepthValue : undefined;
   const files0FromValue = parsed.optionValues.files0From;
   const files0From = typeof files0FromValue === 'string' ? files0FromValue : undefined;
-  if (!helpRequested) {
-    if (showAll && summarize) {
-      return {
-        ok: false,
-        message: 'du: cannot both summarize and show all entries',
-      };
-    }
-    if (summarize && maxDepth !== undefined && maxDepth !== 0) {
-      return {
-        ok: false,
-        message: `du: summarizing conflicts with --max-depth=${maxDepth}`,
-      };
-    }
-    if (files0From !== undefined && parsed.positionals.length > 0) {
-      return {
-        ok: false,
-        message: `du: extra operand '${parsed.positionals[0]}'\nfile operands cannot be combined with --files0-from`,
-      };
-    }
+  if (showAll && summarize) {
+    return { ok: false, message: 'du: cannot both summarize and show all entries' };
+  }
+  if (summarize && maxDepth !== undefined && maxDepth !== 0) {
+    return {
+      ok: false,
+      message: `du: summarizing conflicts with --max-depth=${maxDepth}`,
+    };
+  }
+  if (files0From !== undefined && parsed.positionals.length > 0) {
+    return {
+      ok: false,
+      message: `du: extra operand '${parsed.positionals[0]}'\nfile operands cannot be combined with --files0-from`,
+    };
   }
 
   return {
     ok: true,
-    helpRequested,
-    preHelpDiagnostics: helpRequested
-      ? parsed.diagnostics.map(value => `du: ${value.message}`)
-      : [],
+    helpRequested: false,
     operands: parsed.positionals,
     options: {
       showAll,

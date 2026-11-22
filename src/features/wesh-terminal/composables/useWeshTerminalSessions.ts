@@ -37,19 +37,23 @@ type WeshWorkerClient = Awaited<ReturnType<typeof createFileProtocolCompatibleWe
 // Used only inside this factory; the public API types everything as WeshTerminalSession.
 interface InternalSession extends WeshTerminalSession {
   _client: WeshWorkerClient | undefined,
+  _lifetime: AbortController,
 }
 
 async function ensureDirectoryPath({
   rootHandle,
   path,
+  signal,
 }: {
   rootHandle: FileSystemDirectoryHandle,
   path: string,
+  signal: AbortSignal,
 }): Promise<void> {
   const segments = path.split('/').filter(segment => segment.length > 0);
   let current = rootHandle;
   for (const segment of segments) {
     current = await current.getDirectoryHandle(segment, { create: true });
+    signal.throwIfAborted();
   }
 }
 
@@ -57,16 +61,18 @@ async function ensureTerminalBaseDirectories({
   rootHandle,
   homeDirectory,
   tmpDirectory,
+  signal,
 }: {
   rootHandle: FileSystemDirectoryHandle,
+  signal: AbortSignal,
   homeDirectory: string | undefined,
   tmpDirectory: string | undefined,
 }) {
   if (homeDirectory !== undefined) {
-    await ensureDirectoryPath({ rootHandle, path: homeDirectory });
+    await ensureDirectoryPath({ rootHandle, path: homeDirectory, signal });
   }
   if (tmpDirectory !== undefined) {
-    await ensureDirectoryPath({ rootHandle, path: tmpDirectory });
+    await ensureDirectoryPath({ rootHandle, path: tmpDirectory, signal });
   }
 }
 
@@ -113,11 +119,16 @@ export function createWeshTerminalSessions({
     if (!client || typeof client.getShellState !== 'function') {
       return;
     }
-    session.shellState = await client.getShellState();
+    const shellState = await client.getShellState();
+    if (!session._lifetime.signal.aborted) {
+      session.shellState = shellState;
+    }
   }
 
   async function createSession({ buildMounts }: { buildMounts: () => Promise<WeshMount[]> }) {
     const id = `session-${nextSessionNumber++}`;
+    const lifetime = new AbortController();
+    const { signal } = lifetime;
     const session: InternalSession = {
       id,
       title: await ensureStrings.weshTerminal__session({ sessionNumber: nextSessionNumber - 1 }),
@@ -127,6 +138,7 @@ export function createWeshTerminalSessions({
       shellState: undefined,
       lastExitCode: undefined,
       _client: undefined,
+      _lifetime: lifetime,
     };
     sessionsInternal.value = [...sessionsInternal.value, session];
     activeSessionId.value = id;
@@ -136,14 +148,20 @@ export function createWeshTerminalSessions({
         throw new Error('OPFS is not available in this environment.');
       }
       const root = await navigator.storage.getDirectory();
+      signal.throwIfAborted();
       const termRoot = await root.getDirectoryHandle(opfsRootName, { create: true });
+      signal.throwIfAborted();
       const globalRoot = await termRoot.getDirectoryHandle('global', { create: true });
+      signal.throwIfAborted();
       await ensureTerminalBaseDirectories({
         rootHandle: globalRoot as unknown as FileSystemDirectoryHandle,
         homeDirectory,
         tmpDirectory,
+        signal,
       });
+      signal.throwIfAborted();
       const mounts = await buildMounts();
+      signal.throwIfAborted();
 
       const client = await createFileProtocolCompatibleWeshWorkerClient({
         rootHandle: globalRoot as unknown as FileSystemDirectoryHandle,
@@ -151,16 +169,31 @@ export function createWeshTerminalSessions({
         user,
         initialEnv,
         initialCwd,
+        onRuntimeFailure() {
+          const current = sessionsInternal.value.find(s => s.id === id);
+          if (current) {
+            current.shellState = undefined;
+            current.lastExitCode = undefined;
+          }
+        },
       });
 
       // Mutate through the reactive proxy so Vue tracks the state change.
-      const reactiveSession = sessionsInternal.value.find(s => s.id === id) as InternalSession;
+      const reactiveSession = sessionsInternal.value.find(s => s.id === id);
+      if (!reactiveSession) {
+        await client.dispose();
+        return;
+      }
       reactiveSession._client = client;
       await refreshShellState({ session: reactiveSession });
+      signal.throwIfAborted();
       reactiveSession.state = 'ready';
       reactiveSession.lines.push(mkLine({ kind: 'system', text: 'Ready.' }));
     } catch (err) {
-      const reactiveSession = sessionsInternal.value.find(s => s.id === id) as InternalSession;
+      const reactiveSession = sessionsInternal.value.find(s => s.id === id);
+      if (!reactiveSession) {
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       reactiveSession.state = 'error';
       reactiveSession.errorMessage = msg;
@@ -217,40 +250,22 @@ export function createWeshTerminalSessions({
       return;
     }
     const client = session._client;
+    const { signal } = session._lifetime;
 
-    let executionId: string | undefined;
-    let pendingCancel = false;
     let cancelRequested = false;
-    let cancelPromise: Promise<void> | undefined;
-
     const stdoutDec = new TextDecoder();
     const stderrDec = new TextDecoder();
-
-    const doCancel = () => {
-      if (cancelRequested || !executionId) {
-        return;
-      }
-      cancelRequested = true;
-      cancelPromise = client.cancelExecution({ request: { executionId } })
-        .catch(() => {})
-        .then(() => {});
-    };
-
-    cancelFns.set(session.id, () => {
-      if (executionId) {
-        doCancel();
-      } else {
-        pendingCancel = true;
-      }
-    });
 
     session.lines.push(mkLine({ kind: 'command', text: script }));
     session.state = 'running';
 
     try {
-      const started = await client.startExecution({
-        request: { script },
+      const execution = client.startExecution({
+        request: { script, includeShellState: true },
         onEvent: async ({ event }) => {
+          if (signal.aborted) {
+            return;
+          }
           switch (event.type) {
           case 'started':
             break;
@@ -283,16 +298,14 @@ export function createWeshTerminalSessions({
         },
       });
 
-      executionId = started.executionId;
-      if (pendingCancel) {
-        doCancel();
+      cancelFns.set(session.id, () => {
+        cancelRequested = true;
+        execution.cancel();
+      });
+      const result = await execution.completion;
+      if (signal.aborted) {
+        return;
       }
-      if (!executionId) {
-        throw new Error('Worker did not return an execution id.');
-      }
-
-      const activeExecId = executionId;
-      const result = await client.awaitExecution({ request: { executionId: activeExecId } });
 
       // Flush any bytes still buffered in the UTF-8 decoders.
       const tailOut = stdoutDec.decode();
@@ -304,20 +317,33 @@ export function createWeshTerminalSessions({
         session.lines.push(mkLine({ kind: 'stderr', text: tailErr }));
       }
 
-      await cancelPromise;
-      session.lastExitCode = result.exitCode;
-
       if (cancelRequested) {
         session.lines.push(mkLine({ kind: 'system', text: '^C' }));
       }
 
-      await client.disposeExecution({ request: { executionId: activeExecId } });
-      await refreshShellState({ session });
+      switch (result.status) {
+      case 'exited':
+        session.lastExitCode = result.exitCode;
+        session.shellState = result.shellState;
+        break;
+      case 'terminated':
+        session.lastExitCode = undefined;
+        session.shellState = undefined;
+        break;
+      default: {
+        const exhaustive: never = result;
+        throw new Error(String(exhaustive));
+      }
+      }
     } catch (err) {
-      session.lines.push(mkLine({ kind: 'error', text: err instanceof Error ? err.message : String(err) }));
+      if (!signal.aborted) {
+        session.lines.push(mkLine({ kind: 'error', text: err instanceof Error ? err.message : String(err) }));
+      }
     } finally {
       cancelFns.delete(session.id);
-      session.state = 'ready';
+      if (!signal.aborted) {
+        session.state = 'ready';
+      }
     }
   }
 
@@ -331,11 +357,12 @@ export function createWeshTerminalSessions({
       return;
     }
     cancelFns.delete(sessionId);
-    await session._client?.dispose();
+    session._lifetime.abort();
     sessionsInternal.value = sessionsInternal.value.filter(s => s.id !== sessionId);
     if (activeSessionId.value === sessionId) {
       activeSessionId.value = sessionsInternal.value[0]?.id;
     }
+    await session._client?.dispose();
   }
 
   return {

@@ -1,6 +1,6 @@
 import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
-import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv';
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
 import { getRawConfigValue, readEffectiveConfigEntries, readLocalConfigEntries, removeLocalConfigSection, setLocalConfigValue, unsetLocalConfigValue } from '@/features/wesh/commands/git/config';
 import type { GitConfigEntry } from '@/features/wesh/commands/git/config';
@@ -109,10 +109,10 @@ function resolveRemoteGlobalLongOption({ arg }: { arg: string }): boolean | unde
     }
     case 'inline':
     case 'following-required':
-      throw new Error(`Unexpected remote argv-v2 value claim for ${arg}`);
+      throw new Error(`Unexpected remote argv value claim for ${arg}`);
     default: {
       const _ex: never = analysis.value;
-      throw new Error(`Unhandled remote argv-v2 value analysis: ${JSON.stringify(_ex)}`);
+      throw new Error(`Unhandled remote argv value analysis: ${JSON.stringify(_ex)}`);
     }
     }
   case 'ambiguous':
@@ -126,7 +126,7 @@ function resolveRemoteGlobalLongOption({ arg }: { arg: string }): boolean | unde
     return undefined;
   default: {
     const _ex: never = analysis;
-    throw new Error(`Unhandled remote argv-v2 analysis: ${JSON.stringify(_ex)}`);
+    throw new Error(`Unhandled remote argv analysis: ${JSON.stringify(_ex)}`);
   }
   }
 }

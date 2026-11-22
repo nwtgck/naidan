@@ -612,13 +612,19 @@ printf 'test-help=%s\n' "$?"
 test --version
 printf 'test-version=%s\n' "$?"
 [ --help ]
-printf 'bracket-help=%s\n' "$?"`,
+printf 'bracket-help=%s\n' "$?"
+test --
+printf 'test-double-dash=%s\n' "$?"
+[ -- ]
+printf 'bracket-double-dash=%s\n' "$?"`,
     });
 
     expect(stdout.text).toBe(`\
 test-help=0
 test-version=0
 bracket-help=0
+test-double-dash=0
+bracket-double-dash=0
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);

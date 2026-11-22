@@ -1,5 +1,5 @@
-import type { WeshCommandContext } from '@/features/wesh/types';
-import { readAllFileBytes } from '@/features/wesh/utils/fs';
+import type { WeshCommandContext, WeshEntryRef } from '@/features/wesh/types';
+import { readAllHandleBytes } from '@/features/wesh/utils/fs';
 import type {
   PatchLine,
   PatchLineSource,
@@ -432,21 +432,30 @@ export async function createPatchLineSourceFromBytes({ bytes }: { bytes: Uint8Ar
   return createPatchLineSourceFromBlob({ blob: new Blob([ownedBytes.buffer]) });
 }
 
-export async function createPatchLineSourceFromPath({
+export async function createPatchLineSourceFromEntry({
   context,
-  path,
+  entry,
 }: {
   context: WeshCommandContext,
-  path: string,
+  entry: WeshEntryRef,
 }): Promise<PatchLineSource> {
-  const blobResult = await context.files.tryReadBlobEfficiently({ path });
+  const blobResult = await context.files.tryReadBlobEfficiently({ entry });
   switch (blobResult.kind) {
   case 'blob':
     return createPatchLineSourceFromBlob({ blob: blobResult.blob });
-  case 'fallback_required':
-    return createPatchLineSourceFromBytes({
-      bytes: await readAllFileBytes({ files: context.files, path }),
+  case 'fallback_required': {
+    const handle = await context.files.openEntry({
+      entry,
+      flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
     });
+    let bytes: Uint8Array;
+    try {
+      bytes = await readAllHandleBytes({ handle });
+    } finally {
+      await handle.close();
+    }
+    return createPatchLineSourceFromBytes({ bytes });
+  }
   default: {
     const _ex: never = blobResult;
     throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);

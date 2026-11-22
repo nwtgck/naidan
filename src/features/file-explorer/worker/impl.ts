@@ -11,7 +11,7 @@ import { NaidanSysfsProvider } from '@/features/wesh/naidan-sysfs/provider';
 import {
   createOpfsNaidanSysfsStorageReader,
   createRemoteNaidanSysfsStorageReader,
-} from '@/features/wesh/naidan-sysfs/storage-reader';
+} from '@/features/wesh/naidan-sysfs/worker-storage-reader';
 import { EXTENSION_LANGUAGE_MAP, MEDIA_PREVIEW_SIZE_LIMIT, TEXT_PREVIEW_SIZE_LIMIT } from '@/features/file-explorer/logic/constants';
 import { getFileExtension, getMimeCategory } from '@/features/file-explorer/logic/utils';
 import { FileExplorerNotDirectoryError } from '@/features/file-explorer/logic/errors';

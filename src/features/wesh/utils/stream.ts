@@ -7,29 +7,32 @@ import type {
   WeshStat,
 } from '@/features/wesh/types';
 import { WeshHandleCloseSignal } from './closeSignal';
+import { OPEN_FILE_DESCRIPTION } from './file-input';
+
+type StreamReadWaiter = ReturnType<typeof Promise.withResolvers<boolean>>;
+
+interface StreamReadState {
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  readWaiters: Set<StreamReadWaiter> | undefined,
+  readError: { error: unknown } | undefined,
+  activeReads: number,
+  currentChunk: Uint8Array | undefined,
+  currentOffset: number,
+  isDone: boolean,
+  refCount: number,
+  closed: boolean,
+}
 
 class StreamReadHandle implements WeshFileHandle {
-  private readonly state: {
-    reader: ReadableStreamDefaultReader<Uint8Array>,
-    currentChunk: Uint8Array | undefined,
-    currentOffset: number,
-    isDone: boolean,
-    refCount: number,
-    closed: boolean,
-  };
+  private readonly state: StreamReadState;
   private readonly closeSignal = new WeshHandleCloseSignal();
 
-  constructor({ state }: {
-    state: {
-      reader: ReadableStreamDefaultReader<Uint8Array>,
-      currentChunk: Uint8Array | undefined,
-      currentOffset: number,
-      isDone: boolean,
-      refCount: number,
-      closed: boolean,
-    },
-  }) {
+  constructor({ state }: { state: StreamReadState }) {
     this.state = state;
+  }
+
+  get [OPEN_FILE_DESCRIPTION](): object {
+    return this.state;
   }
 
   async read({ buffer, offset, length, position: _position }: {
@@ -38,52 +41,87 @@ class StreamReadHandle implements WeshFileHandle {
     length?: number,
     position?: number,
   }): Promise<WeshIOResult> {
-    if (this.closeSignal.closed || (this.state.isDone && this.state.currentChunk === undefined)) {
+    if (this.closeSignal.closed) {
       return { bytesRead: 0 };
     }
 
-    if (this.state.currentChunk === undefined) {
-      try {
-        const result = await this.closeSignal.raceWithClose({
-          operation: this.state.reader.read(),
-          buildClosedResult: () => ({
-            done: true as const,
-            value: undefined,
-          }),
-        });
-        if (result.done) {
-          this.state.isDone = true;
+    const { state } = this;
+    state.activeReads += 1;
+    try {
+      while (state.currentChunk === undefined) {
+        if (this.closeSignal.closed) {
           return { bytesRead: 0 };
         }
-        this.state.currentChunk = result.value;
-        this.state.currentOffset = 0;
-      } catch (error: unknown) {
-        this.state.isDone = true;
-        throw error;
+        if (state.readError !== undefined) {
+          throw state.readError.error;
+        }
+        if (state.isDone) {
+          return { bytesRead: 0 };
+        }
+        const waiters = state.readWaiters ?? this.startRead();
+        const waiter = Promise.withResolvers<boolean>();
+        waiters.add(waiter);
+        try {
+          const available = await this.closeSignal.raceWithClose({ operation: waiter.promise, buildClosedResult: () => false });
+          if (!available) {
+            return { bytesRead: 0 };
+          }
+        } finally {
+          waiters.delete(waiter);
+        }
+      }
+
+      const chunk = state.currentChunk;
+      const bufferOffset = offset ?? 0;
+      const maxLen = length ?? (buffer.length - bufferOffset);
+      const remainingInChunk = chunk.length - state.currentOffset;
+      const copyLen = Math.min(remainingInChunk, maxLen);
+
+      buffer.set(chunk.subarray(state.currentOffset, state.currentOffset + copyLen), bufferOffset);
+      state.currentOffset += copyLen;
+
+      if (state.currentOffset >= chunk.length) {
+        state.currentChunk = undefined;
+      }
+      return { bytesRead: copyLen };
+    } finally {
+      state.activeReads -= 1;
+      if (state.closed && state.activeReads === 0) {
+        state.currentChunk = undefined;
       }
     }
+  }
 
-    const chunk = this.state.currentChunk;
-    if (chunk === undefined) {
-      return { bytesRead: 0 };
-    }
-
-    const bufferOffset = offset ?? 0;
-    const maxLen = length ?? (buffer.length - bufferOffset);
-    const remainingInChunk = chunk.length - this.state.currentOffset;
-    const copyLen = Math.min(remainingInChunk, maxLen);
-
-    buffer.set(
-      chunk.subarray(this.state.currentOffset, this.state.currentOffset + copyLen),
-      bufferOffset,
+  private startRead(): Set<StreamReadWaiter> {
+    // The shared stream owns its outstanding pull. Closing one descriptor
+    // removes its waiter and leaves any bytes available to the other readers.
+    const { state } = this;
+    const waiters = new Set<StreamReadWaiter>();
+    state.readWaiters = waiters;
+    void state.reader.read().then(
+      result => {
+        state.readWaiters = undefined;
+        if (result.done) {
+          state.isDone = true;
+        } else if (!state.closed || waiters.size !== 0) {
+          state.currentChunk = result.value;
+          state.currentOffset = 0;
+        }
+        for (const waiter of waiters) {
+          waiter.resolve(!result.done);
+        }
+        waiters.clear();
+      },
+      (error: unknown) => {
+        state.readWaiters = undefined;
+        state.readError = { error };
+        for (const waiter of waiters) {
+          waiter.reject(error);
+        }
+        waiters.clear();
+      },
     );
-    this.state.currentOffset += copyLen;
-
-    if (this.state.currentOffset >= chunk.length) {
-      this.state.currentChunk = undefined;
-    }
-
-    return { bytesRead: copyLen };
+    return waiters;
   }
 
   async write(): Promise<WeshWriteResult> {
@@ -98,7 +136,9 @@ class StreamReadHandle implements WeshFileHandle {
     this.state.refCount -= 1;
     if (this.state.refCount <= 0 && !this.state.closed) {
       this.state.closed = true;
-      this.state.currentChunk = undefined;
+      if (this.state.activeReads === 0) {
+        this.state.currentChunk = undefined;
+      }
       this.state.isDone = true;
       await this.state.reader.cancel();
     }
@@ -253,6 +293,9 @@ export function createReadHandleFromStream({
   return new StreamReadHandle({
     state: {
       reader: source.getReader(),
+      readWaiters: undefined,
+      readError: undefined,
+      activeReads: 0,
       currentChunk: undefined,
       currentOffset: 0,
       isDone: false,

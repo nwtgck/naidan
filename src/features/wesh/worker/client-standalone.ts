@@ -1,303 +1,35 @@
-import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
-import { z } from 'zod';
-import { backgroundWorkCoordinator, type ForegroundWorkLease } from '@/logic/background-work-coordinator';
-import { workerCapability, workerProxy } from '@/utils/worker-transport';
-
-import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
 import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/wesh';
-import {
-  createStandaloneWorkerSession,
-  disposeStandaloneWorkerSession,
-  STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-} from '@/features/file-protocol-standalone/worker/standalone-worker-session';
-import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
-import {
-  mapRemoteWeshWorkerExecutionEventToClientEvent,
-  weshWorkerExecutionSummarySchema,
-  weshWorkerStartExecutionResponseSchema,
-  weshWorkerShellStateSchema,
-  weshWorkerCommandEntrySchema,
-  weshWorkerListDirectoryRequestSchema,
-  weshWorkerPreloadCommandResponseSchema,
-  weshWorkerDirectoryEntrySchema,
-  type IWeshWorker,
-  type WeshWorkerClient,
-  type WeshWorkerExecutionEventCallback,
-  type WeshWorkerExecuteRequest,
-  type WeshWorkerRemoteExecutionEvent,
-} from './types';
-import {
-  createWeshWorkerInitRequest,
-} from './init-request';
+import { createStandaloneWorkerSession } from '@/features/file-protocol-standalone/worker/standalone-worker-session';
 import type { WeshMount } from '@/features/wesh/types';
-import { createManagedVolumeRemoteAccess, observeManagedVolumeWorker } from './managed-volume-access';
+import { createWeshWorkerClient } from './client-runtime';
+import type { IWeshWorker, WeshWorkerClient } from './types';
 
-export async function createFileProtocolCompatibleWeshWorkerClient({
+export function createFileProtocolCompatibleWeshWorkerClient({
   rootHandle,
   mounts,
   user,
   initialEnv,
   initialCwd,
+  onRuntimeFailure,
 }: {
   rootHandle: FileSystemDirectoryHandle | 'readonly',
   mounts: WeshMount[],
   user: string,
   initialEnv: Record<string, string>,
   initialCwd?: string | undefined,
-}): Promise<WeshWorkerClient> {
-  const naidanSysfsRemoteReader = createNaidanSysfsRemoteReaderForMounts({ mounts });
-  const createRuntime = async ({ initRequest }: {
-    initRequest: Parameters<IWeshWorker['init']>[0],
-  }) => {
-    const managedVolumes = await createManagedVolumeRemoteAccess({ mounts });
-    try {
-      const session = await createStandaloneWorkerSession<IWeshWorker>({ createWorker: createStandaloneWorker });
-      const { remote } = session;
-      const stopObserving = observeManagedVolumeWorker({ worker: session.worker, connection: managedVolumes });
-      try {
-      // Keep the proxied reader as a separate top-level argument.
-      // Putting it inside the init request object can fail structured clone in browsers.
-        await remote.init(
-          initRequest,
-          naidanSysfsRemoteReader
-            ? workerProxy({ value: naidanSysfsRemoteReader })
-            : undefined,
-          ...(managedVolumes.remote ? [workerProxy({ value: managedVolumes.remote })] as const : []),
-        );
-        return { ...session, managedVolumes, stopObserving };
-      } catch (error) {
-        stopObserving();
-        await disposeStandaloneWorkerSession({
-          session,
-          beforeRelease: undefined,
-          cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-        }).catch(() => undefined);
-        throw error;
-      }
-    } catch (error) {
-      await managedVolumes.dispose().catch(() => undefined);
-      throw error;
-    }
-  };
-
-  const createCompatibleRuntime = async () => {
-    const request = await createWeshWorkerInitRequest({ rootHandle, mounts, user, initialEnv, initialCwd, transport: 'direct' });
-    return runWithFileSystemHandleCloneFallback({
-      request,
-      direct: ({ request: initRequest }) => createRuntime({ initRequest }),
-      fallback: async () => createRuntime({
-        initRequest: await workerCapability({
-          value: await createWeshWorkerInitRequest({ rootHandle, mounts, user, initialEnv, initialCwd, transport: 'opfs-locator' }),
-          capability: FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION,
-        }),
-      }),
-    });
-  };
-
-  const destroyRuntime = async ({ runtime }: {
-    runtime: Awaited<ReturnType<typeof createRuntime>>,
-  }) => {
-    try {
-      await runtime.managedVolumes.dispose();
-    } finally {
-      runtime.stopObserving();
-      await disposeStandaloneWorkerSession({
-        session: runtime,
-        beforeRelease: undefined,
-        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-      });
-    }
-  };
-
-  let runtime = await createCompatibleRuntime();
-  const foregroundExecutionLeases = new Map<string, {
-    runtime: typeof runtime,
-    lease: ForegroundWorkLease,
-  }>();
-  const releaseForegroundExecutionLease = ({ executionId, executionRuntime }: {
-    executionId: string,
-    executionRuntime: typeof runtime,
-  }): void => {
-    const entry = foregroundExecutionLeases.get(executionId);
-    if (entry?.runtime !== executionRuntime) {
-      return;
-    }
-    entry.lease.dispose();
-    foregroundExecutionLeases.delete(executionId);
-  };
-  const releaseAllForegroundExecutionLeases = (): void => {
-    for (const { lease } of foregroundExecutionLeases.values()) {
-      lease.dispose();
-    }
-    foregroundExecutionLeases.clear();
-  };
-  const registerBackgroundPreload = () => backgroundWorkCoordinator.register({
-    runStep: async () => {
-      const activeRuntime = runtime;
-      let response: ReturnType<typeof weshWorkerPreloadCommandResponseSchema.parse>;
-      try {
-        response = weshWorkerPreloadCommandResponseSchema.parse(
-          await activeRuntime.remote.preloadNextCommand(),
-        );
-      } catch (error: unknown) {
-        if (runtime !== activeRuntime) {
-          return { status: 'continue' };
-        }
-        throw error;
-      }
-      switch (response.status) {
-      case 'busy':
-      case 'advanced':
-        return { status: 'continue' };
-      case 'done':
-        return { status: 'done' };
-      default: {
-        const _ex: never = response.status;
-        throw new Error(`Unhandled Wesh preload status: ${String(_ex)}`);
-      }
-      }
-    },
+  onRuntimeFailure?: (() => void) | undefined,
+}): WeshWorkerClient {
+  return createWeshWorkerClient({
+    rootHandle,
+    mounts,
+    user,
+    initialEnv,
+    initialCwd,
+    onRuntimeFailure,
+    createSession: ({ signal }) => createStandaloneWorkerSession<IWeshWorker>({
+      createWorker: () => createStandaloneWorker({ signal }),
+    }),
   });
-  let backgroundPreloadRegistration = registerBackgroundPreload();
-  const refreshBackgroundPreloadRegistration = (): void => {
-    backgroundPreloadRegistration.dispose();
-    backgroundPreloadRegistration = registerBackgroundPreload();
-  };
-
-  return {
-    async startExecution({ request, onEvent }: {
-      request: WeshWorkerExecuteRequest,
-      onEvent?: WeshWorkerExecutionEventCallback,
-    }) {
-      const foregroundLease = backgroundWorkCoordinator.beginForegroundWork();
-      const activeRuntime = runtime;
-      try {
-        const response = await activeRuntime.remote.startExecution(
-          request,
-          onEvent ? workerProxy({
-            // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback signatures are remote boundaries.
-            value: async (event: WeshWorkerRemoteExecutionEvent) => {
-              await onEvent({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) });
-            },
-          }) : undefined,
-        );
-        const validated = weshWorkerStartExecutionResponseSchema.parse(response);
-        if (runtime !== activeRuntime) {
-          foregroundLease.dispose();
-          return validated;
-        }
-        foregroundExecutionLeases.set(validated.executionId, {
-          runtime: activeRuntime,
-          lease: foregroundLease,
-        });
-        return validated;
-      } catch (error: unknown) {
-        foregroundLease.dispose();
-        throw error;
-      }
-    },
-    async awaitExecution({ request }) {
-      const activeRuntime = runtime;
-      try {
-        const response = await activeRuntime.remote.awaitExecution({ request });
-        return weshWorkerExecutionSummarySchema.parse(response);
-      } finally {
-        releaseForegroundExecutionLease({
-          executionId: request.executionId,
-          executionRuntime: activeRuntime,
-        });
-      }
-    },
-    async interruptExecution({ request }) {
-      return runtime.remote.interruptExecution({ request });
-    },
-    async cancelExecution({ request }) {
-      const activeRuntime = runtime;
-      await activeRuntime.remote.interruptExecution({ request }).catch(() => false);
-
-      const completionSettled = activeRuntime.remote.awaitExecution({ request }).then(() => true).catch(() => true);
-      const stopped = await Promise.race([
-        completionSettled,
-        new Promise<boolean>(resolve => setTimeout(() => resolve(false), 150)),
-      ]);
-
-      if (stopped) {
-        releaseForegroundExecutionLease({
-          executionId: request.executionId,
-          executionRuntime: activeRuntime,
-        });
-        return true;
-      }
-
-      try {
-        await activeRuntime.managedVolumes.dispose();
-        runtime = await createCompatibleRuntime();
-      } catch (error) {
-        await destroyRuntime({ runtime: activeRuntime }).catch(cleanupError => {
-          console.error('Failed to destroy cancelled standalone Wesh worker runtime after replacement failure', cleanupError);
-        });
-        releaseAllForegroundExecutionLeases();
-        throw error;
-      }
-      releaseAllForegroundExecutionLeases();
-      refreshBackgroundPreloadRegistration();
-      void destroyRuntime({ runtime: activeRuntime }).catch(error => {
-        console.error('Failed to destroy cancelled standalone Wesh worker runtime', error);
-      });
-      return true;
-    },
-    async disposeExecution({ request }) {
-      const activeRuntime = runtime;
-      try {
-        await activeRuntime.remote.disposeExecution({ request });
-      } finally {
-        releaseForegroundExecutionLease({
-          executionId: request.executionId,
-          executionRuntime: activeRuntime,
-        });
-      }
-    },
-    async execute({ request }: { request: WeshWorkerExecuteRequest }) {
-      const foregroundLease = backgroundWorkCoordinator.beginForegroundWork();
-      try {
-        const response = await runtime.remote.execute({ request });
-        return weshWorkerExecutionSummarySchema.parse(response);
-      } finally {
-        foregroundLease.dispose();
-      }
-    },
-    async getShellState() {
-      const response = await runtime.remote.getShellState();
-      return weshWorkerShellStateSchema.parse(response);
-    },
-    async listCommands() {
-      const response = await runtime.remote.listCommands();
-      return z.array(weshWorkerCommandEntrySchema).parse(response);
-    },
-    async listDirectory({ request }) {
-      const validated = weshWorkerListDirectoryRequestSchema.parse(request);
-      const response = await runtime.remote.listDirectory({ request: validated });
-      return z.array(weshWorkerDirectoryEntrySchema).parse(response);
-    },
-    async interrupt() {
-      return runtime.remote.interrupt();
-    },
-    async dispose() {
-      backgroundPreloadRegistration.dispose();
-      releaseAllForegroundExecutionLeases();
-      const activeRuntime = runtime;
-      try {
-        await activeRuntime.managedVolumes.dispose();
-      } finally {
-        activeRuntime.stopObserving();
-        await disposeStandaloneWorkerSession({
-          session: activeRuntime,
-          beforeRelease: () => activeRuntime.remote.dispose(),
-          cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-        });
-      }
-    },
-  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

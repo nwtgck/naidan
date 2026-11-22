@@ -41,10 +41,6 @@ function setupStandardMocks({
   queueNativeVolumeAccess({ handle: volumeHandle });
   mockCreateClient.mockResolvedValue({
     startExecution: vi.fn(),
-    awaitExecution: vi.fn(),
-    interruptExecution: vi.fn(),
-    cancelExecution: vi.fn(),
-    disposeExecution: vi.fn(),
     execute: vi.fn(),
     interrupt: vi.fn(),
     dispose: vi.fn(),
@@ -91,10 +87,6 @@ describe('getEnabledTools shell_execute', () => {
     queueNativeVolumeAccess({ handle: volumeHandleB });
     mockCreateClient.mockResolvedValue({
       startExecution: vi.fn(),
-      awaitExecution: vi.fn(),
-      interruptExecution: vi.fn(),
-      cancelExecution: vi.fn(),
-      disposeExecution: vi.fn(),
       execute: vi.fn(),
       interrupt: vi.fn(),
       dispose: vi.fn(),
@@ -337,10 +329,6 @@ Mounted directories:
     const tmpHandle = { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle;
     mockCreateClient.mockResolvedValue({
       startExecution: vi.fn(),
-      awaitExecution: vi.fn(),
-      interruptExecution: vi.fn(),
-      cancelExecution: vi.fn(),
-      disposeExecution: vi.fn(),
       execute: vi.fn(),
       interrupt: vi.fn(),
       dispose: vi.fn(),

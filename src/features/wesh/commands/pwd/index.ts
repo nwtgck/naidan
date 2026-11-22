@@ -1,4 +1,4 @@
-import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { canonicalizeExistingPath } from '@/features/wesh/path';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';

@@ -5,7 +5,7 @@ import type { CheckoutLikeArguments } from "@/features/wesh/commands/git/checkou
 import { executeCheckoutLike } from "@/features/wesh/commands/git/checkout-like";
 import { executeRestore } from "@/features/wesh/commands/git/restore-operation";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 
 const CHECKOUT_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
   nonExecutableLongOptions: [

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -8,6 +8,11 @@ import {
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
 import { createReadHandleFromStream } from '@/features/wesh/utils/stream';
+import { wcCommandDefinition } from './definition';
+
+beforeAll(async () => {
+  await wcCommandDefinition.load();
+});
 
 describe('wesh wc', () => {
   let wesh: Wesh;
@@ -302,6 +307,21 @@ second
     }
   });
 
+  it('reports total-mode validation and option syntax errors in argument order', async () => {
+    const overwritten = await execute({ script: 'wc --total=bogus --total=auto --help' });
+    const totalFirst = await execute({ script: 'wc --total=bogus --unknown' });
+    const syntaxFirst = await execute({ script: 'wc --unknown --total=bogus' });
+
+    for (const execution of [overwritten, totalFirst]) {
+      expect(execution.result.exitCode).toBe(1);
+      expect(execution.stdout.text).toBe('');
+      expect(execution.stderr.text).toContain("wc: invalid argument 'bogus' for '--total'");
+    }
+    expect(syntaxFirst.result.exitCode).toBe(1);
+    expect(syntaxFirst.stdout.text).toBe('');
+    expect(syntaxFirst.stderr.text).toContain("wc: unrecognized option '--unknown'");
+  });
+
   it('prints usage help for invalid options', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'wc -z',
@@ -330,6 +350,22 @@ second
     expect(result.exitCode).toBe(0);
   });
 
+  it('accepts unique long-option prefixes and rejects values for flags', async () => {
+    const help = await execute({ script: 'wc --he --unknown' });
+    const lines = await execute({ script: 'wc --l', stdinText: 'one line\n' });
+    const unexpectedValue = await execute({ script: 'wc --lines=yes --help' });
+
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: wc');
+    expect(help.stderr.text).toBe('');
+    expect(lines.result.exitCode).toBe(0);
+    expect(lines.stdout.text).toBe('1\n');
+    expect(lines.stderr.text).toBe('');
+    expect(unexpectedValue.result.exitCode).toBe(1);
+    expect(unexpectedValue.stdout.text).toBe('');
+    expect(unexpectedValue.stderr.text).toContain("option '--lines' doesn't allow an argument");
+  });
+
   it('continues after missing file errors and returns a failing exit code', async () => {
     await writeFile({ path: 'present.txt', data: 'alpha\n' });
 
@@ -343,6 +379,19 @@ second
 1 1 6 total
 `);
     expect(stderr.text).toBe('wc: missing.txt: No such file or directory\n');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('prints a zero total when both file operands are missing', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'LC_ALL=C wc missing.txt another.txt',
+    });
+
+    expect(stdout.text).toBe('0 0 0 total\n');
+    expect(stderr.text).toBe(`\
+wc: missing.txt: No such file or directory
+wc: another.txt: No such file or directory
+`);
     expect(result.exitCode).toBe(1);
   });
 
@@ -589,6 +638,21 @@ second
     expect(result.exitCode).toBe(0);
   });
 
+  it('keeps help spellings that are claimed by --files0-from or follow double dash', async () => {
+    await writeFile({ path: '--help', data: 'a.txt\0' });
+    await writeFile({ path: 'a.txt', data: 'abc' });
+
+    const source = await execute({ script: 'wc -c --total=never --total=only --files0-from --help' });
+    const operand = await execute({ script: 'wc -c -- --help' });
+
+    expect(source.result.exitCode).toBe(0);
+    expect(source.stdout.text).toBe('3\n');
+    expect(source.stderr.text).toBe('');
+    expect(operand.result.exitCode).toBe(0);
+    expect(operand.stdout.text).toBe('6 --help\n');
+    expect(operand.stderr.text).toBe('');
+  });
+
   it('reads NUL-terminated file names from stdin without data-column padding', async () => {
     await writeFile({ path: 'a.txt', data: 'a\n' });
     await writeFile({ path: 'b.txt', data: 'bb\n' });
@@ -604,6 +668,20 @@ second
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('prints a zero total when both --files0-from records are empty', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'LC_ALL=C wc --files0-from=-',
+      stdinBytes: Uint8Array.of(0, 0),
+    });
+
+    expect(stdout.text).toBe('0 0 0 total\n');
+    expect(stderr.text).toBe(`\
+wc: -:1: invalid zero-length file name
+wc: -:2: invalid zero-length file name
+`);
+    expect(result.exitCode).toBe(1);
   });
 
   it('reports invalid files0-from records and keeps newline file names on one output line', async () => {

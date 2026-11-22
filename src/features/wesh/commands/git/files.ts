@@ -1,5 +1,7 @@
-import type { WeshCommandContext, WeshFileHandle } from '@/features/wesh/types';
-import { readAllFileBytes, readAllFileText, writeAllFileBytes } from "@/features/wesh/utils/fs";
+import type { WeshCommandContext, WeshEntryRef, WeshFileHandle, WeshPreparedRename } from '@/features/wesh/types';
+import { WeshRenameIncompleteError } from '@/features/wesh/types';
+import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
+import { readAllFileBytes, readAllFileText, readAllHandleBytes, writeAllFileBytes } from "@/features/wesh/utils/fs";
 
 export type GitFiles = WeshCommandContext["files"];
 
@@ -14,12 +16,52 @@ export async function pathExists({ files, path }: { files: GitFiles, path: strin
   }
 }
 
-export async function readFileBytes({ files, path }: { files: GitFiles, path: string }): Promise<Uint8Array> {
-  return readAllFileBytes({ files, path });
+export async function readFileBytes({ files, path, entry }: { files: GitFiles } & (
+  { path: string, entry?: never } | { path?: never, entry: WeshEntryRef<'file'> }
+)): Promise<Uint8Array> {
+  if (entry === undefined) {
+    return readAllFileBytes({ files, path });
+  }
+  const handle = await files.openEntry({
+    entry,
+    flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+  });
+  try {
+    return await readAllHandleBytes({ handle });
+  } finally {
+    await handle.close();
+  }
 }
 
-export async function readFileText({ files, path }: { files: GitFiles, path: string }): Promise<string> {
-  return readAllFileText({ files, path });
+export async function readFileText({ files, path, entry }: { files: GitFiles } & (
+  { path: string, entry?: never } | { path?: never, entry: WeshEntryRef<'file'> }
+)): Promise<string> {
+  if (entry === undefined) {
+    return readAllFileText({ files, path });
+  }
+  const blob = await files.tryReadBlobEfficiently({ entry });
+  switch (blob.kind) {
+  case 'blob':
+    return blob.blob.text();
+  case 'fallback_required':
+    break;
+  default: {
+    const _ex: never = blob;
+    throw new Error(`Unhandled blob result: ${String(_ex)}`);
+  }
+  }
+  return new TextDecoder().decode(await readFileBytes({ files, entry }));
+}
+
+export async function resolveOptionalEntry({ files, path }: { files: GitFiles, path: string }): Promise<WeshEntryRef | undefined> {
+  try {
+    return await files.resolveEntry({ path, finalSymlinkTreatment: 'no-follow', pinBacking: true });
+  } catch (error: unknown) {
+    if (isPathNotFoundError({ error })) {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 
@@ -99,33 +141,120 @@ export async function writeHandleBytes({ handle, bytes }: {
   }
 }
 
-export async function replaceFileViaLock({ files, path, bytes }: {
+export type GitFilePublisher = ({ rename }: { rename: WeshPreparedRename }) => Promise<void>;
+
+interface GitFileReplacement {
+  bytes: Uint8Array,
+  expectedDestination?: { entry: WeshEntryRef | undefined },
+  publish?: GitFilePublisher,
+}
+
+export interface GitFileLock {
+  replace: ({ replacement }: { replacement: GitFileReplacement }) => Promise<void>,
+  verify: () => Promise<void>,
+}
+
+export async function withFileLock<T>({ files, path, operation }: {
   files: GitFiles,
   path: string,
-  bytes: Uint8Array,
-}): Promise<void> {
+  operation({ replace, verify }: { replace: GitFileLock['replace'], verify: GitFileLock['verify'] }): Promise<T>,
+}): Promise<T> {
   const lockPath = `${path}.lock`;
-  let lockExists = false;
-  let handle: WeshFileHandle | undefined;
-  try {
-    handle = await files.open({
-      path: lockPath,
-      flags: { access: 'write', creation: 'always', truncate: 'preserve', append: 'preserve' },
-    });
-    lockExists = true;
+  const lock = await files.createTemporaryFile({ path: lockPath });
+  let handle: WeshFileHandle | undefined = lock.handle;
+  let keepLock = false;
+  let published = false;
+
+  async function verify(): Promise<void> {
+    const currentLock = await resolveOptionalEntry({ files, path: lockPath });
+    if (currentLock === undefined || await files.compareEntryIdentity({ first: lock.entry, second: currentLock }) !== 'same') {
+      throw new Error(`Source entry changed: ${lockPath}`);
+    }
+  }
+
+  async function replace({ replacement }: { replacement: GitFileReplacement }): Promise<void> {
+    const { bytes, expectedDestination, publish } = replacement;
+    if (handle === undefined) {
+      throw new Error(`Lock has already been written: ${lockPath}`);
+    }
     await writeHandleBytes({ handle, bytes });
     await handle.close();
     handle = undefined;
-    await files.rename({ oldPath: lockPath, newPath: path });
-    lockExists = false;
-  } finally {
-    if (handle !== undefined) {
-      await handle.close();
-    }
-    if (lockExists && await pathExists({ files, path: lockPath })) {
-      await files.unlink({ path: lockPath });
+    try {
+      if (publish === undefined) {
+        await files.rename({
+          oldPath: lockPath,
+          newPath: path,
+          expectedSource: lock.entry,
+          noReplace: (expectedDestination !== undefined && expectedDestination.entry === undefined) || undefined,
+          expectedDestination: expectedDestination?.entry,
+        });
+      } else {
+        if (expectedDestination === undefined) {
+          throw new Error(`Missing publication destination: ${path}`);
+        }
+        await publish({ rename: { operation: 'rename', entry: lock.entry, path, expected: expectedDestination.entry } });
+      }
+      published = true;
+    } catch (error: unknown) {
+      keepLock = error instanceof WeshRenameIncompleteError;
+      throw error;
     }
   }
+
+  let result: T;
+  try {
+    result = await operation({ replace, verify });
+  } catch (error: unknown) {
+    await handle?.close().catch(() => {});
+    if (!published && !keepLock) {
+      await lock.discard().catch(() => {});
+    }
+    throw error;
+  }
+  try {
+    await handle?.close();
+  } finally {
+    if (!published && !keepLock) {
+      await lock.discard();
+    }
+  }
+  return result;
+}
+
+export async function withFileLocks<T>({ files, paths, operation }: {
+  files: GitFiles,
+  paths: readonly string[],
+  operation: ({ locks }: { locks: ReadonlyMap<string, GitFileLock> }) => Promise<T>,
+}): Promise<T> {
+  const locks = new Map<string, GitFileLock>();
+  async function acquire({ index }: { index: number }): Promise<T> {
+    const path = paths[index];
+    if (path === undefined) {
+      return operation({ locks });
+    }
+    return withFileLock({
+      files,
+      path,
+      operation: ({ replace, verify }) => {
+        locks.set(path, { replace, verify });
+        return acquire({ index: index + 1 });
+      },
+    });
+  }
+  return acquire({ index: 0 });
+}
+
+export async function replaceFileViaLock({ files, path, prepareBytes }: {
+  files: GitFiles,
+  path: string,
+  prepareBytes: () => GitFileReplacement | Promise<GitFileReplacement>,
+}): Promise<void> {
+  await withFileLock({
+    files,
+    path,
+    operation: async ({ replace }) => replace({ replacement: await prepareBytes() }),
+  });
 }
 
 export async function replaceTextViaLock({ files, path, text }: {
@@ -133,7 +262,7 @@ export async function replaceTextViaLock({ files, path, text }: {
   path: string,
   text: string,
 }): Promise<void> {
-  await replaceFileViaLock({ files, path, bytes: textEncoder.encode(text) });
+  await replaceFileViaLock({ files, path, prepareBytes: () => ({ bytes: textEncoder.encode(text) }) });
 }
 
 export const TEST_ONLY = {

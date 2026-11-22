@@ -1,11 +1,17 @@
 import packageJson from '../../../../../package.json';
 import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  HELP_VERSION_EARLY_EXIT_OPTIONS,
   parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
   type ParsedStandardArgv,
-  type StandardArgvParserSpec,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
 } from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
-import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 import type {
   WeshCommandContext,
   WeshCommandImplementation,
@@ -46,107 +52,118 @@ interface VerificationCounts {
   verifiedFiles: number,
 }
 
-const sha256sumArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'b',
-      long: 'binary',
-      effects: [{ key: 'inputMode', value: 'binary' }],
-      help: { summary: 'read in binary mode', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'c',
-      long: 'check',
-      effects: [{ key: 'operationMode', value: 'check' }],
-      help: { summary: 'read checksums from files and check them', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'tag',
+const sha256sumOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'inputMode', value: 'binary' }] },
+    forms: [
+      { kind: 'short', name: 'b', value: { kind: 'none' } },
+      { kind: 'long', name: 'binary', value: { kind: 'none' } },
+    ],
+    summary: 'read in binary mode',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'operationMode', value: 'check' }] },
+    forms: [
+      { kind: 'short', name: 'c', value: { kind: 'none' } },
+      { kind: 'long', name: 'check', value: { kind: 'none' } },
+    ],
+    summary: 'read checksums from files and check them',
+    category: 'common',
+  },
+  {
+    semantic: {
+      kind: 'effects',
       effects: [
         { key: 'outputFormat', value: 'bsd' },
         { key: 'inputMode', value: 'binary' },
       ],
-      help: { summary: 'create a BSD-style checksum', category: 'common' },
     },
-    {
-      kind: 'flag',
-      short: 't',
-      long: 'text',
-      effects: [{ key: 'inputMode', value: 'text' }],
-      help: { summary: 'read in text mode (default)', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'z',
-      long: 'zero',
-      effects: [{ key: 'recordTerminator', value: 'nul' }],
-      help: { summary: 'end each output line with NUL and disable file name escaping', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'ignore-missing',
-      effects: [{ key: 'ignoreMissing', value: true }],
-      help: { summary: "don't fail or report status for missing files", category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'quiet',
-      effects: [{ key: 'checkOutputMode', value: 'quiet' }],
-      help: { summary: "don't print OK for each successfully verified file", category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'status',
-      effects: [{ key: 'checkOutputMode', value: 'status' }],
-      help: { summary: "don't output anything; status code shows success", category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'strict',
-      effects: [{ key: 'strict', value: true }],
-      help: { summary: 'exit non-zero for improperly formatted checksum lines', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 'w',
-      long: 'warn',
-      effects: [{ key: 'checkOutputMode', value: 'warn' }],
-      help: { summary: 'warn about improperly formatted checksum lines', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'version',
-      effects: [{ key: 'version', value: true }],
-      help: { summary: 'output version information and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+    forms: [{ kind: 'long', name: 'tag', value: { kind: 'none' } }],
+    summary: 'create a BSD-style checksum',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'inputMode', value: 'text' }] },
+    forms: [
+      { kind: 'short', name: 't', value: { kind: 'none' } },
+      { kind: 'long', name: 'text', value: { kind: 'none' } },
+    ],
+    summary: 'read in text mode (default)',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'recordTerminator', value: 'nul' }] },
+    forms: [
+      { kind: 'short', name: 'z', value: { kind: 'none' } },
+      { kind: 'long', name: 'zero', value: { kind: 'none' } },
+    ],
+    summary: 'end each output line with NUL and disable file name escaping',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'ignoreMissing', value: true }] },
+    forms: [{ kind: 'long', name: 'ignore-missing', value: { kind: 'none' } }],
+    summary: "don't fail or report status for missing files",
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'checkOutputMode', value: 'quiet' }] },
+    forms: [{ kind: 'long', name: 'quiet', value: { kind: 'none' } }],
+    summary: "don't print OK for each successfully verified file",
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'checkOutputMode', value: 'status' }] },
+    forms: [{ kind: 'long', name: 'status', value: { kind: 'none' } }],
+    summary: "don't output anything; status code shows success",
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'strict', value: true }] },
+    forms: [{ kind: 'long', name: 'strict', value: { kind: 'none' } }],
+    summary: 'exit non-zero for improperly formatted checksum lines',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'checkOutputMode', value: 'warn' }] },
+    forms: [
+      { kind: 'short', name: 'w', value: { kind: 'none' } },
+      { kind: 'long', name: 'warn', value: { kind: 'none' } },
+    ],
+    summary: 'warn about improperly formatted checksum lines',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'version', value: true }] },
+    forms: [{ kind: 'long', name: 'version', value: { kind: 'none' } }],
+    summary: 'output version information and exit',
+    category: 'common',
+  },
+] as const;
+
+const sha256sumArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: sha256sumOptions,
+  nonExecutableLongOptions: [],
+});
+const sha256sumArgvHelp = defineArgvHelpPresentation({ catalog: sha256sumArgvCatalog, rows: sha256sumOptions });
+const sha256sumArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 function getBooleanOption({
   parsed,
   key,
 }: {
-  parsed: ParsedStandardArgv,
+  parsed: ParsedStandardArgv<never>,
   key: string,
 }): 'disabled' | 'enabled' {
   return parsed.optionValues[key] === true ? 'enabled' : 'disabled';
@@ -172,7 +189,7 @@ function isToggleEnabled({
 function getParsedCheckOutputMode({
   parsed,
 }: {
-  parsed: ParsedStandardArgv,
+  parsed: ParsedStandardArgv<never>,
 }): CheckOutputMode {
   const value = parsed.optionValues.checkOutputMode;
   if (value === 'quiet') {
@@ -185,23 +202,6 @@ function getParsedCheckOutputMode({
     return 'warn';
   }
   return 'normal';
-}
-
-function getArgumentsThroughFirstEarlyExit({
-  args,
-}: {
-  args: string[],
-}): string[] {
-  for (let index = 0; index < args.length; index += 1) {
-    const argument = args[index];
-    if (argument === '--') {
-      break;
-    }
-    if (argument === '--help' || argument === '--version') {
-      return args.slice(0, index + 1);
-    }
-  }
-  return args;
 }
 
 function shouldWriteMalformedLineWarning({
@@ -347,7 +347,7 @@ function getInputModeMarker({
 function getParsedInputMode({
   parsed,
 }: {
-  parsed: ParsedStandardArgv,
+  parsed: ParsedStandardArgv<never>,
 }): InputMode {
   return parsed.optionValues.inputMode === 'binary' ? 'binary' : 'text';
 }
@@ -355,31 +355,9 @@ function getParsedInputMode({
 function getParsedOutputFormat({
   parsed,
 }: {
-  parsed: ParsedStandardArgv,
+  parsed: ParsedStandardArgv<never>,
 }): OutputFormat {
   return parsed.optionValues.outputFormat === 'bsd' ? 'bsd' : 'gnu';
-}
-
-function wasOptionKeySpecified({
-  parsed,
-  key,
-}: {
-  parsed: ParsedStandardArgv,
-  key: string,
-}): boolean {
-  return parsed.occurrences.some(occurrence => {
-    switch (occurrence.kind) {
-    case 'flag':
-    case 'special':
-      return occurrence.effects.some(effect => effect.key === key);
-    case 'value':
-      return occurrence.key === key;
-    default: {
-      const _ex: never = occurrence;
-      throw new Error(`Unhandled option occurrence: ${JSON.stringify(_ex)}`);
-    }
-    }
-  });
 }
 
 function describeInput({ input }: { input: string }): string {
@@ -477,9 +455,17 @@ async function validateOptionCombinations({
   operationMode,
 }: {
   context: WeshCommandContext,
-  parsed: ParsedStandardArgv,
+  parsed: ParsedStandardArgv<never>,
   operationMode: OperationMode,
 }): Promise<'invalid' | 'valid'> {
+  if (parsed.optionValues.outputFormat === 'bsd' && parsed.optionValues.inputMode === 'text') {
+    await writeUsageFailure({
+      context,
+      message: '--tag does not support --text mode',
+    });
+    return 'invalid';
+  }
+
   switch (operationMode) {
   case 'check':
     if (parsed.optionValues.recordTerminator === 'nul') {
@@ -496,7 +482,7 @@ async function validateOptionCombinations({
       });
       return 'invalid';
     }
-    if (wasOptionKeySpecified({ parsed, key: 'inputMode' })) {
+    if (parsed.optionValues.inputMode !== undefined) {
       await writeUsageFailure({
         context,
         message: 'the --binary and --text options are meaningless when verifying checksums',
@@ -505,71 +491,22 @@ async function validateOptionCombinations({
     }
     return 'valid';
   case 'compute': {
-    const outputFormat = getParsedOutputFormat({ parsed });
-    switch (outputFormat) {
-    case 'bsd':
-      if (wasOptionKeySpecified({ parsed, key: 'inputMode' })) {
-        const inputMode = getParsedInputMode({ parsed });
-        switch (inputMode) {
-        case 'binary':
-          break;
-        case 'text':
-          await writeUsageFailure({
-            context,
-            message: '--tag does not support --text mode',
-          });
-          return 'invalid';
-        default: {
-          const _ex: never = inputMode;
-          throw new Error(`Unhandled input mode: ${_ex}`);
-        }
-        }
-      }
-      break;
-    case 'gnu':
-      break;
-    default: {
-      const _ex: never = outputFormat;
-      throw new Error(`Unhandled output format: ${_ex}`);
+    // GNU reports ignore-missing first, then the selected output mode, then strict.
+    let optionName: string | undefined;
+    const checkOutputMode = parsed.optionValues.checkOutputMode;
+    if (parsed.optionValues.ignoreMissing === true) {
+      optionName = '--ignore-missing';
+    } else if (typeof checkOutputMode === 'string') {
+      optionName = `--${checkOutputMode}`;
+    } else if (parsed.optionValues.strict === true) {
+      optionName = '--strict';
     }
-    }
-
-    for (const occurrence of parsed.occurrences) {
-      switch (occurrence.kind) {
-      case 'flag':
-      case 'special': {
-        for (const effect of occurrence.effects) {
-          let optionName: string | undefined;
-          if (effect.key === 'ignoreMissing') {
-            optionName = '--ignore-missing';
-          } else if (effect.key === 'strict') {
-            optionName = '--strict';
-          } else if (effect.key === 'checkOutputMode') {
-            if (effect.value === 'quiet') {
-              optionName = '--quiet';
-            } else if (effect.value === 'status') {
-              optionName = '--status';
-            } else if (effect.value === 'warn') {
-              optionName = '--warn';
-            }
-          }
-          if (optionName !== undefined) {
-            await writeUsageFailure({
-              context,
-              message: `the ${optionName} option is meaningful only when verifying checksums`,
-            });
-            return 'invalid';
-          }
-        }
-        break;
-      }
-      case 'value':
-        break;
-      default: {
-        const _ex: never = occurrence;
-        throw new Error(`Unhandled option occurrence: ${JSON.stringify(_ex)}`);
-      }
-      }
+    if (optionName !== undefined) {
+      await writeUsageFailure({
+        context,
+        message: `the ${optionName} option is meaningful only when verifying checksums`,
+      });
+      return 'invalid';
     }
     return 'valid';
   }
@@ -588,7 +525,7 @@ async function runComputeMode({
   recordTerminator,
 }: {
   context: WeshCommandContext,
-  inputs: string[],
+  inputs: readonly string[],
   inputMode: InputMode,
   outputFormat: OutputFormat,
   recordTerminator: RecordTerminator,
@@ -855,7 +792,7 @@ async function runCheckMode({
   options,
 }: {
   context: WeshCommandContext,
-  sources: string[],
+  sources: readonly string[],
   options: CheckOptions,
 }): Promise<WeshCommandResult> {
   const writer = createBufferedTextWriter({
@@ -893,9 +830,16 @@ async function runCheckMode({
 
 export const sha256sumCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+    const args = stopArgvAtFirstEarlyExit({
+      args: context.args,
+      catalog: sha256sumArgvCatalog,
+      policy: sha256sumArgvPolicy,
+      earlyExitOptions: HELP_VERSION_EARLY_EXIT_OPTIONS,
+    });
     const parsed = parseStandardArgv({
-      args: getArgumentsThroughFirstEarlyExit({ args: context.args }),
-      spec: sha256sumArgvSpec,
+      args,
+      catalog: sha256sumArgvCatalog,
+      policy: sha256sumArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -911,7 +855,7 @@ export const sha256sumCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: COMMAND_NAME,
-        argvSpec: sha256sumArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: sha256sumArgvHelp }),
       });
       return { exitCode: 0 };
     }

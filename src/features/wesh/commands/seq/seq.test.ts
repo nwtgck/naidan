@@ -460,4 +460,28 @@ w03
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
   });
+
+  it('distinguishes negative operands, option values, and help around the option boundary', async () => {
+    const separator = await execute({ script: 'seq -s --help -2 1 0' });
+    const negative = await execute({ script: 'seq -- -2 1 0' });
+    const literalHelp = await execute({ script: 'seq -- --help' });
+    const missingValue = await execute({ script: 'seq -ws' });
+
+    expect(separator.result.exitCode).toBe(0);
+    expect(separator.stdout.text).toBe('-2--help-1--help0\n');
+    expect(separator.stderr.text).toBe('');
+    expect(negative.result.exitCode).toBe(0);
+    expect(negative.stdout.text).toBe(`\
+-2
+-1
+0
+`);
+    expect(negative.stderr.text).toBe('');
+    expect(literalHelp.result.exitCode).toBe(1);
+    expect(literalHelp.stdout.text).toBe('');
+    expect(literalHelp.stderr.text).toContain("invalid floating point argument: '--help'\n");
+    expect(missingValue.result.exitCode).toBe(1);
+    expect(missingValue.stdout.text).toBe('');
+    expect(missingValue.stderr.text).toContain('seq: option requires a value for STRING\n');
+  });
 });

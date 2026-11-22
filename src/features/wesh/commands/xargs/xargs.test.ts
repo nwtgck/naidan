@@ -97,6 +97,17 @@ describe('wesh xargs', () => {
     expect(result.exitCode).toBe(123);
   });
 
+  it('preserves help-looking option values and child arguments after --', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: "xargs -I --help -- printf '%s:%s\\n' --help --version",
+      stdinText: 'item\n',
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('item:--version\n');
+    expect(stderr.text).toBe('');
+  });
+
   it('maps a missing child command to exit code 127', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'xargs definitely-missing-command',
@@ -110,6 +121,55 @@ describe('wesh xargs', () => {
 
   it('maps a child exit code 126 to the generic child failure code', () => {
     expect(TEST_ONLY.normalizeXargsExitCode({ exitCode: 126 })).toBe(123);
+  });
+
+  it('runs the resolved command as a child of xargs in the same process group', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+ps() { echo shell-function; }
+alias ps='echo shell-alias'
+xargs ps -e -o pid=,ppid=,pgid=,args=
+`,
+    });
+
+    const rows = stdout.text.trim().split('\n').map((line) => line.trim().split(/\s+/u));
+    const xargs = rows.find((row) => row.includes('xargs'));
+    const ps = rows.find((row) => row.includes('ps') && !row.includes('xargs'));
+    expect(xargs).toBeDefined();
+    expect(ps).toBeDefined();
+    expect(ps?.[1]).toBe(xargs?.[0]);
+    expect(ps?.[2]).toBe(xargs?.[2]);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('passes input operands without shell expansion', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: "xargs -0 printf '<%s>\\n'",
+      stdinText: '$HOME *\0',
+    });
+
+    expect(stdout.text).toBe('<$HOME *>\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('passes operands to a script resolved through its shebang', async () => {
+    await writeFile({
+      path: 'script',
+      data: `\
+#!/bin/bash -e
+printf '<%s>\\n' "$1"
+`,
+    });
+    const { result, stdout, stderr } = await execute({
+      script: 'xargs -0 ./script',
+      stdinText: 'two words\0',
+    });
+
+    expect(stdout.text).toBe('<two words>\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('discards an unquoted trailing backslash at end of input', async () => {
@@ -232,17 +292,37 @@ describe('wesh xargs', () => {
       script: 'xargs -P 0 echo prefix',
       stdinText: 'alpha beta\n',
     });
-    const startedAt = Date.now();
-    const parallelSleep = await execute({
-      script: 'xargs -n 1 -P 2 sleep',
+    let started = 0;
+    let active = 0;
+    let maxActive = 0;
+    let nextPair = Promise.withResolvers<void>();
+    wesh.registerCommand({
+      definition: {
+        meta: { name: 'wait-for-pair', description: 'Wait for a second child', usage: 'wait-for-pair' },
+        load: async () => async () => {
+          const pair = nextPair;
+          started += 1;
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          if (started % 2 === 0) {
+            nextPair = Promise.withResolvers<void>();
+            pair.resolve();
+          }
+          await pair.promise;
+          active -= 1;
+          return { exitCode: 0 };
+        },
+      },
+    });
+    const parallel = await execute({
+      script: 'xargs -n 1 -P 2 wait-for-pair',
       stdinText: `\
-0.05
-0.05
-0.05
-0.05
+alpha
+beta
+gamma
+delta
 `,
     });
-    const elapsedMs = Date.now() - startedAt;
 
     expect(sequential.stdout.text).toBe('prefix alpha beta\n');
     expect(sequential.stderr.text).toBe('');
@@ -252,12 +332,12 @@ describe('wesh xargs', () => {
     expect(unlimited.stderr.text).toBe('');
     expect(unlimited.result.exitCode).toBe(0);
 
-    expect(parallelSleep.stdout.text).toBe('');
-    expect(parallelSleep.stderr.text).toBe('');
-    expect(parallelSleep.result.exitCode).toBe(0);
-    // Keep this assertion loose enough for sharded CI-like runs where
-    // worker startup and timer scheduling can add noticeable overhead.
-    expect(elapsedMs).toBeLessThan(400);
+    expect(parallel.stdout.text).toBe('');
+    expect(parallel.stderr.text).toBe('');
+    expect(parallel.result.exitCode).toBe(0);
+    expect(started).toBe(4);
+    expect(active).toBe(0);
+    expect(maxActive).toBe(2);
   });
 
   it('rejects explicit parallelism above the advertised safety limit', async () => {
@@ -286,6 +366,33 @@ test ok = ng
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(123);
+  });
+
+  it('keeps the parent shell state when a child evaluates shell source', async () => {
+    await writeFile({ path: 'work/marker', data: '' });
+    const { result, stdout, stderr } = await execute({
+      script: `\
+VALUE=parent
+exec 3>parent.txt
+xargs eval 'VALUE=child; cd /work; exec 3>/child.txt; printf "child\\n" >&3; pwd; true & wait "$!"; exit 0'
+printf '%s\\n' "$VALUE"
+pwd
+jobs
+printf 'parent\\n' >&3
+exec 3>&-
+cat child.txt parent.txt
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+/work
+parent
+/
+child
+parent
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('rejects unsupported tty-dependent options', async () => {

@@ -31,16 +31,16 @@ Examples include repository discovery, refs, objects, index handling, revision r
 
 Git domain modules must not import `subcommands/**`.
 
-## argv-v2 ownership
+## argv ownership
 
-Git uses the frozen `@/features/wesh/argv-v2` contract only for option mechanics that should intentionally match other migrated commands. Keep Git-specific phase, revision, pathspec, config, and diagnostic semantics command-local.
+Git uses the frozen `@/features/wesh/argv` contract only for option mechanics that should intentionally match other commands. Keep Git-specific phase, revision, pathspec, config, and diagnostic semantics command-local.
 
 - Use `parseStandardArgv()` for catalog-shaped subcommands.
 - Use direct `analyzeArgvShortForm()` / `analyzeArgvLongForm()` only when the subcommand must own the argv cursor or parsing phase. Keep these calls grep-visible rather than hiding them behind another generic Git scanner.
 - Resolve parse-options-style long abbreviations against the complete real Git option namespace for that subcommand, not only the options Wesh executes. Register unsupported real long options as `nonExecutableLongOptions`: they participate in unique-prefix and ambiguity resolution but remain non-executable.
 - Do not add unsupported option semantics merely because an option is present in the resolver namespace.
 - Update a resolver namespace from an observed Linux Git oracle. Do not guess omitted options from another subcommand.
-- Keep Git-specific exit-status and diagnostic ordering in the owning subcommand even when argv-v2 owns lexical recognition.
+- Keep Git-specific exit-status and diagnostic ordering in the owning subcommand even when argv owns lexical recognition.
 
 This separation prevents Wesh from falsely accepting a prefix that real Git considers ambiguous while keeping unsupported functionality outside the implemented surface.
 

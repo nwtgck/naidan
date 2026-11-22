@@ -1,9 +1,9 @@
-import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import { getCoreUmaskOrDefault } from '@/features/wesh/commands/_shared/core-capability';
 import { parseFilePermissionMode } from '@/features/wesh/commands/_shared/file-mode';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
-import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
+import { toAbsolutePath } from '@/features/wesh/path';
 
 const mkdirParentsOption = {
   semantic: { kind: 'effects', effects: [{ key: 'parents', value: true }] },
@@ -49,87 +49,6 @@ const mkdirArgvPolicy: StandardArgvPolicy = {
   optionBoundary: 'continue',
   occurrenceRetention: 'none',
 };
-
-async function pathExists({
-  context,
-  path,
-}: {
-  context: WeshCommandContext,
-  path: string,
-}): Promise<boolean> {
-  try {
-    await context.files.lstat({ path });
-    return true;
-  } catch (error: unknown) {
-    if (isPathNotFoundError({ error })) {
-      return false;
-    }
-    throw error;
-  }
-}
-
-async function createDirectoriesLexically({
-  context,
-  operand,
-  mode,
-  verbose,
-}: {
-  context: WeshCommandContext,
-  operand: string,
-  mode: number,
-  verbose: boolean,
-}): Promise<void> {
-  if (operand.length === 0) {
-    throw new Error('No such file or directory');
-  }
-
-  const components = [...operand.matchAll(/[^/]+/gu)].map((match) => ({
-    segment: match[0],
-    prefix: operand.slice(0, (match.index ?? 0) + match[0].length),
-  }));
-  const finalSegmentIndex = components.length - 1;
-  const finalSegment = components[finalSegmentIndex]?.segment;
-  const finalOperandSegmentIndex = finalSegment === '.' || finalSegment === '..'
-    ? undefined
-    : finalSegmentIndex;
-
-  for (let index = 0; index < components.length; index += 1) {
-    const component = components[index];
-    if (component === undefined) {
-      continue;
-    }
-    const { segment, prefix: lexicalPath } = component;
-    if (segment === '.' || segment === '..') {
-      continue;
-    }
-    const fullPath = lexicalPath.startsWith('/')
-      ? lexicalPath
-      : context.cwd === '/' ? `/${lexicalPath}` : `${context.cwd}/${lexicalPath}`;
-    if (await pathExists({ context, path: fullPath })) {
-      const stat = await context.files.stat({ path: fullPath });
-      switch (stat.type) {
-      case 'directory':
-        break;
-      case 'file':
-      case 'fifo':
-      case 'chardev':
-      case 'symlink':
-        throw new Error('File exists');
-      default: {
-        const _ex: never = stat.type;
-        throw new Error(`Unhandled existing path type: ${_ex}`);
-      }
-      }
-      continue;
-    }
-
-    await context.files.mkdir({ path: fullPath, mode, recursive: false });
-    if (verbose) {
-      const displayPath = index === finalOperandSegmentIndex ? operand : lexicalPath;
-      await context.text().print({ text: `mkdir: created directory '${displayPath}'\n` });
-    }
-  }
-}
 
 export const mkdirCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
@@ -202,24 +121,26 @@ export const mkdirCommandImplementation: WeshCommandImplementation = {
 
     for (const p of parsed.positionals) {
       try {
-        const fullPath = p.startsWith('/') ? p : (context.cwd === '/' ? `/${p}` : `${context.cwd}/${p}`);
-        if (!recursive && await pathExists({ context, path: fullPath })) {
-          await text.error({ text: `mkdir: cannot create directory '${p}': File exists\n` });
-          exitCode = 1;
-          continue;
+        if (p.length === 0) {
+          throw new Error('No such file or directory');
         }
-        if (recursive) {
-          await createDirectoriesLexically({
-            context,
-            operand: p,
-            mode: parsedMode.mode,
-            verbose,
-          });
-        } else {
-          await context.files.mkdir({ path: fullPath, mode: parsedMode.mode, recursive: false });
-          if (verbose) {
-            await text.print({ text: `mkdir: created directory '${p}'\n` });
-          }
+        const fullPath = toAbsolutePath({ cwd: context.cwd, path: p });
+        const operandOffset = fullPath.length - p.length;
+        let created = false;
+        await context.files.mkdir({
+          path: fullPath,
+          mode: parsedMode.mode,
+          recursive,
+          onCreate: verbose || !recursive ? async ({ path }) => {
+            created = true;
+            if (verbose) {
+              const display = path.length > operandOffset ? path.slice(operandOffset) : path;
+              await text.print({ text: `mkdir: created directory '${display}'\n` });
+            }
+          } : undefined,
+        });
+        if (!recursive && !created) {
+          throw new Error('File exists');
         }
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);

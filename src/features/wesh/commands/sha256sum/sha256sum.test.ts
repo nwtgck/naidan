@@ -161,10 +161,16 @@ ${EMPTY_HASH}  -
 
   it('treats operands after double dash as file names', async () => {
     await harness.writeFile({ path: '-b', data: 'abc' });
+    await harness.writeFile({ path: '--version', data: 'abc' });
+    await harness.writeFile({ path: '--help', data: 'abc' });
 
-    const result = await harness.execute({ script: 'sha256sum -- -b' });
+    const result = await harness.execute({ script: 'sha256sum -- -b --version --help' });
 
-    expect(result.stdout.text).toBe(`${ABC_HASH}  -b\n`);
+    expect(result.stdout.text).toBe(`\
+${ABC_HASH}  -b
+${ABC_HASH}  --version
+${ABC_HASH}  --help
+`);
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
@@ -222,6 +228,44 @@ ${EMPTY_HASH}  -
     expect(versionBeforeHelp.result.exitCode).toBe(0);
   });
 
+  it('accepts unique long-option prefixes and rejects ambiguous ones', async () => {
+    await harness.writeFile({ path: 'abc', data: 'abc' });
+    const binary = await harness.execute({ script: 'sha256sum --bi abc' });
+    const version = await harness.execute({ script: 'sha256sum --ver --unknown' });
+    const ambiguous = await harness.execute({ script: 'sha256sum --t --help' });
+
+    expect(binary.result.exitCode).toBe(0);
+    expect(binary.stdout.text).toBe(`${ABC_HASH} *abc\n`);
+    expect(binary.stderr.text).toBe('');
+    expect(version.result.exitCode).toBe(0);
+    expect(version.stdout.text).toMatch(/^sha256sum \(wesh\) \S+\n$/u);
+    expect(version.stderr.text).toBe('');
+    expect(ambiguous.result.exitCode).toBe(1);
+    expect(ambiguous.stdout.text).toBe('');
+    expect(ambiguous.stderr.text).toContain("option '--t' is ambiguous; possibilities: '--tag' '--text'");
+  });
+
+  it('rejects a value on a flag before a later help action', async () => {
+    const { result, stdout, stderr } = await harness.execute({ script: 'sha256sum --binary=yes --help' });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("option '--binary' doesn't allow an argument");
+  });
+
+  it.each([
+    { options: '--strict --quiet --status', diagnosedOption: '--status' },
+    { options: '--warn --status --quiet', diagnosedOption: '--quiet' },
+    { options: '--warn --ignore-missing --quiet --strict', diagnosedOption: '--ignore-missing' },
+    { options: '--strict', diagnosedOption: '--strict' },
+  ])('reports $diagnosedOption when computing with $options', async ({ options, diagnosedOption }) => {
+    const { result, stdout, stderr } = await harness.execute({ script: `sha256sum ${options}` });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain(`the ${diagnosedOption} option is meaningful only when verifying checksums`);
+  });
+
   it('rejects invalid and check-only options in compute mode', async () => {
     await harness.writeFile({ path: 'abc', data: 'abc' });
     const unknown = await harness.execute({ script: 'sha256sum --unknown' });
@@ -229,6 +273,7 @@ ${EMPTY_HASH}  -
     const tagText = await harness.execute({ script: 'sha256sum --tag -t abc' });
     const tagBinary = await harness.execute({ script: 'sha256sum --tag -tb abc' });
     const tagBinaryText = await harness.execute({ script: 'sha256sum --tag -bt abc' });
+    const tagTextBeforeCheckOnly = await harness.execute({ script: 'sha256sum --tag --quiet -t abc' });
 
     expect(unknown.stdout.text).toBe('');
     expect(unknown.stderr.text).toContain("sha256sum: unrecognized option '--unknown'");
@@ -251,5 +296,8 @@ ${EMPTY_HASH}  -
       'sha256sum: --tag does not support --text mode',
     );
     expect(tagBinaryText.result.exitCode).toBe(1);
+    expect(tagTextBeforeCheckOnly.stdout.text).toBe('');
+    expect(tagTextBeforeCheckOnly.stderr.text).toContain('sha256sum: --tag does not support --text mode');
+    expect(tagTextBeforeCheckOnly.result.exitCode).toBe(1);
   });
 });

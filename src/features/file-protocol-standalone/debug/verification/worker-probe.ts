@@ -306,7 +306,6 @@ async function runWeshCommandProbeWithRemote({ wesh }: {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const decoder = new TextDecoder();
-  let executionId: string | undefined;
   let result: DebugFileProtocolStandaloneWeshCommandProbeResult | undefined;
   let operationError: unknown;
   try {
@@ -320,7 +319,7 @@ async function runWeshCommandProbeWithRemote({ wesh }: {
       },
       capability: FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION,
     }));
-    const started = await wesh.startExecution(
+    const summary = await wesh.execute(
       { script: 'ls -1 /' },
       workerProxy({
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors the external Comlink positional callback boundary.
@@ -345,24 +344,15 @@ async function runWeshCommandProbeWithRemote({ wesh }: {
         },
       }),
     );
-    executionId = started.executionId;
-    const summary = await wesh.awaitExecution({ request: { executionId } });
     result = { exitCode: summary.exitCode, stdout: stdout.join(''), stderr: stderr.join('') };
   } catch (error) {
     operationError = error;
   }
   let cleanupError: unknown;
-  if (executionId !== undefined) {
-    try {
-      await wesh.disposeExecution({ request: { executionId } });
-    } catch (error) {
-      cleanupError = error;
-    }
-  }
   try {
     await wesh.dispose();
   } catch (error) {
-    cleanupError ??= error;
+    cleanupError = error;
   }
   if (operationError !== undefined) {
     throw operationError;

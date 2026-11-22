@@ -8,11 +8,11 @@ import {
   type StandardArgvAction,
   type StandardArgvPolicy,
   type StandardArgvRawValue,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 
 export type RgCaseMode = 'sensitive' | 'insensitive' | 'smart';
 export type RgOutputMode = 'normal' | 'files-with-matches' | 'files-without-match' | 'count-lines' | 'count-matches';
-export type RgSortMode = 'default' | 'path' | 'path-reverse';
+export type RgSortMode = 'default' | 'none' | 'path' | 'path-reverse';
 
 export interface RgParsedArgv {
   readonly pattern: string | undefined,
@@ -162,7 +162,7 @@ const rgNoMessagesOption = defineFlagOption({ short: undefined, long: 'no-messag
 const rgNullOption = defineFlagOption({ short: '0', long: 'null', key: 'nullOutput', value: true });
 const rgColorOption = defineChoiceOption({ long: 'color', key: 'colorMode', choices: { never: 'never' } });
 const rgNoHeadingOption = defineFlagOption({ short: undefined, long: 'no-heading', key: 'noHeading', value: true });
-const rgSortOption = defineChoiceOption({ long: 'sort', key: 'sortMode', choices: { path: 'path' } });
+const rgSortOption = defineChoiceOption({ long: 'sort', key: 'sortMode', choices: { none: 'none', path: 'path' } });
 const rgSortReverseOption = defineChoiceOption({ long: 'sortr', key: 'sortMode', choices: { path: 'path-reverse' } });
 const rgHelpOption = defineFlagOption({ short: 'h', long: 'help', key: 'help', value: true });
 const rgVersionOption = defineFlagOption({ short: 'V', long: 'version', key: 'version', value: true });
@@ -256,7 +256,7 @@ const rgArgvHelp = defineArgvHelpPresentation({
     { forms: rgNullOption.forms, summary: 'use NUL after file paths in output', category: 'advanced' },
     { forms: rgColorOption.forms, summary: 'disable colored output with VALUE=never', valueName: 'VALUE', category: 'advanced' },
     { forms: rgNoHeadingOption.forms, summary: 'do not group matches by file', category: 'advanced' },
-    { forms: rgSortOption.forms, summary: 'sort directory results by path with VALUE=path', valueName: 'VALUE', category: 'advanced' },
+    { forms: rgSortOption.forms, summary: 'sort by path with VALUE=path or search in traversal order with VALUE=none', valueName: 'VALUE', category: 'advanced' },
     { forms: rgSortReverseOption.forms, summary: 'reverse-sort directory results by path with VALUE=path', valueName: 'VALUE', category: 'advanced' },
     { forms: rgFilesOption.forms, summary: 'print files that would be searched', category: 'common' },
     { forms: rgContextOption.forms, summary: 'show NUM lines before and after each match', valueName: 'NUM', category: 'common' },
@@ -377,9 +377,13 @@ export function parseRgArgv({ args }: { args: readonly string[] }): RgParsedArgv
     nullOutput: parsed.optionValues.nullOutput === true,
     colorMode: parsed.optionValues.colorMode === 'never' ? 'never' : undefined,
     noHeading: parsed.optionValues.noHeading === true,
-    sortMode: parsed.optionValues.sortMode === 'path' || parsed.optionValues.sortMode === 'path-reverse'
-      ? parsed.optionValues.sortMode
-      : 'default',
+    sortMode: (() => {
+      const value = parsed.optionValues.sortMode;
+      if (value === 'none' || value === 'path' || value === 'path-reverse') {
+        return value;
+      }
+      return 'default';
+    })(),
     beforeContext: typeof parsed.optionValues.beforeContext === 'number' ? parsed.optionValues.beforeContext : (context ?? 0),
     afterContext: typeof parsed.optionValues.afterContext === 'number' ? parsed.optionValues.afterContext : (context ?? 0),
     maxCount: typeof parsed.optionValues.maxCount === 'number' ? parsed.optionValues.maxCount : undefined,

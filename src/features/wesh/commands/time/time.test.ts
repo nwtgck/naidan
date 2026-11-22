@@ -20,9 +20,11 @@ describe('wesh time', () => {
   async function execute({
     script,
     stdinText,
+    signal,
   }: {
     script: string,
     stdinText?: string,
+    signal?: AbortSignal,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
@@ -32,6 +34,7 @@ describe('wesh time', () => {
       stdin: createTestReadHandleFromText({ text: stdinText ?? '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
+      signal,
     });
 
     return { result, stdout, stderr };
@@ -124,6 +127,96 @@ describe('wesh time', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('keeps a same-named shell function ahead of the time builtin', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+time() { printf 'function %s\\n' "$1"; }
+time echo
+`,
+    });
+
+    expect(stdout.text).toBe('function echo\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('times a shell function and returns its status', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+report() { TIMED=yes; printf '<%s>\\n' "$1"; return 7; }
+time -p report 'two words'
+status=$?
+printf 'timed=%s\\n' "$TIMED"
+exit "$status"
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+<two words>
+timed=yes
+`);
+    expect(stderr.text).toMatch(/^real \d+\.\d{2}\nuser 0\.00\nsys 0\.00\n$/u);
+    expect(result.exitCode).toBe(7);
+  });
+
+  it('reports timing and exits the current shell when the timed eval exits', async () => {
+    const { result, stdout, stderr } = await execute({ script: "time -p eval 'exit 9'; printf unreachable" });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toMatch(/^real \d+\.\d{2}\nuser 0\.00\nsys 0\.00\n$/u);
+    expect(result.exitCode).toBe(9);
+  });
+
+  it('prints timing to the current stderr after a timed function redirects it', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+report() { exec 2>timing; printf 'function\\n' >&2; }
+time -p report
+printf 'after\\n' >&2
+exec 2>&1
+cat timing
+`,
+    });
+
+    expect(stdout.text).toMatch(/^function\nreal \d+\.\d{2}\nuser 0\.00\nsys 0\.00\nafter\n$/u);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps assignments completed before interrupting a timed shell function', async () => {
+    const started = Promise.withResolvers<void>();
+    wesh.registerCommand({
+      definition: {
+        meta: { name: 'wait-for-int', description: 'Wait for an interrupt', usage: 'wait-for-int' },
+        load: async () => async ({ context }) => {
+          started.resolve();
+          const waitStatus = await context.process.waitForSignalOrTimeout({ timeoutMs: 1000 });
+          return { exitCode: waitStatus === undefined ? 0 : 130, waitStatus };
+        },
+      },
+    });
+    const controller = new AbortController();
+    const current = execute({
+      script: `\
+VALUE=before
+trap 'printf "caught=%s\\n" "$VALUE"' INT
+report() { VALUE=inside; wait-for-int; }
+time -p report
+printf 'unreachable\\n'
+`,
+      signal: controller.signal,
+    });
+    await started.promise;
+    controller.abort();
+    await wesh.interruptForeground({ foregroundSignal: controller.signal });
+    const interrupted = await current;
+    const next = await execute({ script: 'printf "next=%s\\n" "$VALUE"' });
+
+    expect(interrupted.stdout.text).toBe('caught=inside\n');
+    expect(interrupted.result.exitCode).toBe(130);
+    expect(next.stdout.text).toBe('next=inside\n');
+  });
+
   it('treats only one leading -p as a time option', async () => {
     const repeated = await execute({ script: 'time -p -p true' });
     const unknown = await execute({ script: 'time -x' });
@@ -135,5 +228,13 @@ describe('wesh time', () => {
     expect(unknown.stdout.text).toBe('');
     expect(unknown.stderr.text).toContain('time: cannot run -x: No such file or directory');
     expect(unknown.result.exitCode).toBe(127);
+  });
+
+  it('treats a non-standalone help token as the command operand', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'time -p --help' });
+
+    expect(result.exitCode).toBe(127);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toMatch(/^time: cannot run --help: No such file or directory\nreal \d+\.\d{2}\nuser 0\.00\nsys 0\.00\n$/u);
   });
 });

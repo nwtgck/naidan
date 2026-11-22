@@ -6,6 +6,20 @@ import type {
   WeshEfficientBlobReadResult,
 } from '@/features/wesh/types';
 
+export async function closeFileHandleReferences({ handles }: {
+  handles: Iterable<WeshFileHandle>,
+}): Promise<{ error: unknown } | undefined> {
+  let firstFailure: { error: unknown } | undefined;
+  for (const handle of new Set(handles)) {
+    try {
+      await handle.close();
+    } catch (error: unknown) {
+      firstFailure ??= { error };
+    }
+  }
+  return firstFailure;
+}
+
 /**
  * Read all remaining bytes from a sequential file handle without closing it.
  *
@@ -264,15 +278,19 @@ export async function writeAllStreamToHandle({
   stream,
   handle,
   closeHandle,
+  checkActive,
 }: {
   stream: ReadableStream<Uint8Array>,
   handle: WeshFileHandle,
   closeHandle: boolean,
+  checkActive?: () => void,
 }): Promise<void> {
   const reader = stream.getReader();
   try {
     while (true) {
+      checkActive?.();
       const { done, value } = await reader.read();
+      checkActive?.();
       if (done) {
         break;
       }

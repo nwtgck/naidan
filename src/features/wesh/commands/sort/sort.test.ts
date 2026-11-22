@@ -201,6 +201,27 @@ a2
     expect(result.exitCode).toBe(0);
   });
 
+  it('applies repeated keys in argument order and keeps ties stable', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'sort -s -t: -k2,2 -k1,1',
+      stdinText: `\
+z:1:z
+a:1:y
+a:1:x
+b:0:a
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+b:0:a
+a:1:y
+a:1:x
+z:1:z
+`);
+    expect(stderr.text).toBe('');
+  });
+
   it('deduplicates lines with -u', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -253,6 +274,50 @@ row:a
     expect(stdout.text).toBe(`\
 row:a
 row: b
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it.each([
+    { args: '-s -k2,2', expected: 'leading blanks' },
+    { args: '-s -k2.2,2.2', expected: 'leading blanks' },
+    { args: '-u -k2,2', expected: 'leading blanks' },
+    { args: '-bs -k2,2', expected: 'field text' },
+  ])('sorts a later whitespace-delimited field with $args', async ({ args, expected }) => {
+    const input = `\
+z  zebra
+a apple
+b zebra
+`;
+    const { result, stdout, stderr } = await execute({
+      script: `LC_ALL=C sort ${args}`,
+      stdinText: input,
+    });
+
+    expect(stdout.text).toBe(expected === 'leading blanks' ? input : `\
+a apple
+z  zebra
+b zebra
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('treats trailing blanks as a field with the default separator', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'LC_ALL=C sort -s -k3,3',
+      stdinText: `\
+z apple\t\t
+a apple
+b apple\t
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+a apple
+b apple\t
+z apple\t\t
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
@@ -888,6 +953,49 @@ alpha
     expect(result.exitCode).toBe(1);
   });
 
+  it('takes a check mode only when attached to the long option', async () => {
+    await writeFile({
+      path: 'quiet',
+      data: `\
+b
+a
+`,
+    });
+    const strict = await execute({ script: 'sort --check quiet' });
+    const silent = await execute({ script: 'sort --check=quiet quiet' });
+    const keyClaimsHelp = await execute({ script: 'sort -k --help' });
+
+    expect(strict.result.exitCode).toBe(1);
+    expect(strict.stderr.text).toContain('disorder');
+    expect(silent.result.exitCode).toBe(1);
+    expect(silent.stderr.text).toBe('');
+    expect(keyClaimsHelp.result.exitCode).toBe(2);
+    expect(keyClaimsHelp.stdout.text).toBe('');
+    expect(keyClaimsHelp.stderr.text).toContain("invalid key definition: '--help'");
+  });
+
+  it('compares long check modes with -c and -C in argument order', async () => {
+    const conflict = await execute({ script: 'sort -c --check=silent --help' });
+    const silent = await execute({
+      script: 'sort -C --check=q --check=silent',
+      stdinText: `\
+b
+a
+`,
+    });
+    const invalid = await execute({ script: 'sort --check=bad --help' });
+
+    expect(conflict.result.exitCode).toBe(2);
+    expect(conflict.stdout.text).toBe('');
+    expect(conflict.stderr.text).toContain("options '-cC' are incompatible");
+    expect(silent.result.exitCode).toBe(1);
+    expect(silent.stdout.text).toBe('');
+    expect(silent.stderr.text).toBe('');
+    expect(invalid.result.exitCode).toBe(1);
+    expect(invalid.stdout.text).toBe('');
+    expect(invalid.stderr.text).toContain("invalid argument 'bad' for '--check'");
+  });
+
   it('reports invalid options with usage and help hints', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -939,6 +1047,33 @@ sort --no-such-option`,
       expect(execution.stderr.text).toBe('');
       expect(execution.stdout.text).toContain('usage: sort [OPTION]... [FILE]...');
     }
+  });
+
+  it('reports the earliest fatal key, separator, or output option problem', async () => {
+    const separatorFirst = await execute({ script: 'sort -t x -t y -k bad --help' });
+    const keyFirst = await execute({ script: 'sort -k bad -t x -t y --help' });
+    const outputFirst = await execute({ script: 'sort -o a -o b -k bad --unknown' });
+
+    for (const execution of [separatorFirst, keyFirst, outputFirst]) {
+      expect(execution.result.exitCode).toBe(2);
+      expect(execution.stdout.text).toBe('');
+    }
+    expect(separatorFirst.stderr.text).toContain('incompatible field separators');
+    expect(keyFirst.stderr.text).toContain("invalid key definition: 'bad'");
+    expect(outputFirst.stderr.text).toContain('multiple output files specified');
+  });
+
+  it('accepts unique long prefixes and reserves unsupported GNU names in ambiguity checks', async () => {
+    const help = await execute({ script: 'sort --he --unknown' });
+    const ambiguous = await execute({ script: 'sort --s --help' });
+    const unexpectedValue = await execute({ script: 'sort --stable=yes --help' });
+
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: sort');
+    expect(ambiguous.result.exitCode).toBe(2);
+    expect(ambiguous.stderr.text).toContain("option '--s' is ambiguous; possibilities: '--sort' '--stable'");
+    expect(unexpectedValue.result.exitCode).toBe(2);
+    expect(unexpectedValue.stderr.text).toContain("option '--stable' doesn't allow an argument");
   });
 
   it('stops argv processing when --help is reached before a later invalid option', async () => {

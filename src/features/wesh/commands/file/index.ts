@@ -1,5 +1,14 @@
-import { parseStandardArgv, type ArgvDiagnostic, type ParsedStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  parseStandardArgv,
+  type ParsedStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import {
   detectFileClassification,
   detectStdinClassification,
@@ -16,137 +25,121 @@ import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult }
 import { getWeshCodePointDisplayWidth } from '@/features/wesh/utils/display-width';
 import { isPathTypeMismatchError } from '@/features/wesh/commands/_shared/path-errors';
 
-const fileArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'b',
-      long: 'brief',
-      effects: [{ key: 'brief', value: true }],
-      help: { summary: 'do not prepend filenames to output lines' },
-    },
-    {
-      kind: 'value',
-      short: 'F',
-      long: 'separator',
-      key: 'separator',
-      valueName: 'SEPARATOR',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'use SEPARATOR instead of colon after filenames', valueName: 'SEPARATOR' },
-    },
-    {
-      kind: 'flag',
-      short: 'L',
-      long: 'dereference',
-      effects: [{ key: 'followSymlinks', value: true }],
-      help: { summary: 'follow symbolic links' },
-    },
-    {
-      kind: 'flag',
-      short: 'h',
-      long: 'no-dereference',
-      effects: [{ key: 'followSymlinks', value: false }],
-      help: { summary: 'do not follow symbolic links', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 'E',
-      long: undefined,
-      effects: [{ key: 'errorStatus', value: true }],
-      help: { summary: 'on filesystem errors, print ERROR and return failure', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 'i',
-      long: 'mime',
-      effects: [
-        { key: 'mimeType', value: true },
-        { key: 'mimeEncoding', value: true },
-      ],
-      help: { summary: 'output MIME type and encoding strings' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'mime-type',
-      effects: [{ key: 'mimeType', value: true }],
-      help: { summary: 'output only the MIME type string' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'mime-encoding',
-      effects: [{ key: 'mimeEncoding', value: true }],
-      help: { summary: 'output only the MIME encoding string' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const fileOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'brief', value: true }] },
+    forms: [
+      { kind: 'short', name: 'b', value: { kind: 'none' } },
+      { kind: 'long', name: 'brief', value: { kind: 'none' } },
+    ],
+    summary: 'do not prepend filenames to output lines',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'separator', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'F', value: { kind: 'required-attached-or-following', missingValueName: 'SEPARATOR' } },
+      { kind: 'long', name: 'separator', value: { kind: 'required', missingValueName: 'SEPARATOR' } },
+    ],
+    summary: 'use SEPARATOR instead of colon after filenames',
+    valueName: 'SEPARATOR',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'followSymlinks', value: true }] },
+    forms: [
+      { kind: 'short', name: 'L', value: { kind: 'none' } },
+      { kind: 'long', name: 'dereference', value: { kind: 'none' } },
+    ],
+    summary: 'follow symbolic links',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'followSymlinks', value: false }] },
+    forms: [
+      { kind: 'short', name: 'h', value: { kind: 'none' } },
+      { kind: 'long', name: 'no-dereference', value: { kind: 'none' } },
+    ],
+    summary: 'do not follow symbolic links',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'errorStatus', value: true }] },
+    forms: [{ kind: 'short', name: 'E', value: { kind: 'none' } }],
+    summary: 'on filesystem errors, print ERROR and return failure',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'mimeType', value: true }, { key: 'mimeEncoding', value: true },] },
+    forms: [
+      { kind: 'short', name: 'i', value: { kind: 'none' } },
+      { kind: 'long', name: 'mime', value: { kind: 'none' } },
+    ],
+    summary: 'output MIME type and encoding strings',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'mimeType', value: true }] },
+    forms: [{ kind: 'long', name: 'mime-type', value: { kind: 'none' } }],
+    summary: 'output only the MIME type string',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'mimeEncoding', value: true }] },
+    forms: [{ kind: 'long', name: 'mime-encoding', value: { kind: 'none' } }],
+    summary: 'output only the MIME encoding string',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const fileArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: fileOptions,
+  nonExecutableLongOptions: [],
+});
+const fileArgvHelp = defineArgvHelpPresentation({ catalog: fileArgvCatalog, rows: fileOptions });
+const fileArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 
-interface ParsedFileArgv {
-  readonly parsed: ParsedStandardArgv,
-  readonly helpMode: 'normal' | 'after-unknown-options',
-}
 
-function isFileUnknownOptionDiagnostic({
-  diagnostic,
-}: {
-  diagnostic: ArgvDiagnostic,
-}): boolean {
-  switch (diagnostic.kind) {
-  case 'unknown_short_option':
-  case 'unknown_long_option':
-    return true;
-  case 'missing_option_value':
-  case 'invalid_option_value':
-    return false;
-  default: {
-    const _ex: never = diagnostic.kind;
-    throw new Error(`Unhandled file argv diagnostic kind: ${_ex}`);
-  }
-  }
-}
+type FileArgvDiagnostic = ParsedStandardArgv<never>['diagnostics'][number];
 
-function parseFileArgv({
-  args,
-}: {
-  args: string[],
-}): ParsedFileArgv {
+function parseFileArgv({ args }: { args: readonly string[] }): {
+  parsed: ParsedStandardArgv<never>,
+  precedingUnknownOptions: readonly FileArgvDiagnostic[],
+} {
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] !== '--help') {
       continue;
     }
 
-    const parsedPrefix = parseStandardArgv({
-      args: args.slice(0, index + 1),
-      spec: fileArgvSpec,
-    });
-    if (
-      parsedPrefix.optionValues.help === true
-      && parsedPrefix.diagnostics.every((diagnostic) => isFileUnknownOptionDiagnostic({ diagnostic }))
-    ) {
-      return {
-        parsed: parsedPrefix,
-        helpMode: parsedPrefix.diagnostics.length === 0 ? 'normal' : 'after-unknown-options',
-      };
+    const prefix = args.slice(0, index + 1);
+    const result = parseStandardArgv({ args: prefix, catalog: fileArgvCatalog, policy: fileArgvPolicy });
+    if (result.diagnostics.some(diagnostic => diagnostic.kind !== 'unknown_short_option' && diagnostic.kind !== 'unknown_long_option')) {
+      continue;
+    }
+
+    // Unknown options preceding --help still produce diagnostics. Parse the remaining
+    // tokens again so help handling never depends on the values of a failed parse.
+    const unknownIndices = new Set(result.diagnostics.map(diagnostic => diagnostic.argvIndex));
+    const parsed = unknownIndices.size === 0
+      ? result
+      : parseStandardArgv({
+        args: prefix.map((token, argvIndex) => unknownIndices.has(argvIndex) ? '' : token),
+        catalog: fileArgvCatalog,
+        policy: fileArgvPolicy,
+      });
+    if (parsed.diagnostics.length === 0 && parsed.optionValues.help === true) {
+      return { parsed, precedingUnknownOptions: result.diagnostics };
     }
   }
 
   return {
-    parsed: parseStandardArgv({ args, spec: fileArgvSpec }),
-    helpMode: 'normal',
+    parsed: parseStandardArgv({ args, catalog: fileArgvCatalog, policy: fileArgvPolicy }),
+    precedingUnknownOptions: [],
   };
 }
 
@@ -275,27 +268,7 @@ async function describePath({
 
 export const fileCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsedArgv = parseFileArgv({ args: context.args });
-    const { parsed, helpMode } = parsedArgv;
-
-    switch (helpMode) {
-    case 'after-unknown-options':
-      for (const diagnostic of parsed.diagnostics) {
-        await context.text().error({ text: `file: ${diagnostic.message}\n` });
-      }
-      await writeCommandHelp({
-        context,
-        command: 'file',
-        argvSpec: fileArgvSpec,
-      });
-      return { exitCode: 0 };
-    case 'normal':
-      break;
-    default: {
-      const _ex: never = helpMode;
-      throw new Error(`Unhandled file help mode: ${_ex}`);
-    }
-    }
+    const { parsed, precedingUnknownOptions } = parseFileArgv({ args: context.args });
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
@@ -303,16 +276,19 @@ export const fileCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'file',
         message: `file: ${diagnostic.message}`,
-        argvSpec: fileArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: fileArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
     if (parsed.optionValues.help === true) {
+      for (const diagnostic of precedingUnknownOptions) {
+        await context.text().error({ text: `file: ${diagnostic.message}\n` });
+      }
       await writeCommandHelp({
         context,
         command: 'file',
-        argvSpec: fileArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: fileArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -322,7 +298,7 @@ export const fileCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'file',
         message: 'file: missing file operand',
-        argvSpec: fileArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: fileArgvHelp }),
       });
       return { exitCode: 1 };
     }

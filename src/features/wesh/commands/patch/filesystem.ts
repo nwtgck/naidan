@@ -1,11 +1,11 @@
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
-import { resolvePath } from '@/features/wesh/path';
-import type { WeshCommandContext, WeshOpenFlags, WeshStat } from '@/features/wesh/types';
+import { canonicalizePathAllowingMissingComponents, resolvePath } from '@/features/wesh/path';
+import type { WeshCommandContext, WeshEntryRef, WeshOpenFlags, WeshStat, WeshTemporaryEntry } from '@/features/wesh/types';
+import { WeshCommandInterruptedError, WeshRenameIncompleteError } from '@/features/wesh/types';
 import {
   openFileReadStream,
   openHandleReadStream,
   writeAllBytesToHandle,
-  writeAllStreamToHandle,
 } from '@/features/wesh/utils/fs';
 import type {
   PatchContent,
@@ -17,7 +17,7 @@ import type {
 } from './types';
 import {
   createPatchLineSourceFromBytes,
-  createPatchLineSourceFromPath,
+  createPatchLineSourceFromEntry,
 } from './source';
 
 const encoder = new TextEncoder();
@@ -406,7 +406,7 @@ export interface ReadPatchSourceResult {
   kind: PatchFileKind,
   source: PatchLineSource,
   mode: number,
-  exists: boolean,
+  entry: WeshEntryRef<'file' | 'symlink'> | undefined,
 }
 
 export async function readPatchSource({
@@ -425,14 +425,14 @@ export async function readPatchSource({
         kind: 'regular',
         source: await createPatchLineSourceFromBytes({ bytes: new Uint8Array(0) }),
         mode: 0o644,
-        exists: false,
+        entry: undefined,
       };
     case 'symlink':
       return {
         kind: 'symlink',
         source: await createPatchLineSourceFromBytes({ bytes: new Uint8Array(0) }),
         mode: 0o777,
-        exists: false,
+        entry: undefined,
       };
     default: {
       const _ex: never = expectedKind;
@@ -441,16 +441,17 @@ export async function readPatchSource({
     }
   }
 
-  const stat = await context.files.lstat({ path });
-  switch (stat.type) {
+  const entry = await context.files.resolveEntry({ path, finalSymlinkTreatment: 'no-follow', pinBacking: true });
+  const stat = await context.files.statEntry({ entry });
+  switch (entry.type) {
   case 'file':
     switch (expectedKind) {
     case 'regular':
       return {
         kind: 'regular',
-        source: await createPatchLineSourceFromPath({ context, path }),
+        source: await createPatchLineSourceFromEntry({ context, entry }),
         mode: stat.mode & 0o7777,
-        exists: true,
+        entry,
       };
     case 'symlink':
       throw new Error(`expected symbolic link but found regular file: '${path}'`);
@@ -464,12 +465,12 @@ export async function readPatchSource({
     case 'regular':
       throw new Error(`refusing to follow symbolic link '${path}'`);
     case 'symlink': {
-      const target = encoder.encode(await context.files.readlink({ path }));
+      const target = encoder.encode(await context.files.readlinkEntry({ entry }));
       return {
         kind: 'symlink',
         source: await createPatchLineSourceFromBytes({ bytes: target }),
         mode: stat.mode & 0o7777,
-        exists: true,
+        entry,
       };
     }
     default: {
@@ -481,10 +482,10 @@ export async function readPatchSource({
   case 'directory':
   case 'fifo':
   case 'chardev':
-    throw new Error(`unsupported patch target type '${stat.type}': '${path}'`);
+    throw new Error(`unsupported patch target type '${entry.type}': '${path}'`);
   default: {
-    const _ex: never = stat.type;
-    throw new Error(`Unhandled patch target type: ${_ex}`);
+    const _ex: never = entry;
+    throw new Error(`Unhandled patch target: ${String(_ex)}`);
   }
   }
 }
@@ -522,11 +523,9 @@ async function allocateTemporaryPath({
 }
 
 async function writePatchContentToHandle({
-  context,
   handle,
   content,
 }: {
-  context: WeshCommandContext,
   handle: Awaited<ReturnType<WeshCommandContext['files']['open']>>,
   content: PatchContent,
 }): Promise<void> {
@@ -559,16 +558,9 @@ async function writePatchContentToHandle({
       }
     }
     return;
-  case 'file':
-    await writeAllStreamToHandle({
-      stream: await openFileReadStream({ files: context.files, path: content.path }),
-      handle,
-      closeHandle: false,
-    });
-    return;
   case 'sequence':
     for (const child of content.contents) {
-      await writePatchContentToHandle({ context, handle, content: child });
+      await writePatchContentToHandle({ handle, content: child });
     }
     return;
   default: {
@@ -578,13 +570,11 @@ async function writePatchContentToHandle({
   }
 }
 
-export async function getPatchContentByteLength({
-  context,
+export function getPatchContentByteLength({
   content,
 }: {
-  context: WeshCommandContext,
   content: PatchContent,
-}): Promise<number> {
+}): number {
   switch (content.kind) {
   case 'bytes':
     return content.bytes.byteLength;
@@ -610,12 +600,10 @@ export async function getPatchContentByteLength({
     }
     return byteLength;
   }
-  case 'file':
-    return (await context.files.stat({ path: content.path })).size;
   case 'sequence': {
     let byteLength = 0;
     for (const child of content.contents) {
-      byteLength += await getPatchContentByteLength({ context, content: child });
+      byteLength += getPatchContentByteLength({ content: child });
       if (!Number.isSafeInteger(byteLength)) {
         throw new Error('patched output is too large');
       }
@@ -630,13 +618,11 @@ export async function getPatchContentByteLength({
 }
 
 export async function materializePatchContent({
-  context,
   content,
 }: {
-  context: WeshCommandContext,
   content: PatchContent,
 }): Promise<Uint8Array> {
-  const byteLength = await getPatchContentByteLength({ context, content });
+  const byteLength = getPatchContentByteLength({ content });
   const result = new Uint8Array(byteLength);
   let offset = 0;
   const sink = {
@@ -663,36 +649,11 @@ export async function materializePatchContent({
       return { ret: 0 };
     },
   };
-  await writePatchContentToHandle({ context, handle: sink, content });
+  await writePatchContentToHandle({ handle: sink, content });
   return result;
 }
 
-async function writeExclusiveRegularFile({
-  context,
-  path,
-  content,
-  mode,
-}: {
-  context: WeshCommandContext,
-  path: string,
-  content: PatchContent,
-  mode: number,
-}): Promise<void> {
-  const flags: WeshOpenFlags = {
-    access: 'write',
-    creation: 'always',
-    truncate: 'truncate',
-    append: 'preserve',
-  };
-  const handle = await context.files.open({ path, flags, mode: mode & 0o7777 });
-  try {
-    await writePatchContentToHandle({ context, handle, content });
-  } finally {
-    await handle.close();
-  }
-}
-
-async function createEntryAtPath({
+async function preparePatchedEntry({
   context,
   path,
   kind,
@@ -704,20 +665,30 @@ async function createEntryAtPath({
   kind: PatchFileKind,
   content: PatchContent,
   mode: number,
-}): Promise<void> {
+}): Promise<WeshTemporaryEntry> {
   switch (kind) {
-  case 'regular':
-    await writeExclusiveRegularFile({ context, path, content, mode });
-    return;
+  case 'regular': {
+    const temporary = await context.files.createTemporaryFile({ path });
+    try {
+      try {
+        await writePatchContentToHandle({ handle: temporary.handle, content });
+      } finally {
+        await temporary.handle.close();
+      }
+      return temporary;
+    } catch (error: unknown) {
+      await temporary.discard().catch(() => {});
+      throw error;
+    }
+  }
   case 'symlink':
-    await context.files.symlink({
+    return context.files.createTemporarySymlink({
       path,
       targetPath: new TextDecoder('utf-8', { fatal: true }).decode(
-        await materializePatchContent({ context, content }),
+        await materializePatchContent({ content }),
       ),
       mode: mode & 0o7777,
     });
-    return;
   default: {
     const _ex: never = kind;
     throw new Error(`Unhandled patch file kind: ${_ex}`);
@@ -815,13 +786,13 @@ async function resolveBackupPath({
 export async function createBackup({
   context,
   targetPath,
-  targetExists,
+  source,
   options,
   cwd,
 }: {
   context: WeshCommandContext,
   targetPath: string,
-  targetExists: boolean,
+  source: ReadPatchSourceResult | undefined,
   options: PatchOptions,
   cwd: string,
 }): Promise<string> {
@@ -829,57 +800,111 @@ export async function createBackup({
   if (backupPath === targetPath) {
     throw new Error(`backup path would overwrite '${targetPath}'`);
   }
-  if (!targetExists) {
+  if (source?.entry === undefined) {
     await installPatchedEntry({
       context,
       targetPath: backupPath,
       kind: 'regular',
       content: { kind: 'bytes', bytes: new Uint8Array(0) },
       mode: 0o644,
-      deleteTarget: false,
     });
     return backupPath;
   }
 
-  const targetStat = await context.files.lstat({ path: targetPath });
-  switch (targetStat.type) {
-  case 'file':
-    await installPatchedEntry({
-      context,
-      targetPath: backupPath,
-      kind: 'regular',
-      content: { kind: 'file', path: targetPath },
-      mode: targetStat.mode & 0o7777,
-      deleteTarget: false,
-    });
-    break;
-  case 'symlink':
-    await installPatchedEntry({
-      context,
-      targetPath: backupPath,
-      kind: 'symlink',
-      content: { kind: 'bytes', bytes: encoder.encode(await context.files.readlink({ path: targetPath })) },
-      mode: targetStat.mode & 0o7777,
-      deleteTarget: false,
-    });
-    break;
-  case 'directory':
-  case 'fifo':
-  case 'chardev':
-    throw new Error(`cannot back up unsupported file type '${targetStat.type}'`);
-  default: {
-    const _ex: never = targetStat.type;
-    throw new Error(`Unhandled backup file type: ${_ex}`);
+  const current = await resolvePatchEntry({ context, path: targetPath });
+  if (current === undefined || await context.files.compareEntryIdentity({ first: source.entry, second: current }) !== 'same') {
+    throw new Error(`Source entry changed: ${targetPath}`);
   }
+  const expected = await resolvePatchEntry({ context, path: backupPath });
+  if (expected !== undefined) {
+    const relation = await context.files.compareEntryIdentity({ first: source.entry, second: expected });
+    if (relation === 'same' || relation === 'shared-backing') {
+      throw new Error(`backup path would overwrite '${targetPath}'`);
+    }
   }
+  await publishPatchedEntry({
+    context,
+    targetPath: backupPath,
+    expected,
+    kind: source.kind,
+    content: {
+      kind: 'line-plan',
+      source: source.source,
+      pieces: [{ kind: 'source', startLine: 0, endLine: source.source.lineCount }],
+    },
+    mode: source.mode,
+  });
   return backupPath;
 }
 
-async function cleanupPath({ context, path }: { context: WeshCommandContext, path: string }): Promise<void> {
+export async function resolvePatchEntry({ context, path }: {
+  context: WeshCommandContext,
+  path: string,
+}): Promise<WeshEntryRef | undefined> {
   try {
-    await context.files.unlink({ path });
-  } catch {
-    // Preserve the primary operation error.
+    return await context.files.resolveEntry({ path, finalSymlinkTreatment: 'no-follow', pinBacking: true });
+  } catch (error: unknown) {
+    if (isPathNotFoundError({ error })) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+export async function samePatchOutput({ context, first, second }: {
+  context: WeshCommandContext,
+  first: string,
+  second: string,
+}): Promise<boolean> {
+  if (first === second) {
+    return true;
+  }
+  const left = await resolvePatchEntry({ context, path: first });
+  const right = await resolvePatchEntry({ context, path: second });
+  if (left !== undefined && right !== undefined) {
+    const relation = await context.files.compareEntryIdentity({ first: left, second: right });
+    return relation === 'same' || relation === 'shared-backing';
+  }
+  if (basename({ path: first }) !== basename({ path: second })) {
+    return false;
+  }
+  let firstParent = await canonicalizePathAllowingMissingComponents({ context, path: dirname({ path: first }) });
+  let secondParent = await canonicalizePathAllowingMissingComponents({ context, path: dirname({ path: second }) });
+  // Compare physical directories after peeling off any identical missing suffix.
+  while (firstParent !== secondParent) {
+    const leftParent = await resolvePatchEntry({ context, path: firstParent });
+    const rightParent = await resolvePatchEntry({ context, path: secondParent });
+    if (leftParent !== undefined || rightParent !== undefined) {
+      return leftParent !== undefined && rightParent !== undefined
+        && await context.files.compareEntryIdentity({ first: leftParent, second: rightParent }) === 'same';
+    }
+    if (basename({ path: firstParent }) !== basename({ path: secondParent })) {
+      return false;
+    }
+    firstParent = dirname({ path: firstParent });
+    secondParent = dirname({ path: secondParent });
+  }
+  return true;
+}
+
+export async function publishPatchedEntry({ context, targetPath, expected, kind, content, mode }: {
+  context: WeshCommandContext,
+  targetPath: string,
+  expected: WeshEntryRef | undefined,
+  kind: PatchFileKind,
+  content: PatchContent,
+  mode: number,
+}): Promise<WeshEntryRef> {
+  await ensureParentDirectory({ context, path: targetPath });
+  const temporaryPath = await allocateTemporaryPath({ context, targetPath, purpose: 'output' });
+  const temporary = await preparePatchedEntry({ context, path: temporaryPath, kind, content, mode });
+  try {
+    return await context.files.replaceEntry({ entry: temporary.entry, path: targetPath, expected, backupPath: undefined });
+  } catch (error: unknown) {
+    if (!(error instanceof WeshRenameIncompleteError)) {
+      await temporary.discard().catch(() => {});
+    }
+    throw error;
   }
 }
 
@@ -889,131 +914,79 @@ export async function installPatchedEntry({
   kind,
   content,
   mode,
-  deleteTarget,
 }: {
   context: WeshCommandContext,
   targetPath: string,
   kind: PatchFileKind,
   content: PatchContent,
   mode: number,
-  deleteTarget: boolean,
 }): Promise<void> {
-  const targetExists = await pathExists({ context, path: targetPath });
-  const recoveryPath = await allocateTemporaryPath({
-    context,
-    targetPath,
-    purpose: 'recovery',
-  });
+  const expected = await resolvePatchEntry({ context, path: targetPath });
+  await publishPatchedEntry({ context, targetPath, expected, kind, content, mode });
+}
 
-  if (deleteTarget) {
-    if (!targetExists) {
-      return;
-    }
-    await context.files.rename({ oldPath: targetPath, newPath: recoveryPath });
-    try {
-      await context.files.unlink({ path: recoveryPath });
-    } catch (error: unknown) {
-      try {
-        await context.files.rename({ oldPath: recoveryPath, newPath: targetPath });
-      } catch (restoreError: unknown) {
-        throw new AggregateError(
-          [error, restoreError],
-          `failed to delete and restore '${targetPath}'`,
-        );
-      }
-      throw error;
-    }
+export async function removePatchedEntry({ context, entry, retainedEntry, mode }: {
+  context: WeshCommandContext,
+  entry: WeshEntryRef<'file' | 'symlink'>,
+  retainedEntry: WeshEntryRef | undefined,
+  mode: number,
+}): Promise<void> {
+  const path = entry.fullPath;
+  const retainedEntries = retainedEntry === undefined ? [] : [retainedEntry];
+  switch (entry.type) {
+  case 'file':
+    await context.files.unlink({ path, expected: { entry, retainedEntries } });
     return;
+  case 'symlink':
+    break;
+  default: {
+    const _ex: never = entry;
+    throw new Error(`Unhandled removal entry: ${String(_ex)}`);
+  }
   }
 
-  await ensureParentDirectory({ context, path: targetPath });
-  const temporaryPath = await allocateTemporaryPath({
-    context,
-    targetPath,
-    purpose: 'output',
-  });
-  await createEntryAtPath({ context, path: temporaryPath, kind, content, mode });
-  let targetMoved = false;
-  let replacementInstalled = false;
-
+  // A symlink has two provider entries. Keep its target recoverable if only one is removed.
+  const recoveryPath = await allocateTemporaryPath({ context, targetPath: path, purpose: 'recovery' });
+  const targetPath = await context.files.readlinkEntry({ entry });
+  const recovery = await context.files.createTemporarySymlink({ path: recoveryPath, targetPath, mode });
+  retainedEntries.push(recovery.entry);
   try {
-    if (targetExists) {
-      await context.files.rename({ oldPath: targetPath, newPath: recoveryPath });
-      targetMoved = true;
+    await context.files.unlink({ path, expected: { entry, retainedEntries } });
+  } catch (cause: unknown) {
+    if (cause instanceof WeshCommandInterruptedError) {
+      await recovery.discard();
+      throw cause;
     }
-
-    try {
-      await context.files.rename({ oldPath: temporaryPath, newPath: targetPath });
-      replacementInstalled = true;
-    } catch (replaceError: unknown) {
-      if (targetMoved) {
-        try {
-          await context.files.rename({ oldPath: recoveryPath, newPath: targetPath });
-          targetMoved = false;
-        } catch (restoreError: unknown) {
-          throw new AggregateError(
-            [replaceError, restoreError],
-            `failed to replace and restore '${targetPath}'`,
-          );
-        }
-      }
-      throw replaceError;
-    }
-
-    if (targetMoved) {
-      try {
-        await context.files.unlink({ path: recoveryPath });
-        targetMoved = false;
-      } catch (cleanupError: unknown) {
-        try {
-          await context.files.unlink({ path: targetPath });
-          replacementInstalled = false;
-          await context.files.rename({ oldPath: recoveryPath, newPath: targetPath });
-          targetMoved = false;
-        } catch (restoreError: unknown) {
-          throw new AggregateError(
-            [cleanupError, restoreError],
-            `failed to clean up and restore '${targetPath}'`,
-          );
-        }
-        throw cleanupError;
-      }
-    }
-  } finally {
-    await cleanupPath({ context, path: temporaryPath });
-    if (targetMoved && !replacementInstalled) {
-      try {
-        await context.files.rename({ oldPath: recoveryPath, newPath: targetPath });
-      } catch {
-        // Preserve the primary replacement error.
-      }
-    }
+    throw new Error(`Could not remove '${path}' (${String(cause)}). Recovery path: '${recoveryPath}'`, { cause });
   }
+  await recovery.discard();
 }
 
 export async function installRenamedEntry({
   context,
-  sourcePath,
+  sourceEntry,
   destinationPath,
   kind,
   content,
   mode,
+  sourceMode,
 }: {
   context: WeshCommandContext,
-  sourcePath: string,
+  sourceEntry: WeshEntryRef<'file' | 'symlink'>,
   destinationPath: string,
   kind: PatchFileKind,
   content: PatchContent,
   mode: number,
+  sourceMode: number,
 }): Promise<void> {
-  if (sourcePath === destinationPath) {
-    await installPatchedEntry({
+  if (sourceEntry.fullPath === destinationPath) {
+    await publishPatchedEntry({
       context,
       targetPath: destinationPath,
+      expected: sourceEntry,
       kind,
       content,
       mode,
-      deleteTarget: false,
     });
     return;
   }
@@ -1022,28 +995,16 @@ export async function installRenamedEntry({
     throw new Error(`rename destination already exists: '${destinationPath}'`);
   }
 
-  await installPatchedEntry({
+  const retainedEntry = await publishPatchedEntry({
     context,
     targetPath: destinationPath,
     kind,
     content,
     mode,
-    deleteTarget: false,
+    expected: undefined,
   });
 
-  try {
-    await context.files.unlink({ path: sourcePath });
-  } catch (removeError: unknown) {
-    try {
-      await context.files.unlink({ path: destinationPath });
-    } catch (rollbackError: unknown) {
-      throw new AggregateError(
-        [removeError, rollbackError],
-        `failed to complete or roll back rename '${sourcePath}'`,
-      );
-    }
-    throw removeError;
-  }
+  await removePatchedEntry({ context, entry: sourceEntry, retainedEntry, mode: sourceMode });
 }
 
 export async function appendFileBytes({
@@ -1074,26 +1035,25 @@ export async function writeOutputContent({
   context,
   path,
   content,
-  cwd,
+  expected,
 }: {
   context: WeshCommandContext,
   path: string,
   content: PatchContent,
-  cwd: string,
+  expected: WeshEntryRef | undefined,
 }): Promise<void> {
   if (path === '-') {
-    await writePatchContentToHandle({ context, handle: context.stdout, content });
+    await writePatchContentToHandle({ handle: context.stdout, content });
     return;
   }
 
-  const fullPath = resolvePath({ cwd, path });
-  await installPatchedEntry({
+  await publishPatchedEntry({
     context,
-    targetPath: fullPath,
+    targetPath: path,
+    expected,
     kind: 'regular',
     content,
     mode: 0o644,
-    deleteTarget: false,
   });
 }
 

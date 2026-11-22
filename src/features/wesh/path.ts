@@ -1,5 +1,14 @@
 import type { WeshCommandContext, WeshStat } from '@/features/wesh/types';
 
+type CanonicalizationContext = Pick<WeshCommandContext, 'cwd'> & {
+  readonly files: Pick<WeshCommandContext['files'], 'lstat' | 'readlink'>,
+};
+
+/** Anchor an operand without changing the components the filesystem must walk. */
+export function toAbsolutePath({ cwd, path }: { cwd: string, path: string }): string {
+  return path.startsWith('/') ? path : cwd === '/' ? `/${path}` : `${cwd}/${path}`;
+}
+
 export function normalizePath({
   cwd,
   path,
@@ -7,11 +16,7 @@ export function normalizePath({
   cwd: string,
   path: string,
 }): string {
-  const joined = path.startsWith('/')
-    ? path
-    : cwd === '/'
-      ? `/${path}`
-      : `${cwd}/${path}`;
+  const joined = toAbsolutePath({ cwd, path });
 
   const segments = joined.split('/');
   const normalizedSegments: string[] = [];
@@ -46,6 +51,7 @@ type SymlinkTraversalPolicy = 'detect_cycles' | 'limit_40';
 type PendingPathComponent = {
   value: string,
   mayBeMissingLeaf: boolean,
+  requiresDirectory?: true,
 };
 
 type PendingPathNode = {
@@ -70,22 +76,13 @@ function createOriginalPendingComponents({
 }: {
   path: string,
 }): PendingPathComponent[] {
-  const rawComponents = path.split('/');
-  const hasTrailingSlash = path.length > 1 && path.endsWith('/');
-  let lastSyntacticComponentIndex = -1;
-  for (let index = rawComponents.length - 1; index >= 0; index -= 1) {
-    if ((rawComponents[index] ?? '').length > 0) {
-      lastSyntacticComponentIndex = index;
-      break;
-    }
-  }
-
-  return rawComponents.map((value, index) => ({
+  const names = path.split('/').filter(name => name.length > 0);
+  const terminal = names.length - 1;
+  const hasTrailingSlash = path.endsWith('/');
+  return names.map((value, index) => ({
     value,
-    mayBeMissingLeaf: !hasTrailingSlash
-      && index === lastSyntacticComponentIndex
-      && value !== '.'
-      && value !== '..',
+    mayBeMissingLeaf: index === terminal && value !== '.' && value !== '..',
+    requiresDirectory: index === terminal && hasTrailingSlash ? true : undefined,
   }));
 }
 
@@ -119,7 +116,7 @@ async function canonicalizePath({
   mode,
   symlinkPolicy,
 }: {
-  context: WeshCommandContext,
+  context: CanonicalizationContext,
   path: string,
   mode: CanonicalizationMode,
   symlinkPolicy: SymlinkTraversalPolicy,
@@ -128,11 +125,7 @@ async function canonicalizePath({
     throw new Error('No such file or directory');
   }
 
-  const joined = path.startsWith('/')
-    ? path
-    : context.cwd === '/'
-      ? `/${path}`
-      : `${context.cwd}/${path}`;
+  const joined = toAbsolutePath({ cwd: context.cwd, path });
   let nextPendingNodeId = 1;
   const pendingNodeByStructure = new Map<string, PendingPathNode>();
   const prependPendingComponents = ({
@@ -151,6 +144,7 @@ async function canonicalizePath({
       const structureKey = JSON.stringify([
         component.value,
         component.mayBeMissingLeaf,
+        component.requiresDirectory === true,
         head?.id ?? 0,
       ]);
       const existing = pendingNodeByStructure.get(structureKey);
@@ -195,7 +189,9 @@ async function canonicalizePath({
     try {
       stat = await context.files.lstat({ path: candidate });
     } catch (error: unknown) {
-      if (!isPathNotFoundError({ error })) {
+      const assumeDirectory = mode === 'missing_components' && error instanceof Error
+        && (error.name === 'NotAllowedError' || error.message.startsWith('Permission denied:'));
+      if (!assumeDirectory && !isPathNotFoundError({ error })) {
         throw error;
       }
 
@@ -270,6 +266,7 @@ async function canonicalizePath({
         resolvedSegments.length = 0;
       }
       const targetComponents = target.split('/');
+      const requiresDirectory = current.requiresDirectory === true || target.endsWith('/');
       let lastTargetSyntacticComponentIndex = -1;
       for (let index = targetComponents.length - 1; index >= 0; index -= 1) {
         if ((targetComponents[index] ?? '').length > 0) {
@@ -282,6 +279,7 @@ async function canonicalizePath({
           ? []
           : [{
             value,
+            requiresDirectory: requiresDirectory && index === lastTargetSyntacticComponentIndex ? true : undefined,
             mayBeMissingLeaf: current.mayBeMissingLeaf
               && pending === undefined
               && index === lastTargetSyntacticComponentIndex
@@ -298,7 +296,7 @@ async function canonicalizePath({
     case 'file':
     case 'fifo':
     case 'chardev':
-      if (pending !== undefined) {
+      if (pending !== undefined || current.requiresDirectory) {
         switch (mode) {
         case 'missing_components':
           resolvedSegments.push(component);
@@ -330,7 +328,7 @@ export async function canonicalizeExistingPath({
   path,
   symlinkPolicy = 'detect_cycles',
 }: {
-  context: WeshCommandContext,
+  context: CanonicalizationContext,
   path: string,
   symlinkPolicy?: SymlinkTraversalPolicy,
 }): Promise<string> {
@@ -347,7 +345,7 @@ export async function canonicalizePathAllowingMissingLeaf({
   path,
   symlinkPolicy = 'detect_cycles',
 }: {
-  context: WeshCommandContext,
+  context: CanonicalizationContext,
   path: string,
   symlinkPolicy?: SymlinkTraversalPolicy,
 }): Promise<string> {
@@ -363,7 +361,7 @@ export async function canonicalizePathAllowingMissingComponents({
   context,
   path,
 }: {
-  context: WeshCommandContext,
+  context: CanonicalizationContext,
   path: string,
 }): Promise<string> {
   return canonicalizePath({

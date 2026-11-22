@@ -4,7 +4,7 @@ import {
   HELP_EARLY_EXIT_OPTIONS,
   parseStandardArgv,
   stopArgvAtFirstEarlyExit,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 import {
   resolveCharacterLocaleMode,
   type WeshCharacterLocaleMode,
@@ -17,8 +17,10 @@ import type {
   WeshCommandContext,
   WeshCommandImplementation,
   WeshCommandResult,
+  WeshEntryRef,
   WeshFileHandle,
 } from "@/features/wesh/types";
+import { WeshRenameIncompleteError } from "@/features/wesh/types";
 import {
   openFileReadStream,
   readAllFileBytes,
@@ -60,6 +62,7 @@ import {
 } from "./runtime-command";
 import { createSedOutputWriter, type SedOutputWriter } from "./output-writer";
 import {
+  closeSedTemporaryFile,
   createSedTemporaryFile,
   isSedInputDirectory,
   openSedInputStream,
@@ -266,10 +269,7 @@ async function processSedLines({
           await executeActions({ actions }),
         unbuffered,
         yieldExecution: async () => {
-          const waitStatus = await context.process.waitForSignalOrTimeout({
-            timeoutMs: 1,
-            pollIntervalMs: 1,
-          });
+          const waitStatus = await context.process.waitForSignalOrTimeout({ timeoutMs: 1 });
           return waitStatus === undefined ? "continue" : "interrupted";
         },
       });
@@ -1573,8 +1573,24 @@ export const sedCommandImplementation: WeshCommandImplementation = {
             }
           }
 
-          const originalStat = await context.files.stat({ path: fullPath });
-          switch (originalStat.type) {
+          const original = await context.files.resolveEntry({ path: fullPath, finalSymlinkTreatment: "no-follow", pinBacking: true });
+          let inputType: WeshEntryRef["type"];
+          switch (original.type) {
+          case "symlink":
+            inputType = (await context.files.stat({ path: fullPath })).type;
+            break;
+          case "file":
+          case "directory":
+          case "fifo":
+          case "chardev":
+            inputType = original.type;
+            break;
+          default: {
+            const _ex: never = original;
+            throw new Error(`Unhandled sed in-place entry: ${String(_ex)}`);
+          }
+          }
+          switch (inputType) {
           case "file":
             break;
           case "directory":
@@ -1588,7 +1604,7 @@ export const sedCommandImplementation: WeshCommandImplementation = {
             });
             break;
           default: {
-            const _ex: never = originalStat.type;
+            const _ex: never = inputType;
             throw new Error(`Unhandled sed in-place input type: ${_ex}`);
           }
           }
@@ -1601,7 +1617,6 @@ export const sedCommandImplementation: WeshCommandImplementation = {
             temporary = await createSedTemporaryFile({
               context,
               targetPath: fullPath,
-              mode: originalStat.mode,
             });
           } catch (error: unknown) {
             exitCode = 4;
@@ -1612,7 +1627,8 @@ export const sedCommandImplementation: WeshCommandImplementation = {
             });
             break;
           }
-          let temporaryExists = true;
+          let discardTemporary = true;
+          let editFailure: { error: unknown } | undefined;
           try {
             const temporaryWriter = createBufferedCommandDataWriter({
               handle: temporary.handle,
@@ -1674,7 +1690,7 @@ export const sedCommandImplementation: WeshCommandImplementation = {
               }
             }
 
-            const recoveryPath =
+            const backupPath =
               inPlaceSuffix.length > 0
                 ? resolveSedInPlaceRecoveryPath({
                   cwd: context.cwd,
@@ -1682,41 +1698,15 @@ export const sedCommandImplementation: WeshCommandImplementation = {
                   fullPath,
                   suffix: inPlaceSuffix,
                 })
-                : `${temporary.path}.original`;
-            let originalMoved = false;
+                : undefined;
             try {
-              await context.files.rename({
-                oldPath: fullPath,
-                newPath: recoveryPath,
+              await context.files.replaceEntry({
+                path: fullPath,
+                entry: temporary.entry,
+                expected: original,
+                backupPath,
               });
-              originalMoved = true;
-              try {
-                await context.files.rename({
-                  oldPath: temporary.path,
-                  newPath: fullPath,
-                });
-                temporaryExists = false;
-              } catch (replaceError: unknown) {
-                try {
-                  await context.files.rename({
-                    oldPath: recoveryPath,
-                    newPath: fullPath,
-                  });
-                  originalMoved = false;
-                } catch (restoreError: unknown) {
-                  throw new AggregateError(
-                    [replaceError, restoreError],
-                    `sed: failed to replace and restore ${fullPath}`,
-                  );
-                }
-                throw replaceError;
-              }
-
-              if (inPlaceSuffix.length === 0) {
-                await context.files.unlink({ path: recoveryPath });
-                originalMoved = false;
-              }
-
+              discardTemporary = false;
               if (termination !== undefined) {
                 if (exitCode === 0) {
                   exitCode = termination.exitCode;
@@ -1724,15 +1714,8 @@ export const sedCommandImplementation: WeshCommandImplementation = {
                 break inPlaceFileLoop;
               }
             } catch (error: unknown) {
-              if (originalMoved && inPlaceSuffix.length === 0) {
-                try {
-                  await context.files.rename({
-                    oldPath: recoveryPath,
-                    newPath: fullPath,
-                  });
-                } catch {
-                  // Preserve the original replacement error.
-                }
+              if (error instanceof WeshRenameIncompleteError) {
+                discardTemporary = false;
               }
               exitCode = 4;
               const message = error instanceof Error ? error.message : String(error);
@@ -1742,15 +1725,11 @@ export const sedCommandImplementation: WeshCommandImplementation = {
               });
               break;
             }
+          } catch (error: unknown) {
+            editFailure = { error };
+            throw error;
           } finally {
-            await temporary.handle.close();
-            if (temporaryExists) {
-              try {
-                await context.files.unlink({ path: temporary.path });
-              } catch {
-                // Preserve the original sed error when temporary cleanup fails.
-              }
-            }
+            await closeSedTemporaryFile({ temporary, discard: discardTemporary, editFailure });
           }
         } catch (error: unknown) {
           exitCode = 2;

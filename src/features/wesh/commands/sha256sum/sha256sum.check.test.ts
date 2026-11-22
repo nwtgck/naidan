@@ -468,4 +468,12 @@ sha256sum: none-valid.sum: no file was verified
     expect(tag.result.exitCode).toBe(1);
     expect(binary.result.exitCode).toBe(1);
   });
+
+  it('reports the tag and text conflict before check-mode restrictions', async () => {
+    const { result, stdout, stderr } = await harness.execute({ script: 'sha256sum -cz --tag -t' });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('sha256sum: --tag does not support --text mode');
+  });
 });

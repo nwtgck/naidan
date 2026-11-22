@@ -2,6 +2,7 @@ import type { WeshCharacterLocaleMode } from "@/features/wesh/commands/_shared/l
 import type {
   WeshCommandContext,
   WeshFileHandle,
+  WeshTemporaryFile,
 } from "@/features/wesh/types";
 import {
   openFileReadStream,
@@ -296,15 +297,10 @@ export async function resolveSedFollowSymlinkInput({
 export async function createSedTemporaryFile({
   context,
   targetPath,
-  mode,
 }: {
   context: WeshCommandContext;
   targetPath: string;
-  mode: number;
-}): Promise<{
-  path: string;
-  handle: WeshFileHandle;
-}> {
+}): Promise<WeshTemporaryFile> {
   const separatorIndex = targetPath.lastIndexOf("/");
   const parentPath =
     separatorIndex <= 0 ? "/" : targetPath.slice(0, separatorIndex);
@@ -314,20 +310,7 @@ export async function createSedTemporaryFile({
     const temporaryPath =
       parentPath === "/" ? `/${name}` : `${parentPath}/${name}`;
     try {
-      const handle = await context.files.open({
-        path: temporaryPath,
-        flags: {
-          access: "write",
-          creation: "always",
-          truncate: "truncate",
-          append: "preserve",
-        },
-        mode,
-      });
-      return {
-        path: temporaryPath,
-        handle,
-      };
+      return await context.files.createTemporaryFile({ path: temporaryPath });
     } catch (error: unknown) {
       if (attempt === 99) {
         throw error;
@@ -335,6 +318,25 @@ export async function createSedTemporaryFile({
     }
   }
   throw new Error(`Unable to create temporary file for ${targetPath}`);
+}
+
+export async function closeSedTemporaryFile({ temporary, discard, editFailure }: {
+  temporary: WeshTemporaryFile,
+  discard: boolean,
+  editFailure: { error: unknown } | undefined,
+}): Promise<void> {
+  try {
+    await temporary.handle.close();
+  } catch (error: unknown) {
+    if (editFailure === undefined) {
+      throw error;
+    }
+    throw new AggregateError([editFailure.error, error], String(editFailure.error), { cause: editFailure.error });
+  } finally {
+    if (discard) {
+      await temporary.discard().catch(() => {});
+    }
+  }
 }
 
 export const TEST_ONLY = {

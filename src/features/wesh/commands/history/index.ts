@@ -1,17 +1,25 @@
-import { parseStandardArgv } from '@/features/wesh/argv';
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
-import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import type { WeshShellBuiltinFunction, WeshCommandResult } from '@/features/wesh/types';
 
-const historyArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const historyOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const historyArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: historyOptions,
+  nonExecutableLongOptions: [],
+});
+const historyArgvHelp = defineArgvHelpPresentation({ catalog: historyArgvCatalog, rows: historyOptions });
+const historyArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'none',
 };
 
 const maximumPositiveHistoryCountText = '9223372036854775807';
@@ -76,14 +84,12 @@ function parseHistoryCount({
   return BigInt(significantDigits);
 }
 
-export const historyCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const historyCommandImplementation = {
+  fn: async ({ context, shell }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardOptionParsingAtFirstPositional({
-        args: context.args,
-        spec: historyArgvSpec,
-      }),
-      spec: historyArgvSpec,
+      args: context.args,
+      catalog: historyArgvCatalog,
+      policy: historyArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -92,7 +98,7 @@ export const historyCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'history',
         message: `history: ${diagnostic.message}`,
-        argvSpec: historyArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: historyArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -101,7 +107,7 @@ export const historyCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'history',
-        argvSpec: historyArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: historyArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -124,7 +130,7 @@ export const historyCommandImplementation: WeshCommandImplementation = {
     }
 
     const text = context.text();
-    const historyList = context.getHistory();
+    const historyList = shell.getHistory();
     const startIndex = count === undefined || count >= BigInt(historyList.length)
       ? 0
       : historyList.length - Number(count);
@@ -134,7 +140,7 @@ export const historyCommandImplementation: WeshCommandImplementation = {
     }
     return { exitCode: 0 };
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'getHistory'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

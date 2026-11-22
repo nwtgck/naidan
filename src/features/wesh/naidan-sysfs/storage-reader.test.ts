@@ -12,7 +12,8 @@ import {
   naidanSysfsRemoteChatMetaPayloadSchema,
 } from './remote-reader-schema';
 import { NaidanSysfsProvider } from './provider';
-import { createOpfsNaidanSysfsStorageReader, createNaidanSysfsRemoteReader, createRemoteNaidanSysfsStorageReader } from './storage-reader';
+import { createNaidanSysfsRemoteReader, createNaidanSysfsRemoteReaderForMounts } from './storage-reader';
+import { createOpfsNaidanSysfsStorageReader, createRemoteNaidanSysfsStorageReader } from './worker-storage-reader';
 
 installSecretEqualityTester();
 
@@ -170,10 +171,48 @@ describe('Naidan sysfs current-format transfer boundary', () => {
     }
   });
 
-  it('rejects legacy wire payloads even though the persistence reader accepts them', () => {
+  it('rejects legacy wire payloads even though the persistence reader accepts them', async () => {
     expect(naidanSysfsRemoteChatMetaPayloadSchema.safeParse({ dto: legacyMetadata, groupId: 'group-legacy' }).success).toBe(false);
     expect(naidanSysfsRemoteChatGroupPayloadSchema.safeParse({ dto: legacyGroup, items: [] }).success).toBe(false);
     expect(naidanSysfsRemoteChatContentPayloadSchema.safeParse(legacyContent).success).toBe(false);
+
+    const remoteReader = {
+      ...createNaidanSysfsRemoteReader({ storageType: 'local' }),
+      loadChatMeta: vi.fn().mockResolvedValue({ dto: legacyMetadata, groupId: 'group-legacy' }),
+      loadChatGroup: vi.fn().mockResolvedValue({ dto: legacyGroup, items: [] }),
+      loadChatContent: vi.fn().mockResolvedValue(legacyContent),
+    };
+    const reader = createRemoteNaidanSysfsStorageReader({ remoteReader });
+    const chatId = toChatId({ raw: 'chat-legacy' });
+    await expect(reader.loadChatMeta({ chatId })).rejects.toThrow();
+    await expect(reader.loadChatGroup({ chatGroupId: toChatGroupId({ raw: 'group-legacy' }) })).rejects.toThrow();
+    await expect(reader.loadChatContent({ chatId })).rejects.toThrow();
+  });
+
+  it('selects the host reader from the effective sysfs mount and checks its storage source', async () => {
+    const mount = {
+      type: 'naidan_sysfs',
+      path: '/sys/fs/naidan',
+      readOnly: true,
+      visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
+      currentChatId: 'chat-legacy',
+      currentChatGroupId: undefined,
+    } as const;
+    const localMount = { ...mount, storageType: 'local' } as const;
+    const memoryMount = { ...mount, storageType: 'memory' } as const;
+    const opfsMount = { ...mount, storageType: 'opfs' } as const;
+    expect(createNaidanSysfsRemoteReaderForMounts({ mounts: [localMount] })?.storageType).toBe('local');
+    expect(createNaidanSysfsRemoteReaderForMounts({ mounts: [localMount, opfsMount] })).toBeUndefined();
+
+    const reader = createNaidanSysfsRemoteReaderForMounts({ mounts: [opfsMount, memoryMount] });
+    if (reader === undefined) {
+      throw new Error('Expected the effective memory mount to use a host reader');
+    }
+    expect(reader.storageType).toBe('memory');
+    await expect(reader.getSidebarStructure()).rejects.toThrow('expected memory storage, received: local');
+    await storageService.init({ type: 'memory' });
+    await expect(reader.getSidebarStructure()).resolves.toEqual([]);
   });
 
   it('requires V2 in nested replies as well as the root message', () => {

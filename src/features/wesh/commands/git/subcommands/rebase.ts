@@ -1,5 +1,5 @@
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
-import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv';
 import { getConfigValue, readEffectiveConfig } from '@/features/wesh/commands/git/config';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readCommit } from "@/features/wesh/commands/git/commits";
@@ -83,16 +83,16 @@ function parseRebaseStartArguments({ args }: { args: readonly string[] }): Rebas
           }
           case 'none':
           case 'unexpected-inline':
-            throw new Error(`Unexpected rebase --onto argv-v2 value analysis: ${JSON.stringify(analysis.value)}`);
+            throw new Error(`Unexpected rebase --onto argv value analysis: ${JSON.stringify(analysis.value)}`);
           default: {
             const _ex: never = analysis.value;
-            throw new Error(`Unhandled rebase --onto argv-v2 value analysis: ${JSON.stringify(_ex)}`);
+            throw new Error(`Unhandled rebase --onto argv value analysis: ${JSON.stringify(_ex)}`);
           }
           }
           continue;
         default: {
           const _ex: never = analysis.semantic;
-          throw new Error(`Unhandled rebase argv-v2 semantic: ${_ex}`);
+          throw new Error(`Unhandled rebase argv semantic: ${_ex}`);
         }
         }
       case 'unknown':
@@ -101,7 +101,7 @@ function parseRebaseStartArguments({ args }: { args: readonly string[] }): Rebas
         throw new GitUsageError({ message: `ambiguous option: ${arg}` });
       default: {
         const _ex: never = analysis;
-        throw new Error(`Unhandled rebase argv-v2 analysis: ${JSON.stringify(_ex)}`);
+        throw new Error(`Unhandled rebase argv analysis: ${JSON.stringify(_ex)}`);
       }
       }
     }

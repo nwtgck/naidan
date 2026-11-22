@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Wesh } from "@/features/wesh/index";
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from "@/features/wesh/mocks/InMemoryFileSystem";
@@ -72,10 +72,12 @@ describe("wesh sed", () => {
     script,
     stdinText,
     stdinBytes,
+    signal,
   }: {
     script: string;
     stdinText?: string;
     stdinBytes?: Uint8Array;
+    signal?: AbortSignal;
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
@@ -87,6 +89,7 @@ describe("wesh sed", () => {
         : createTestReadHandleFromBytes({ bytes: stdinBytes }),
       stdout: stdout.handle,
       stderr: stderr.handle,
+      signal,
     });
 
     return { result, stdout, stderr };
@@ -870,6 +873,91 @@ betA
 alpha
 beta
 `);
+  });
+
+  it("finishes a backup and replacement when Stop arrives during the first move", async () => {
+    await writeFile({ path: "input.txt", data: "old\n" });
+    const removing = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const removeEntry = rootHandle.removeEntry.bind(rootHandle);
+    using _resume = {
+      [Symbol.dispose]() {
+        resume.resolve();
+      },
+    };
+    using _remove = vi.spyOn(rootHandle, "removeEntry").mockImplementation(async (name, options) => {
+      if (name === "input.txt") {
+        removing.resolve();
+        await resume.promise;
+      }
+      await removeEntry(name, options);
+    });
+    const controller = new AbortController();
+    const execution = execute({ script: "sed -i.bak 's/old/new/' input.txt; printf late", signal: controller.signal });
+
+    await removing.promise;
+    controller.abort();
+    await wesh.interruptForeground({ foregroundSignal: controller.signal });
+    expect(wesh.vfs.hasPendingFilePublications()).toBe(true);
+    resume.resolve();
+
+    const { result, stdout, stderr } = await execution;
+    expect(result.exitCode).toBe(130);
+    expect(stdout.text).toBe("");
+    expect(stderr.text).toBe("");
+    await expect(readFile({ path: "input.txt" })).resolves.toBe("new\n");
+    await expect(readFile({ path: "input.txt.bak" })).resolves.toBe("old\n");
+  });
+
+  it("restores the original when the new destination fails before publication", async () => {
+    await writeFile({ path: "input.txt", data: "old\n" });
+    const getFileHandle = rootHandle.getFileHandle.bind(rootHandle);
+    let failed = false;
+    using _open = vi.spyOn(rootHandle, "getFileHandle").mockImplementation(async (name, options) => {
+      const file = await getFileHandle(name, options);
+      if (name === "input.txt" && options?.create && !failed) {
+        failed = true;
+        vi.spyOn(file, "createWritable").mockRejectedValueOnce(new Error("cannot stage new data"));
+      }
+      return file;
+    });
+
+    const { result, stderr } = await execute({ script: "sed -i.bak 's/old/new/' input.txt" });
+
+    expect(result.exitCode).toBe(4);
+    expect(stderr.text).toContain("cannot stage new data");
+    await expect(readFile({ path: "input.txt" })).resolves.toBe("old\n");
+    await expect(getFileHandle("input.txt.bak")).rejects.toMatchObject({ name: "NotFoundError" });
+  });
+
+  it("does not restore a foreign file substituted at the backup name", async () => {
+    await writeFile({ path: "input.txt", data: "old\n" });
+    const getFileHandle = rootHandle.getFileHandle.bind(rootHandle);
+    using _open = vi.spyOn(rootHandle, "getFileHandle").mockImplementation(async (name, options) => {
+      if (name === "input.txt" && options?.create) {
+        await rootHandle.removeEntry("input.txt.bak");
+        await writeFile({ path: "input.txt.bak", data: "foreign\n" });
+        throw new Error("cannot create destination");
+      }
+      return getFileHandle(name, options);
+    });
+
+    const { result, stderr } = await execute({ script: "sed -i.bak 's/old/new/' input.txt" });
+
+    expect(result.exitCode).toBe(4);
+    expect(stderr.text).toContain("restore from '/input.txt.bak'");
+    await expect(getFileHandle("input.txt")).rejects.toMatchObject({ name: "NotFoundError" });
+    await expect(readFile({ path: "input.txt.bak" })).resolves.toBe("foreign\n");
+    const staged = (await Array.fromAsync(rootHandle.keys())).find(name => name.startsWith(".input.txt.sed-"));
+    expect(staged).toBeDefined();
+  });
+
+  it("replaces the input when a starred backup suffix resolves to the same path", async () => {
+    await writeFile({ path: "input.txt", data: "old\n" });
+    const { result, stderr } = await execute({ script: "sed -i'*' 's/old/new/' input.txt" });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe("");
+    await expect(readFile({ path: "input.txt" })).resolves.toBe("new\n");
   });
 
   it("processes repeated in-place file operands sequentially", async () => {

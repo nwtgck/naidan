@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from './index';
 import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
 import { createHandleShellSource, createTextShellSource } from './shell/source';
+import type { WeshFileHandle } from './types';
+import { WeshInputBuffer } from './utils/file-input';
 import {
   createTestReadHandleFromBytes,
   createTestReadHandleFromText,
@@ -453,6 +455,57 @@ AFTER
     expect(result.stderr.text).toBe('');
   });
 
+  it.each([
+    { command: 'IFS= read -r -u3 value; printf "%s\\n" "$value"' },
+    { command: 'head -c 8 <&3 | cat' },
+    { command: "bash -c 'IFS= read -r -u3 value; printf \"%s\\n\" \"$value\"'" },
+  ])('shares bash -s input with descriptors duplicated before the shell started ($command)', async ({ command }) => {
+    const stdin = createTestReadHandleFromText({
+      text: `\
+${command}
+PAYLOAD
+printf 'AFTER\\n'
+`,
+    });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const result = await wesh.execute({
+      source: createTextShellSource({ text: 'bash -s 3<&0' }),
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+PAYLOAD
+AFTER
+`);
+  });
+
+  it.each(['exit', 'exec true'])('keeps unconsumed source bytes after a nested stdin shell runs %s', async finish => {
+    const stdin = createTestReadHandleFromText({
+      text: `\
+bash -s
+${finish}
+printf 'OUTER\\n'
+`,
+    });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const result = await wesh.execute({
+      source: createTextShellSource({ text: 'bash -s' }),
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('OUTER\n');
+  });
+
   it('lets a command drain the remaining shared shell source through stdin', async () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
@@ -833,16 +886,16 @@ printf '%s\\n' '#!/bin/bash -e   ' 'printf "TRAILING-SHEBANG\\n"' > /script.sh
     expect(result.stderr.text).toBe('');
   });
 
-  it('matches Linux NUL termination while resolving a shebang', async () => {
+  it('rejects a script with a NUL byte in its Bash shebang as binary', async () => {
     const result = await execute({
       script: String.raw`printf '#!/bin/bash -e\000ignored\nprintf "NUL-SHEBANG\n"\n' > /script.sh
 /script.sh
 `,
     });
 
-    expect(result.result.exitCode).toBe(0);
-    expect(result.stdout.text).toBe('NUL-SHEBANG\n');
-    expect(result.stderr.text).toBe('');
+    expect(result.result.exitCode).toBe(126);
+    expect(result.stdout.text).toBe('');
+    expect(result.stderr.text).toBe('/script.sh: /script.sh: cannot execute binary file\n');
   });
 
   it('executes a script path through its handle-backed shell source', async () => {
@@ -2765,7 +2818,7 @@ printf 'value:%s\n' "$value"
     });
 
     expect(result.stdout.text).toBe(`\
-18|32|-4|4|9|8
+18|32|4|4|9|8
 value:4
 `);
     expect(result.stderr.text).toBe('');
@@ -2784,6 +2837,356 @@ printf '%s|%s|%s|%s\n' "$((1 << 3))" "$((16 >> 2))" "$((1 + 1 << 2))" "$((16 >> 
 `);
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
+  });
+
+  it('parses adjacent shift assignments and parentheses in arithmetic commands', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+value=1
+((value<<=(2+1)))
+printf 'left:%s\\n' "$value"
+((value>>=(1)))
+printf 'right:%s\\n' "$value"
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+left:8
+right:4
+`);
+    expect(stderr.text).toBe('');
+  });
+
+  it('short-circuits logical and conditional arithmetic', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+a=0
+bad='2+@'
+negative=-1
+printf 'and:%s a:%s\\n' "$((0 && (a=5)))" "$a"
+printf 'or:%s unselected-division:%s unselected-variable:%s\\n' "$((1 || bad))" "$((0 && 1/0))" "$((0 && 2**negative))"
+printf 'conditional:%s a:%s\\n' "$((0 ? bad : 1 ? (a=8) : 1/0))" "$a"
+printf 'conditional-comma:%s a:%s\\n' "$((1 ? a=9,a+1 : 0))" "$a"
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+and:0 a:0
+or:1 unselected-division:0 unselected-variable:0
+conditional:8 a:8
+conditional-comma:10 a:9
+`);
+    expect(stderr.text).toBe('');
+  });
+
+  it.each([
+    { expression: '1 || 08', diagnostic: /base|octal/i },
+    { expression: '1 || 2#2', diagnostic: /base|digit/i },
+    { expression: '1 || (1=2)', diagnostic: /assign|lvalue|target/i },
+    { expression: '1 || ((a)=2)', diagnostic: /assign|lvalue|target/i },
+    { expression: '0 && 2**-1', diagnostic: /exponent/i },
+  ])('validates the unselected arithmetic operand in $expression', async ({ expression, diagnostic }) => {
+    const { result, stdout, stderr } = await execute({ script: `((${expression}))` });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toMatch(diagnostic);
+  });
+
+  it('diagnoses division and remainder by zero in selected arithmetic operands', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+((1 / 0))
+printf 'division:%s\\n' "$?"
+let '1 % 0'
+printf 'remainder:%s\\n' "$?"
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+division:1
+remainder:1
+`);
+    expect(stderr.text).toMatch(/division by (?:zero|0)/i);
+  });
+
+  it('uses arithmetic error status for conditionals and errexit', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+set -e
+if ((1/0)); then printf 'unreachable\\n'; else printf 'else:%s\\n' "$?"; fi
+printf 'before-command\\n'
+((1/0))
+printf 'unreachable\\n'
+`,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe(`\
+else:1
+before-command
+`);
+    expect(stderr.text.match(/division by (?:zero|0)/gi)).toHaveLength(2);
+  });
+
+  it('preserves assignments completed before a subsequent arithmetic error', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+a=0
+((a=7, @))
+printf 'after-comma:%s a:%s\\n' "$?" "$a"
+((a=9 @))
+printf 'invalid-assignment:%s a:%s\\n' "$?" "$a"
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+after-comma:1 a:7
+invalid-assignment:1 a:7
+`);
+    expect(stderr.text).toContain('@');
+  });
+
+  it('reads arithmetic bindings at the point required by each assignment or update', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+a=2
+((a+=(a=5)))
+printf 'compound:%s\\n' "$a"
+a=2
+printf 'left-first:%s a:%s\\n' "$((a + a++))" "$a"
+bad='1+@'
+let 'bad=4' 'a=9'
+printf 'replaced:%s a:%s\\n' "$bad" "$a"
+tick=1
+ref='++tick'
+printf 'post:%s ref:%s tick:%s\\n' "$((ref++))" "$ref" "$tick"
+a='(a=1,a)'
+printf 'rewritten:%s a:%s\\n' "$((a))" "$a"
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+compound:7
+left-first:4 a:3
+replaced:4 a:9
+post:2 ref:3 tick:2
+rewritten:1 a:1
+`);
+    expect(stderr.text).toBe('');
+  });
+
+  it('preserves the read effects of grouped and unary invalid arithmetic assignments', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+r='++c'
+c=4
+((+r=9))
+printf 'unary:%s c:%s r:%s\\n' "$?" "$c" "$r"
+(( (r)=9 ))
+printf 'grouped:%s c:%s r:%s\\n' "$?" "$c" "$r"
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+unary:1 c:4 r:++c
+grouped:1 c:5 r:++c
+`);
+    expect(stderr.text.match(/assign|lvalue|target/gi)).not.toBeNull();
+  });
+
+  it('applies signed 64-bit wrapping to arithmetic expansions, arithmetic commands, and let', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+printf 'wrap:%s division:%s\\n' "$((9223372036854775807 + 1))" "$((-9223372036854775808 / -1))"
+printf 'shifts:%s|%s|%s|%s\\n' "$((1 << 63))" "$((1 << -1))" "$((1 << 64))" "$((-1 >> 63))"
+printf 'power:%s|%s\\n' "$((2 ** 3 ** 2))" "$((3 ** 9223372036854775807))"
+value=9223372036854775807
+((value += 1))
+printf 'increment:%s\\n' "$value"
+let 'value >>= 63' 'value &= 4294967297'
+printf 'bits:%s\\n' "$value"
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+wrap:-9223372036854775808 division:-9223372036854775808
+shifts:-9223372036854775808|-9223372036854775808|1|-1
+power:512|-6148914691236517205
+increment:-9223372036854775808
+bits:4294967297
+`);
+    expect(stderr.text).toBe('');
+  });
+
+  it('checks the arithmetic substring offset before evaluating the length', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+value=abc
+a=0
+printf '<%s>|<%s>|%s\\n' "\${value:9223372036854775807:(a=1)}" "\${value: -9223372036854775808:(a=2)}" "$a"
+printf '<%s>|%s\\n' "\${value:3:(a=3)}" "$a"
+printf '<%s>|<%s>\\n' "\${value:1:9223372036854775807}" "\${value:1:-1}"
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+<>|<>|0
+<>|3
+<bc>|<b>
+`);
+    expect(stderr.text).toBe('');
+  });
+
+  it('parses empty and conditional arithmetic expressions in substring bounds', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+value=abcdef
+printf '<%s>|<%s>|<%s>|<%s>\\n' "\${value::2}" "\${value:1?2:4:2}" "\${value:0?3:2}" "\${value:1:0?3:2}"
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('<ab>|<cd>|<cdef>|<bc>\n');
+    expect(stderr.text).toBe('');
+  });
+
+  it.each([
+    { expansion: '${value:}', option: '+e', status: 0, diagnostic: 'bad substitution' },
+    { expansion: '${value:}', option: '-e', status: 1, diagnostic: 'bad substitution' },
+    { expansion: '${value:2:-2}', option: '-e', status: 0, diagnostic: 'substring expression < 0' },
+  ])('discards the failed substring command list for $expansion under set $option', async ({ expansion, option, status, diagnostic }) => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+value=abc
+set ${option}
+printf 'before\\n'; printf '<%s>\\n' "${expansion}"; printf 'unreachable\\n'
+printf 'next:%s\\n' "$?"
+`,
+    });
+
+    expect(result.exitCode).toBe(status);
+    expect(stdout.text).toBe(status === 0 ? `\
+before
+next:1
+` : 'before\n');
+    expect(stderr.text).toContain(diagnostic);
+  });
+
+  it('expands explicit parameter references before arithmetic evaluation', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+value='1+2'
+printf '%s|%s\\n' "$((value*3))" "$(($value*3))"
+unset assigned
+printf '%s|%s\\n' "$((1 || assigned))" "\${assigned-unset}"
+printf '%s|%s\\n' "$((1 || \${assigned:=7}))" "$assigned"
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+9|7
+1|unset
+1|7
+`);
+    expect(stderr.text).toBe('');
+  });
+
+  it.each([
+    { expression: '1/0', diagnostic: /division by (?:zero|0)/i },
+    { expression: '1 || $bad', diagnostic: /@/ },
+  ])('skips the rest of the command list after a failing arithmetic expansion in $expression', async ({ expression, diagnostic }) => {
+    const script = `\
+bad='2+@'
+printf 'before\\n'; printf '%s\\n' "$((${expression}))"; printf 'unreachable\\n'
+`;
+    const failed = await execute({ script });
+
+    expect(failed.result.exitCode).toBe(1);
+    expect(failed.stdout.text).toBe('before\n');
+    expect(failed.stderr.text).toMatch(diagnostic);
+
+    const continued = await execute({
+      script: `\
+${script}printf 'next\\n'
+`,
+    });
+
+    expect(continued.result.exitCode).toBe(0);
+    expect(continued.stdout.text).toBe(`\
+before
+next
+`);
+    expect(continued.stderr.text).toMatch(diagnostic);
+  });
+
+  it('uses the status of the nested evaluation when an arithmetic expansion fails', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+(printf 'before-subshell\\n'; printf '%s\\n' "$((1/0))"; printf 'unreachable\\n')
+printf 'subshell:%s\\n' "$?"
+eval 'printf "%s\\n" "$((1/0))"; printf "unreachable\\n"'
+printf 'eval:%s\\n' "$?"
+printf '%s\\n' "$((1/0))" | cat; printf 'pipeline:%s\\n' "$?"
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+before-subshell
+subshell:1
+eval:1
+pipeline:0
+`);
+    expect(stderr.text.match(/division by (?:zero|0)/gi)).toHaveLength(3);
+  });
+
+  it('bounds arithmetic nesting across recursive variable expressions', async () => {
+    const recursiveExpression = '('.repeat(100) + 'b++ < 500 ? r : 7' + ')'.repeat(100);
+    const { result, stdout, stderr } = await execute({
+      script: `\
+r='${recursiveExpression}'
+b=0
+printf 'before\\n'; printf '%s\\n' "$((r))"; printf 'unreachable\\n'
+printf 'next:%s\\n' "$?"
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+before
+next:1
+`);
+    expect(stderr.text).toMatch(/Arithmetic .* limit exceeded/);
+  });
+
+  it('checks nounset when arithmetic reads a variable', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+set -u
+printf '%s|%s\\n' "$((0 && unselected))" "$((1 || unselected))"
+((value = 7))
+printf 'assigned:%s\\n' "$value"
+printf '%s\\n' "$((1 && missing))"
+printf 'after\\n'
+`,
+    });
+
+    expect(result.exitCode).toBe(127);
+    expect(stdout.text).toBe(`\
+0|1
+assigned:7
+`);
+    expect(stderr.text).toContain('missing: unbound variable');
   });
 
   it('does not treat non-shell Unicode whitespace as arithmetic whitespace', async () => {
@@ -2884,5 +3287,306 @@ printf 'wait:%s pid:%s\n' "$?" "$pid"
     expect(result.exitCode).toBe(0);
     expect(stdout.text).toMatch(/^wait:0 pid:[0-9]+\n$/);
     expect(stderr.text).toBe('');
+  });
+
+  it('executes each line once when two shells share a pending input refill', async () => {
+    const pipe = await wesh.kernel.pipe();
+    using refill = vi.spyOn(WeshInputBuffer.prototype, 'refill');
+    const startShell = () => {
+      const stdout = createTestWriteCaptureHandle();
+      const stderr = createTestWriteCaptureHandle();
+      const running = wesh.execute({
+        source: createTextShellSource({ text: 'bash -s' }),
+        stdin: pipe.read,
+        stdout: stdout.handle,
+        stderr: stderr.handle,
+      });
+      return { stdout, stderr, running };
+    };
+    const shells = [startShell(), startShell()];
+    const executions = shells.map(shell => shell.running);
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        await pipe.write.close();
+        await pipe.read.close();
+        await Promise.allSettled(executions);
+      },
+    };
+
+    await expect.poll(() => refill.mock.calls.length).toBe(2);
+    expect(refill.mock.results[1]?.value).toBe(refill.mock.results[0]?.value);
+    const script = `\
+printf 'ONE\\n'
+printf 'TWO\\n'
+`;
+    await pipe.write.write({ buffer: new TextEncoder().encode(script) });
+    await pipe.write.close();
+
+    const results = await Promise.all(executions);
+    expect(results.map(result => result.exitCode)).toEqual([0, 0]);
+    expect(shells.map(shell => shell.stderr.text)).toEqual(['', '']);
+    const lines = shells.flatMap(shell => shell.stdout.text.split('\n').filter(line => line !== ''));
+    expect(lines.sort()).toEqual(['ONE', 'TWO']);
+  });
+
+  it.each(['pipe', 'FIFO'] as const)('shares read-ahead with a %s descriptor cloned before evaluation', async kind => {
+    const openInput = async () => {
+      if (kind === 'pipe') {
+        return wesh.kernel.pipe();
+      }
+      const path = '/input';
+      await wesh.vfs.mknod({ path, type: 'fifo', mode: 0o600 });
+      return {
+        read: await wesh.vfs.open({ path, flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' } }),
+        write: await wesh.vfs.open({ path, flags: { access: 'write', creation: 'never', truncate: 'preserve', append: 'preserve' } }),
+      };
+    };
+    const input = await openInput();
+    const clone = input.read.cloneReference?.();
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        await input.write.close();
+        await clone?.close();
+        await input.read.close();
+      },
+    };
+    if (clone === undefined) {
+      throw new Error('Expected input to provide a duplicate descriptor');
+    }
+    const script = `\
+IFS= read -r value
+payload
+printf '<%s>\\n' "$value"
+`;
+    await input.write.write({ buffer: new TextEncoder().encode(script) });
+    await input.write.close();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      source: createHandleShellSource({ handle: clone }),
+      stdin: input.read,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('<payload>\n');
+    expect(stderr.text).toBe('');
+  });
+
+  it.each(['first', 'second'])('stops only the %s bash -s sharing an empty pipe', async (stoppedShell) => {
+    const pipe = await wesh.kernel.pipe();
+    const refill = vi.spyOn(WeshInputBuffer.prototype, 'refill');
+    const executions: ReturnType<Wesh['execute']>[] = [];
+    const startShell = () => {
+      const controller = new AbortController();
+      const stdout = createTestWriteCaptureHandle();
+      const stderr = createTestWriteCaptureHandle();
+      const running = wesh.execute({
+        source: createTextShellSource({ text: 'bash -s 3<&0' }),
+        stdin: pipe.read,
+        stdout: stdout.handle,
+        stderr: stderr.handle,
+        signal: controller.signal,
+      });
+      executions.push(running);
+      return {
+        controller,
+        stdout,
+        stderr,
+        running,
+      };
+    };
+
+    try {
+      const first = startShell();
+      await expect.poll(() => refill.mock.calls.length).toBe(1);
+      const second = startShell();
+      await expect.poll(() => refill.mock.calls.length).toBe(2);
+      expect(refill.mock.contexts[1]).toBe(refill.mock.contexts[0]);
+      expect(refill.mock.results[1]?.value).toBe(refill.mock.results[0]?.value);
+
+      const stopped = stoppedShell === 'first' ? first : second;
+      const surviving = stoppedShell === 'first' ? second : first;
+      stopped.controller.abort();
+      await wesh.interruptForeground({ foregroundSignal: stopped.controller.signal });
+      await expect.poll(() => Promise.race([stopped.running, undefined])).toMatchObject({
+        exitCode: 130,
+        waitStatus: { kind: 'signaled', signal: 2 },
+      });
+      expect(stopped.stdout.text).toBe('');
+      expect(stopped.stderr.text).toBe('');
+
+      await pipe.write.write({ buffer: new TextEncoder().encode("printf 'survived\\n'\n") });
+      await pipe.write.close();
+      await expect(surviving.running).resolves.toMatchObject({ exitCode: 0 });
+      expect(surviving.stdout.text).toBe('survived\n');
+      expect(surviving.stderr.text).toBe('');
+    } finally {
+      refill.mockRestore();
+      await pipe.write.close();
+      await pipe.read.close();
+      await Promise.allSettled(executions);
+    }
+  });
+
+  it.each([
+    { redirection: '0<alternate', childOutput: 'alternate\n' },
+    { redirection: '0<&-', childOutput: '' },
+  ])('handles exec $redirection in a stdin script and preserves the parent descriptor', async ({ redirection, childOutput }) => {
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const originalRemainder = 'printf "from-original\\n"\n';
+    const result = await wesh.execute({
+      source: createTextShellSource({
+        text: "printf '%s\\n' 'printf \"alternate\\n\"' >alternate; exec 8<&0; bash -s 3<&8; cat <&8",
+      }),
+      stdin: createTestReadHandleFromText({ text: 'exec ' + redirection + '\n' + originalRemainder }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(childOutput + originalRemainder);
+    expect(stderr.text).toBe('');
+  });
+
+  it('continues a named script after it redirects stdin to another file', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: "printf '%s\\n' 'exec 0<alternate' 'IFS= read -r line' 'printf \"script:%s\\n\" \"$line\"' >script\n"
+        + "printf '%s\\n' 'alternate data' >alternate\n"
+        + 'bash script <script',
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('script:alternate data\n');
+    expect(stderr.text).toBe('');
+  });
+
+  it('preserves Bash argv zero through the registered executable and exec -a', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+/bin/bash -c 'printf "<%s>\\n" "$0"'
+/bin/bash -c 'printf "<%s>\\n" "$0"' ''
+(exec -a alternate /bin/bash -c 'printf "<%s>\\n" "$0"')
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+</bin/bash>
+<>
+<alternate>
+`);
+    expect(stderr.text).toBe('');
+  });
+
+  it('uses Bash startup options in the registered executable', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+: >item
+: >other
+: >filtered
+/bin/bash -O extglob -c 'printf "%s\\n" @(item|other)'
+env SHELLOPTS=pipefail /bin/bash -c 'false | true; printf "status=%s\\n" "$?"'
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+item
+other
+status=1
+`);
+    expect(stderr.text).toBe('');
+  });
+
+  it('parses without executing a command string with the registered Bash -n option', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: '/bin/bash -n -c "printf must-not-run"',
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+
+    const invalid = await execute({ script: '/bin/bash -n -c "if true; then"' });
+    expect(invalid.result.exitCode).toBe(2);
+    expect(invalid.stdout.text).toBe('');
+    expect(invalid.stderr.text).not.toBe('');
+  });
+
+  it.each([
+    { command: 'bash', ignoreInterrupt: false, termination: 'stop', expectedStdout: 'ready\n', expectedStderr: 'interrupted\n' },
+    { command: 'bash -n', ignoreInterrupt: false, termination: 'stop', expectedStdout: '', expectedStderr: '' },
+    { command: 'sh', ignoreInterrupt: false, termination: 'stop', expectedStdout: 'ready\n', expectedStderr: 'interrupted\n' },
+    { command: 'bash', ignoreInterrupt: true, termination: 'stop', expectedStdout: 'ready\n', expectedStderr: '' },
+    { command: 'sh', ignoreInterrupt: true, termination: 'stop', expectedStdout: 'ready\n', expectedStderr: '' },
+    { command: 'bash', ignoreInterrupt: true, termination: 'group SIGTERM', expectedStdout: 'ready\n', expectedStderr: '' },
+    { command: 'sh', ignoreInterrupt: true, termination: 'group SIGTERM', expectedStdout: 'ready\n', expectedStderr: '' },
+  ] as const)('stops $command reading a named FIFO with its writer open ($termination, ignore SIGINT=$ignoreInterrupt)', async ({ command, ignoreInterrupt, termination, expectedStdout, expectedStderr }) => {
+    const path = '/script-fifo';
+    await wesh.vfs.mknod({ path, type: 'fifo', mode: 0o600 });
+    const writer = await wesh.vfs.open({
+      path,
+      flags: { access: 'read-write', creation: 'never', truncate: 'preserve', append: 'preserve' },
+    });
+    const prototype = Object.getPrototypeOf(writer) as Pick<WeshFileHandle, 'read'>;
+    using reads = vi.spyOn(prototype, 'read');
+    const trapAction = ignoreInterrupt ? '' : 'printf "interrupted\\n" >&2';
+    const input = `\
+trap '${trapAction}' INT
+printf 'ready\\n'
+`;
+    await writer.write({ buffer: new TextEncoder().encode(input) });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const controller = new AbortController();
+    const running = wesh.execute({
+      source: createTextShellSource({ text: command + ' ' + path }),
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+      signal: controller.signal,
+    });
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        await writer.close();
+        await Promise.allSettled([running]);
+      },
+    };
+
+    await expect.poll(() => stdout.text).toBe(expectedStdout);
+    await expect.poll(() => reads.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const waiting = reads.mock.results.at(-1)?.value;
+    expect(waiting).toBeDefined();
+    expect(await Promise.race([waiting, undefined])).toBeUndefined();
+    const shell = wesh.kernel.getProcesses().find(process => process.args.includes(path));
+    expect(shell).toBeDefined();
+
+    if (ignoreInterrupt) {
+      await expect(wesh.signalForegroundProcessGroup({ signal: 2, foregroundSignal: controller.signal })).resolves.toBe(true);
+      expect(await Promise.race([waiting, undefined])).toBeUndefined();
+      expect(await Promise.race([running, undefined])).toBeUndefined();
+      expect(shell?.waitStatus).toBeUndefined();
+    }
+
+    if (termination === 'group SIGTERM') {
+      await expect(wesh.signalForegroundProcessGroup({ signal: 15, foregroundSignal: controller.signal })).resolves.toBe(true);
+      await expect.poll(() => shell?.waitStatus).toEqual({ kind: 'signaled', signal: 15 });
+      expect(shell?.exitCode).toBe(143);
+      await expect.poll(() => Promise.race([running, undefined])).not.toBeUndefined();
+    } else {
+      controller.abort();
+      await wesh.interruptForeground({ foregroundSignal: controller.signal });
+      await expect.poll(() => Promise.race([running, undefined])).toMatchObject({
+        exitCode: 130,
+        waitStatus: { kind: 'signaled', signal: 2 },
+      });
+    }
+    await expect.poll(() => Promise.race([waiting, undefined])).toMatchObject({ bytesRead: 0 });
+    expect(stdout.text).toBe(expectedStdout);
+    expect(stderr.text).toBe(expectedStderr);
   });
 });

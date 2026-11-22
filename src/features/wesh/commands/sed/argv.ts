@@ -4,7 +4,7 @@ import {
   type ArgvOptionDefinition,
   type StandardArgvAction,
   type StandardArgvPolicy,
-} from '@/features/wesh/argv-v2';
+} from '@/features/wesh/argv';
 
 type SedDeferredOption = 'in-place';
 type SedArgvAction = StandardArgvAction<SedDeferredOption>;

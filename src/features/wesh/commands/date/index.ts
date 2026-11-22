@@ -1,12 +1,20 @@
-import { parseStandardArgv, type ArgvSpecialTokenParser, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import {
-  STANDARD_HELP_EARLY_EXIT_OPTIONS,
-  standardSemanticIssuePrecedesDiagnostic,
-  stopStandardArgvAtFirstEarlyExit,
-} from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type ArgvOptionDefinition,
+  type ParsedStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+  type StandardArgvRawValue,
+} from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
-import { containsNonAsciiDateWhitespace } from '@/features/wesh/commands/_shared/date-whitespace';
+import { containsNonAsciiDateWhitespace, trimAsciiDateWhitespace } from '@/features/wesh/commands/_shared/date-whitespace';
 import { parseDateExpressionMilliseconds } from '@/features/wesh/commands/_shared/date-expression';
 import { normalizePath } from '@/features/wesh/path';
 import { readAllFileText, readAllHandleBytes } from '@/features/wesh/utils/fs';
@@ -14,159 +22,105 @@ import { readAllFileText, readAllHandleBytes } from '@/features/wesh/utils/fs';
 type IsoPrecision = 'date' | 'hours' | 'minutes' | 'seconds' | 'ns';
 type Rfc3339Precision = 'date' | 'seconds' | 'ns';
 
-const parseIsoToken: ArgvSpecialTokenParser = ({ token }) => {
-  if (token === '-I' || token === '--iso-8601') {
-    const effects = [{ key: 'isoPrecision', value: 'date' }] as const;
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [...effects],
-      occurrences: [{ kind: 'special', option: token, effects: [...effects] }],
-    };
-  }
-  if (token.startsWith('-I') && token.length > 2) {
-    const effects = [{ key: 'isoPrecision', value: token.slice(2) }];
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects,
-      occurrences: [{ kind: 'special', option: token, effects }],
-    };
-  }
-  if (token.startsWith('--iso-8601=')) {
-    const effects = [{ key: 'isoPrecision', value: token.slice('--iso-8601='.length) }];
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects,
-      occurrences: [{ kind: 'special', option: token, effects }],
-    };
-  }
-  return undefined;
-};
+type DateArgvAction = StandardArgvAction<'isoPrecision'>;
+type ParsedDateArgv = ParsedStandardArgv<'isoPrecision'>;
 
-const dateArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'u', long: 'utc', effects: [{ key: 'utc', value: true }], help: { summary: 'display the time in UTC' } },
-    { kind: 'value', short: 'd', long: 'date', key: 'dateString', valueName: 'STRING', allowAttachedValue: true, parseValue: undefined, help: { summary: 'display the time described by STRING', valueName: 'STRING', category: 'common' } },
-    { kind: 'value', short: 'r', long: 'reference', key: 'referencePath', valueName: 'FILE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'display the last modification time of FILE', valueName: 'FILE', category: 'common' } },
-    { kind: 'value', short: 'f', long: 'file', key: 'dateFile', valueName: 'DATEFILE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'like --date; once for each line of DATEFILE', valueName: 'DATEFILE', category: 'common' } },
-    { kind: 'value', short: undefined, long: 'rfc-3339', key: 'rfc3339Precision', valueName: 'TIMESPEC', allowAttachedValue: false, parseValue: undefined, help: { summary: 'output date/time in RFC 3339 format', valueName: 'TIMESPEC', category: 'common' } },
-    { kind: 'flag', short: 'R', long: 'rfc-email', effects: [{ key: 'rfcEmail', value: true }], help: { summary: 'output date and time in RFC 5322 format', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+const dateUtcOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'utc', value: true }] },
+  forms: [
+    { kind: 'short', name: 'u', value: { kind: 'none' } },
+    { kind: 'long', name: 'utc', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: false,
-  specialTokenParsers: [parseIsoToken],
+} as const satisfies ArgvOptionDefinition<DateArgvAction>;
+const dateStringOption = {
+  semantic: { kind: 'required-value', key: 'dateString', parse: undefined },
+  forms: [
+    { kind: 'short', name: 'd', value: { kind: 'required-attached-or-following', missingValueName: 'STRING' } },
+    { kind: 'long', name: 'date', value: { kind: 'required', missingValueName: 'STRING' } },
+  ],
+} as const satisfies ArgvOptionDefinition<DateArgvAction>;
+const dateReferenceOption = {
+  semantic: { kind: 'required-value', key: 'referencePath', parse: undefined },
+  forms: [
+    { kind: 'short', name: 'r', value: { kind: 'required-attached-or-following', missingValueName: 'FILE' } },
+    { kind: 'long', name: 'reference', value: { kind: 'required', missingValueName: 'FILE' } },
+  ],
+} as const satisfies ArgvOptionDefinition<DateArgvAction>;
+const dateFileOption = {
+  semantic: { kind: 'required-value', key: 'dateFile', parse: undefined },
+  forms: [
+    { kind: 'short', name: 'f', value: { kind: 'required-attached-or-following', missingValueName: 'DATEFILE' } },
+    { kind: 'long', name: 'file', value: { kind: 'required', missingValueName: 'DATEFILE' } },
+  ],
+} as const satisfies ArgvOptionDefinition<DateArgvAction>;
+const dateIsoOption = {
+  semantic: { kind: 'deferred', tag: 'isoPrecision' },
+  forms: [
+    { kind: 'short', name: 'I', value: { kind: 'optional-attached' } },
+    { kind: 'long', name: 'iso-8601', value: { kind: 'optional-inline' } },
+  ],
+} as const satisfies ArgvOptionDefinition<DateArgvAction>;
+const dateRfc3339Option = {
+  semantic: { kind: 'required-value', key: 'rfc3339Precision', parse: undefined },
+  forms: [{ kind: 'long', name: 'rfc-3339', value: { kind: 'required', missingValueName: 'TIMESPEC' } }],
+} as const satisfies ArgvOptionDefinition<DateArgvAction>;
+const dateRfcEmailOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'rfcEmail', value: true }] },
+  forms: [
+    { kind: 'short', name: 'R', value: { kind: 'none' } },
+    { kind: 'long', name: 'rfc-email', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<DateArgvAction>;
+const dateHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<DateArgvAction>;
+
+const dateArgvCatalog = defineArgvCatalog<DateArgvAction>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    dateUtcOption,
+    dateStringOption,
+    dateReferenceOption,
+    dateFileOption,
+    dateIsoOption,
+    dateRfc3339Option,
+    dateRfcEmailOption,
+    dateHelpOption,
+  ],
+});
+const dateArgvHelp = defineArgvHelpPresentation({
+  catalog: dateArgvCatalog,
+  rows: [
+    { forms: dateUtcOption.forms, summary: 'display the time in UTC' },
+    { forms: dateStringOption.forms, summary: 'display the time described by STRING', valueName: 'STRING', category: 'common' },
+    { forms: dateReferenceOption.forms, summary: 'display the last modification time of FILE', valueName: 'FILE', category: 'common' },
+    { forms: dateFileOption.forms, summary: 'like --date; once for each line of DATEFILE', valueName: 'DATEFILE', category: 'common' },
+    { forms: dateRfc3339Option.forms, summary: 'output date/time in RFC 3339 format', valueName: 'TIMESPEC', category: 'common' },
+    { forms: dateRfcEmailOption.forms, summary: 'output date and time in RFC 5322 format', category: 'common' },
+    { forms: dateHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+const dateArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'all',
 };
+const dateUsageSummary = formatArgvUsageSummary({ presentation: dateArgvHelp });
 
-const DATE_SHORT_OPTIONS = new Map(
-  dateArgvSpec.options.flatMap((option) => option.short === undefined ? [] : [[option.short, option] as const]),
-);
-const DATE_LONG_OPTIONS = new Map(
-  dateArgvSpec.options.flatMap((option) => option.long === undefined ? [] : [[option.long, option] as const]),
-);
-
-function normalizeDateIsoShortBundles({
-  args,
-}: {
-  args: string[],
-}): string[] {
-  const normalized: string[] = [];
-
-  let index = 0;
-  while (index < args.length) {
-    const token = args[index];
-    if (token === undefined) {
-      break;
-    }
-
-    if (token === '--') {
-      normalized.push(...args.slice(index));
-      break;
-    }
-
-    const special = parseIsoToken({
-      token,
-      nextToken: args[index + 1],
-    });
-    if (special !== undefined) {
-      normalized.push(...args.slice(index, index + special.consumeCount));
-      index += special.consumeCount;
-      continue;
-    }
-
-    if (token.startsWith('--') && token.length > 2) {
-      normalized.push(token);
-      const optionBody = token.slice(2);
-      const equalsIndex = optionBody.indexOf('=');
-      const key = equalsIndex >= 0 ? optionBody.slice(0, equalsIndex) : optionBody;
-      const option = DATE_LONG_OPTIONS.get(key);
-      index += 1;
-      if (option?.kind === 'value' && equalsIndex < 0 && index < args.length) {
-        normalized.push(args[index]!);
-        index += 1;
-      }
-      continue;
-    }
-
-    if (token.startsWith('-') && token.length > 1 && token !== '-') {
-      const shortBody = token.slice(1);
-      let consumesNextValue = false;
-      let rewritten = false;
-
-      for (let shortIndex = 0; shortIndex < shortBody.length; shortIndex += 1) {
-        const short = shortBody[shortIndex];
-        if (short === undefined) {
-          continue;
-        }
-
-        if (shortIndex > 0 && short === 'I') {
-          normalized.push(
-            `-${shortBody.slice(0, shortIndex)}`,
-            `-${shortBody.slice(shortIndex)}`,
-          );
-          rewritten = true;
-          break;
-        }
-
-        const option = DATE_SHORT_OPTIONS.get(short);
-        if (option === undefined) {
-          break;
-        }
-        switch (option.kind) {
-        case 'flag':
-          continue;
-        case 'value': {
-          const attachedValue = shortBody.slice(shortIndex + 1);
-          consumesNextValue = !(option.allowAttachedValue && attachedValue.length > 0);
-          shortIndex = shortBody.length;
-          break;
-        }
-        default: {
-          const _ex: never = option;
-          throw new Error(`Unhandled date option kind: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
-        }
-        }
-      }
-
-      if (!rewritten) {
-        normalized.push(token);
-      }
-      index += 1;
-      if (!rewritten && consumesNextValue && index < args.length) {
-        normalized.push(args[index]!);
-        index += 1;
-      }
-      continue;
-    }
-
-    normalized.push(token);
-    index += 1;
+function readIsoPrecisionOperand({ value }: { value: StandardArgvRawValue }): string {
+  switch (value.kind) {
+  case 'none':
+    return 'date';
+  case 'inline':
+    return value.rawValue;
+  case 'next-argv':
+    throw new Error('Date ISO precision must be attached to the option');
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled date ISO precision operand: ${JSON.stringify(_ex)}`);
   }
-
-  return normalized;
+  }
 }
 
 function parseIsoPrecision({ value }: { value: string }): IsoPrecision | undefined {
@@ -193,87 +147,61 @@ function parseRfc3339Precision({ value }: { value: string }): Rfc3339Precision |
   }
 }
 
-function countOutputFormatSelections({
-  parsed,
-}: {
-  parsed: ReturnType<typeof parseStandardArgv>,
-}): number {
-  const optionCount = parsed.occurrences.reduce((count, occurrence) => {
-    switch (occurrence.kind) {
-    case 'value':
-      return occurrence.key === 'rfc3339Precision' ? count + 1 : count;
-    case 'flag':
-    case 'special':
-      return occurrence.effects.some((effect) => (
-        effect.key === 'rfcEmail' || effect.key === 'isoPrecision'
-      )) ? count + 1 : count;
-    default: {
-      const _ex: never = occurrence;
-      throw new Error(`Unhandled date option occurrence: ${String(_ex)}`);
-    }
-    }
-  }, 0);
-  const positionalCount = parsed.positionals[0]?.startsWith('+') === true ? 1 : 0;
-  return optionCount + positionalCount;
-}
-
 type DatePreHelpSemanticIssue =
   | { readonly kind: 'iso-precision', readonly value: string }
   | { readonly kind: 'rfc3339-precision', readonly value: string }
   | { readonly kind: 'multiple-formats' };
 
-function findDatePreHelpSemanticIssue({
-  parsed,
-}: {
-  parsed: ReturnType<typeof parseStandardArgv>,
-}): DatePreHelpSemanticIssue | undefined {
-  for (const occurrence of parsed.occurrences) {
-    switch (occurrence.kind) {
-    case 'special':
-      for (const effect of occurrence.effects) {
-        if (
-          effect.key === 'isoPrecision'
-          && typeof effect.value === 'string'
-          && parseIsoPrecision({ value: effect.value }) === undefined
-        ) {
-          return { kind: 'iso-precision', value: effect.value };
+function findDatePreHelpSemanticIssue({ parsed }: { parsed: ParsedDateArgv }): DatePreHelpSemanticIssue | undefined {
+  for (const occurrence of parsed.deferred) {
+    const value = readIsoPrecisionOperand({ value: occurrence.value });
+    if (parseIsoPrecision({ value }) === undefined) {
+      return { kind: 'iso-precision', value };
+    }
+  }
+
+  let formatCount = parsed.deferred.length;
+  for (const { semantic, value } of parsed.occurrences ?? []) {
+    switch (semantic.kind) {
+    case 'required-value':
+      if (semantic.key === 'rfc3339Precision' && value.kind !== 'none') {
+        if (parseRfc3339Precision({ value: value.rawValue }) === undefined) {
+          return { kind: 'rfc3339-precision', value: value.rawValue };
         }
+        formatCount += 1;
       }
       break;
-    case 'flag':
-    case 'value':
+    case 'effects':
+      if (semantic.effects.some(effect => effect.key === 'rfcEmail')) {
+        formatCount += 1;
+      }
+      break;
+    case 'deferred':
       break;
     default: {
-      const _ex: never = occurrence;
-      throw new Error(`Unhandled date argv occurrence: ${JSON.stringify(_ex)}`);
+      const _ex: never = semantic;
+      throw new Error(`Unhandled date argv semantic: ${JSON.stringify(_ex)}`);
     }
     }
   }
 
-  for (const occurrence of parsed.occurrences) {
-    switch (occurrence.kind) {
-    case 'value':
-      if (
-        occurrence.key === 'rfc3339Precision'
-        && typeof occurrence.value === 'string'
-        && parseRfc3339Precision({ value: occurrence.value }) === undefined
-      ) {
-        return { kind: 'rfc3339-precision', value: occurrence.value };
-      }
-      break;
-    case 'flag':
-    case 'special':
-      break;
-    default: {
-      const _ex: never = occurrence;
-      throw new Error(`Unhandled date argv occurrence: ${JSON.stringify(_ex)}`);
-    }
-    }
+  if (parsed.positionals[0]?.startsWith('+') === true) {
+    formatCount += 1;
   }
+  return formatCount > 1 ? { kind: 'multiple-formats' } : undefined;
+}
 
-  return countOutputFormatSelections({ parsed }) > 1
-    ? { kind: 'multiple-formats' }
-    : undefined;
+function parseDateArgsBeforeDiagnostic({ args, diagnostic }: {
+  args: readonly string[],
+  diagnostic: ParsedDateArgv['diagnostics'][number],
+}): ParsedDateArgv {
+  const prefix = args.slice(0, diagnostic.argvIndex);
+  const token = args[diagnostic.argvIndex];
+  // Valid flags earlier in the same short option bundle precede the diagnostic.
+  if (token !== undefined && diagnostic.tokenOffset > 1) {
+    prefix.push(token.slice(0, diagnostic.tokenOffset));
+  }
+  return parseStandardArgv({ args: prefix, catalog: dateArgvCatalog, policy: dateArgvPolicy });
 }
 
 function pad2({ value }: { value: number }): string {
@@ -698,17 +626,18 @@ function parseDateOperand({
   if (containsNonAsciiDateWhitespace({ value })) {
     return undefined;
   }
-  if (value.startsWith('@')) {
-    return parseEpochDateOperand({ value: value.slice(1) });
+  const normalizedValue = trimAsciiDateWhitespace({ value });
+  if (normalizedValue.startsWith('@')) {
+    return parseEpochDateOperand({ value: normalizedValue.slice(1) });
   }
 
-  const directDate = new Date(value);
+  const directDate = new Date(normalizedValue);
   if (!Number.isNaN(directDate.getTime())) {
     // JavaScript Date accepts common ISO/RFC3339-shaped timestamps with more than
     // three fractional digits but stores only milliseconds. Preserve the source
     // fraction when it belongs to the terminal seconds field so `%N` and ns output
     // do not silently discard precision from an otherwise accepted date operand.
-    const fractionalSecondMatch = /(?:T|[ \t])\d{2}:\d{2}:\d{2}\.(\d+)(?=(?:[zZ]|[+-]\d{2}:?\d{2}|[ \t]+(?:UTC|GMT))?[ \t]*$)/u.exec(value);
+    const fractionalSecondMatch = /(?:T|[ \t])\d{2}:\d{2}:\d{2}\.(\d+)(?=(?:[zZ]|[+-]\d{2}:?\d{2}|[ \t]+(?:UTC|GMT))?[ \t]*$)/u.exec(normalizedValue);
     const nanosecondsWithinSecond = fractionalSecondMatch === null
       ? directDate.getUTCMilliseconds() * 1_000_000
       : Number.parseInt(fractionalSecondMatch[1]!.slice(0, 9).padEnd(9, '0'), 10);
@@ -718,7 +647,7 @@ function parseDateOperand({
     };
   }
 
-  const parsedMilliseconds = parseDateExpressionMilliseconds({ value, baseTime });
+  const parsedMilliseconds = parseDateExpressionMilliseconds({ value: normalizedValue, baseTime });
   if (parsedMilliseconds === undefined) {
     return undefined;
   }
@@ -813,27 +742,25 @@ function formatIsoOutput({
 
 export const dateCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
-      args: normalizeDateIsoShortBundles({ args: context.args }),
-      spec: dateArgvSpec,
-      earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+    const parsedArgs = stopArgvAtFirstEarlyExit({
+      args: context.args,
+      catalog: dateArgvCatalog,
+      policy: dateArgvPolicy,
+      earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
     });
-    const parsed = parseStandardArgv({ args: parsedArgs, spec: dateArgvSpec });
+    const parsed = parseStandardArgv({ args: parsedArgs, catalog: dateArgvCatalog, policy: dateArgvPolicy });
 
     const diagnostic = parsed.diagnostics[0];
-    const preHelpSemanticIssue = findDatePreHelpSemanticIssue({ parsed });
-    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
-      args: parsedArgs,
-      spec: dateArgvSpec,
-      parsed,
-      findSemanticIssue: findDatePreHelpSemanticIssue,
-    });
-    if (diagnostic !== undefined && !semanticIssuePrecedesDiagnostic) {
+    const semanticPrefix = diagnostic === undefined
+      ? parsed
+      : parseDateArgsBeforeDiagnostic({ args: parsedArgs, diagnostic });
+    const preHelpSemanticIssue = findDatePreHelpSemanticIssue({ parsed: semanticPrefix });
+    if (diagnostic !== undefined && preHelpSemanticIssue === undefined) {
       await writeCommandUsageError({
         context,
         command: 'date',
         message: `date: ${diagnostic.message}`,
-        argvSpec: dateArgvSpec,
+        usageSummary: dateUsageSummary,
       });
       return { exitCode: 1 };
     }
@@ -857,9 +784,10 @@ export const dateCommandImplementation: WeshCommandImplementation = {
       }
     }
 
-    const rawIsoPrecision = typeof parsed.optionValues.isoPrecision === 'string'
-      ? parsed.optionValues.isoPrecision
-      : undefined;
+    const isoOption = parsed.deferred.at(-1);
+    const rawIsoPrecision = isoOption === undefined
+      ? undefined
+      : readIsoPrecisionOperand({ value: isoOption.value });
     const rawRfcPrecision = typeof parsed.optionValues.rfc3339Precision === 'string'
       ? parsed.optionValues.rfc3339Precision
       : undefined;
@@ -881,47 +809,9 @@ export const dateCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'date',
-        argvSpec: dateArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: dateArgvHelp }),
       });
       return { exitCode: 0 };
-    }
-
-    const sourceKinds = new Set<'date' | 'file' | 'reference'>();
-    for (const occurrence of parsed.occurrences) {
-      switch (occurrence.kind) {
-      case 'value':
-        if (occurrence.key === 'dateString') {
-          sourceKinds.add('date');
-        }
-        if (occurrence.key === 'referencePath') {
-          sourceKinds.add('reference');
-        }
-        if (occurrence.key === 'dateFile') {
-          sourceKinds.add('file');
-        }
-        break;
-      case 'flag':
-      case 'special':
-        break;
-      default: {
-        const _ex: never = occurrence;
-        throw new Error(`Unhandled date option occurrence: ${JSON.stringify(_ex)}`);
-      }
-      }
-    }
-    if (sourceKinds.size > 1) {
-      await text.error({ text: 'date: the options to specify dates for printing are mutually exclusive\n' });
-      return { exitCode: 1 };
-    }
-
-    if (parsed.positionals.length > 1) {
-      await writeCommandUsageError({
-        context,
-        command: 'date',
-        message: `date: extra operand '${parsed.positionals[1] ?? ''}'`,
-        argvSpec: dateArgvSpec,
-      });
-      return { exitCode: 1 };
     }
 
     const dateString = typeof parsed.optionValues.dateString === 'string'
@@ -933,6 +823,22 @@ export const dateCommandImplementation: WeshCommandImplementation = {
     const dateFile = typeof parsed.optionValues.dateFile === 'string'
       ? parsed.optionValues.dateFile
       : undefined;
+    const sourceValues = [dateString, referencePath, dateFile];
+    if (sourceValues.filter(value => value !== undefined).length > 1) {
+      await text.error({ text: 'date: the options to specify dates for printing are mutually exclusive\n' });
+      return { exitCode: 1 };
+    }
+
+    if (parsed.positionals.length > 1) {
+      await writeCommandUsageError({
+        context,
+        command: 'date',
+        message: `date: extra operand '${parsed.positionals[1] ?? ''}'`,
+        usageSummary: dateUsageSummary,
+      });
+      return { exitCode: 1 };
+    }
+
     const positional = parsed.positionals[0];
     if (positional !== undefined && !positional.startsWith('+')) {
       await text.error({ text: `date: invalid date '${positional}'\n` });

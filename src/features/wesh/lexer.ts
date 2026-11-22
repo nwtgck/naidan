@@ -1,5 +1,6 @@
 import {
   findBackquoteSubstitution,
+  findBalancedArithmeticCommand,
   findBalancedParenthesizedExpression,
   findBracedParameterEnd,
 } from './shell/scan';
@@ -35,6 +36,8 @@ export interface Token {
   position: number,
 }
 
+export type ConditionalTokenContext = 'conditional' | 'conditional-term' | 'conditional-regexp';
+
 export class Lexer {
   private input: string;
   private position: number = 0;
@@ -45,7 +48,7 @@ export class Lexer {
     this.length = input.length;
   }
 
-  next(): Token {
+  next({ context }: { context?: ConditionalTokenContext } = {}): Token {
     this.skipWhitespace();
 
     if (this.position >= this.length) {
@@ -54,6 +57,21 @@ export class Lexer {
 
     const char = this.input[this.position];
     const nextChar = this.input[this.position + 1];
+
+    let regexp = false;
+    switch (context) {
+    case 'conditional-regexp':
+      regexp = true;
+      break;
+    case 'conditional':
+    case 'conditional-term':
+    case undefined:
+      break;
+    default: {
+      const _ex: never = context;
+      throw new Error(`Unhandled lexer context: ${_ex}`);
+    }
+    }
 
     if (char === '#') {
       while (this.position < this.length) {
@@ -73,8 +91,16 @@ export class Lexer {
       return { type: 'SEMI', value: '\n', position: newlinePosition };
     }
 
-    // Parentheses
-    if (char === '(' && nextChar === '(') {
+    if (regexp && (char === '(' || char === '|')) {
+      return this.readWord({ regexp });
+    }
+    if (context === 'conditional-term' && char === '!' && nextChar === '(') {
+      this.position++;
+      return { type: 'WORD', value: '!', position: this.position - 1 };
+    }
+
+    // The conditional grammar uses each opening parenthesis separately.
+    if (char === '(' && nextChar === '(' && context === undefined) {
       this.position += 2;
       return { type: 'DLPAREN', value: '((', position: this.position - 2 };
     }
@@ -174,23 +200,36 @@ export class Lexer {
     }
 
     // Words (including keywords, variable assignments, and quoted strings)
-    return this.readWord();
+    return this.readWord({ regexp });
   }
 
   private skipWhitespace() {
-    while (
-      this.position < this.length &&
-      (this.input[this.position] === ' ' || this.input[this.position] === '\t')
-    ) {
-      this.position++;
+    while (this.position < this.length) {
+      const char = this.input[this.position];
+      if (char === ' ' || char === '\t') {
+        this.position++;
+      } else if (char === '\\' && this.input[this.position + 1] === '\n') {
+        this.position += 2;
+      } else {
+        break;
+      }
     }
   }
 
-  private readWord(): Token {
+  readArithmeticCommand({ startIndex }: { startIndex: number }): string {
+    const expression = findBalancedArithmeticCommand({ text: this.input, startIndex });
+    if (expression === undefined) {
+      throw new ShellLexerIncompleteError("Expected '))' to close arithmetic command");
+    }
+    this.position = expression.endIndex + 1;
+    return expression.content;
+  }
+
+  private readWord({ regexp }: { regexp: boolean }): Token {
     const start = this.position;
     let inQuote: "'" | '"' | 'ansi-c' | null = null;
     let escaped = false;
-    let extglobDepth = 0;
+    let parenthesisDepth = 0;
 
     while (this.position < this.length) {
       const char = this.input[this.position];
@@ -294,19 +333,29 @@ export class Lexer {
         continue;
       }
 
-      if (
+      if (regexp) {
+        if (char === '(') {
+          parenthesisDepth++;
+          this.position++;
+          continue;
+        }
+        if (char === '|') {
+          this.position++;
+          continue;
+        }
+      } else if (
         char !== undefined &&
         ['?', '*', '+', '@', '!'].includes(char) &&
         this.input[this.position + 1] === '('
       ) {
-        extglobDepth += 1;
+        parenthesisDepth++;
         this.position += 2;
         continue;
       }
 
-      if (extglobDepth > 0) {
+      if (parenthesisDepth > 0) {
         if (char === ')') {
-          extglobDepth -= 1;
+          parenthesisDepth--;
         }
         this.position++;
         continue;
@@ -345,6 +394,9 @@ export class Lexer {
     }
     }
 
+    if (regexp && parenthesisDepth > 0) {
+      throw new ShellLexerIncompleteError('Unterminated regular expression group');
+    }
     return { type: 'WORD', value: this.input.slice(start, this.position), position: start };
   }
 
@@ -424,6 +476,14 @@ export class Lexer {
 
   getPosition(): number {
     return this.position;
+  }
+
+  isAdjacentWord({ end, start }: { end: number, start: number }): boolean {
+    return this.input.slice(end, start).replaceAll('\\\n', '') === '';
+  }
+
+  isAtEndOfInput(): boolean {
+    return this.position >= this.length;
   }
 
   peek(): Token {

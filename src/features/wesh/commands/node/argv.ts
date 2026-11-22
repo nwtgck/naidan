@@ -17,7 +17,7 @@ function isCheckLongOption({ token }: { token: string }): boolean {
 /**
  * Recognize only the intentionally supported Node CLI surface.
  *
- * This stays command-local rather than extending argv-v2 because the reference Node CLI
+ * This stays command-local rather than extending argv because the reference Node CLI
  * rejects clustered short spellings such as `-cc`, while accepting `--check=value` and
  * treating every token after the first script operand as script argv. That asymmetric
  * grammar is not a natural standard-option catalog.

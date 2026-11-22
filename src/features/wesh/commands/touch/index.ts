@@ -1,17 +1,22 @@
 import { getOptionalCoreMethod } from '@/features/wesh/commands/_shared/core-capability';
 import { isPathNotFoundError, isPathTypeMismatchError } from '@/features/wesh/commands/_shared/path-errors';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshStat } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import {
-  findFirstStandardSemanticIssue,
-  STANDARD_HELP_EARLY_EXIT_OPTIONS,
-  standardSemanticIssuePrecedesDiagnostic,
-  stopStandardArgvAtFirstEarlyExit,
-} from '@/features/wesh/commands/_shared/argv';
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type ParsedStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv';
 import { parseDateExpressionMilliseconds } from '@/features/wesh/commands/_shared/date-expression';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { writeAllFileBytes } from '@/features/wesh/utils/fs';
-import { canonicalizePathAllowingMissingLeaf, resolvePath } from '@/features/wesh/path';
+import { canonicalizePathAllowingMissingLeaf, toAbsolutePath } from '@/features/wesh/path';
 
 
 type TouchTimeSelection =
@@ -84,7 +89,7 @@ function parseTimestampValue({ value, now }: { value: string, now: number }): nu
 function selectTouchTime({
   parsed,
 }: {
-  parsed: ReturnType<typeof parseStandardArgv>,
+  parsed: ParsedStandardArgv<never>,
 }): TouchTimeSelection {
   const dateValue = parsed.optionValues.date;
   const timestampValue = parsed.optionValues.timestamp;
@@ -152,141 +157,142 @@ function getReferencePath({
   }
 }
 
-const touchArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'm', long: undefined, effects: [{ key: 'modifyOnly', value: true }], help: { summary: 'change only the modification time', category: 'common' } },
-    { kind: 'flag', short: 'h', long: 'no-dereference', effects: [{ key: 'noDereference', value: true }], help: { summary: 'affect symbolic links instead of referenced files', category: 'common' } },
-    {
-      kind: 'value',
-      short: 'd',
-      long: 'date',
-      key: 'date',
-      valueName: 'STRING',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { valueName: 'STRING', summary: 'parse STRING and use it instead of current time', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 't',
-      long: undefined,
-      key: 'timestamp',
-      valueName: 'STAMP',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { valueName: 'STAMP', summary: 'use [[CC]YY]MMDDhhmm[.ss] instead of current time', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: undefined,
-      long: 'time',
-      key: 'timeKind',
-      valueName: 'WORD',
-      allowAttachedValue: false,
-      parseValue: undefined,
-      help: { valueName: 'WORD', summary: 'change the specified time; supports modify or mtime', category: 'advanced' },
-    },
-    {
-      kind: 'value',
-      short: 'r',
-      long: 'reference',
-      key: 'reference',
-      valueName: 'FILE',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { valueName: 'FILE', summary: 'use this file timestamps instead of current time', category: 'common' },
-    },
-    { kind: 'flag', short: 'c', long: 'no-create', effects: [{ key: 'noCreate', value: true }], help: { summary: 'do not create any files', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const touchOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'modifyOnly', value: true }] },
+    forms: [{ kind: 'short', name: 'm', value: { kind: 'none' } }],
+    summary: 'change only the modification time',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'noDereference', value: true }] },
+    forms: [
+      { kind: 'short', name: 'h', value: { kind: 'none' } },
+      { kind: 'long', name: 'no-dereference', value: { kind: 'none' } },
+    ],
+    summary: 'affect symbolic links instead of referenced files',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'date', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'required-attached-or-following', missingValueName: 'STRING' } },
+      { kind: 'long', name: 'date', value: { kind: 'required', missingValueName: 'STRING' } },
+    ],
+    summary: 'parse STRING and use it instead of current time',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'timestamp', parse: undefined },
+    forms: [{ kind: 'short', name: 't', value: { kind: 'required-attached-or-following', missingValueName: 'STAMP' } }],
+    summary: 'use [[CC]YY]MMDDhhmm[.ss] instead of current time',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'timeKind', parse: undefined },
+    forms: [{ kind: 'long', name: 'time', value: { kind: 'required', missingValueName: 'WORD' } }],
+    summary: 'change the specified time; supports modify or mtime',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'reference', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'r', value: { kind: 'required-attached-or-following', missingValueName: 'FILE' } },
+      { kind: 'long', name: 'reference', value: { kind: 'required', missingValueName: 'FILE' } },
+    ],
+    summary: 'use this file timestamps instead of current time',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'noCreate', value: true }] },
+    forms: [
+      { kind: 'short', name: 'c', value: { kind: 'none' } },
+      { kind: 'long', name: 'no-create', value: { kind: 'none' } },
+    ],
+    summary: 'do not create any files',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const touchArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: touchOptions,
+  nonExecutableLongOptions: [],
+});
+const touchArgvHelp = defineArgvHelpPresentation({ catalog: touchArgvCatalog, rows: touchOptions });
+const touchArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'all',
 };
 
-type TouchPreHelpSemanticIssue =
-  | { readonly kind: 'time-kind', readonly value: string }
-  | { readonly kind: 'timestamp', readonly message: string };
-
-function findTouchPreHelpSemanticIssue({
+function findTouchOptionError({
   parsed,
   now,
 }: {
-  parsed: ReturnType<typeof parseStandardArgv>,
+  parsed: ParsedStandardArgv<never>,
   now: number,
-}): TouchPreHelpSemanticIssue | undefined {
-  const timeKind = parsed.optionValues.timeKind;
-  if (timeKind !== undefined && timeKind !== 'modify' && timeKind !== 'mtime') {
-    return { kind: 'time-kind', value: String(timeKind) };
+}): string | undefined {
+  for (const { semantic, value } of parsed.occurrences ?? []) {
+    if (semantic.kind !== 'required-value' || value.kind === 'none') {
+      continue;
+    }
+    const raw = value.rawValue;
+    switch (semantic.key) {
+    case 'timeKind':
+      if (raw !== 'modify' && raw !== 'mtime') {
+        return `invalid argument '${raw}' for '--time'`;
+      }
+      break;
+    case 'timestamp':
+      try {
+        parseTimestampValue({ value: raw, now });
+      } catch (error: unknown) {
+        return error instanceof Error ? error.message : String(error);
+      }
+      break;
+    default:
+      break;
+    }
   }
-
-  const timestamp = parsed.optionValues.timestamp;
-  if (typeof timestamp !== 'string') {
-    return undefined;
-  }
-  try {
-    parseTimestampValue({ value: timestamp, now });
-    return undefined;
-  } catch (error: unknown) {
-    return {
-      kind: 'timestamp',
-      message: error instanceof Error ? error.message : String(error),
-    };
-  }
+  return undefined;
 }
 
 export const touchCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
+    const parsedArgs = stopArgvAtFirstEarlyExit({
       args: context.args,
-      spec: touchArgvSpec,
-      earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+      catalog: touchArgvCatalog,
+      policy: touchArgvPolicy,
+      earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
     });
-    const parsed = parseStandardArgv({ args: parsedArgs, spec: touchArgvSpec });
+    const parsed = parseStandardArgv({ args: parsedArgs, catalog: touchArgvCatalog, policy: touchArgvPolicy });
 
     const now = Date.now();
     const diagnostic = parsed.diagnostics[0];
-    const findSemanticIssue = ({ parsed: candidate }: { parsed: ReturnType<typeof parseStandardArgv> }) => (
-      findTouchPreHelpSemanticIssue({ parsed: candidate, now })
-    );
-    const firstPreHelpSemanticIssue = findFirstStandardSemanticIssue({
-      args: parsedArgs,
-      spec: touchArgvSpec,
-      parsed,
-      findSemanticIssue,
-    });
-    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
-      args: parsedArgs,
-      spec: touchArgvSpec,
-      parsed,
-      findSemanticIssue,
-    });
-    if (diagnostic !== undefined && !semanticIssuePrecedesDiagnostic) {
+    // A value-bearing option consumes the rest of its short token, so a
+    // timestamp or time-kind error before a syntax error is in an earlier token.
+    const parsedPrefix = diagnostic === undefined
+      ? parsed
+      : parseStandardArgv({ args: parsedArgs.slice(0, diagnostic.argvIndex), catalog: touchArgvCatalog, policy: touchArgvPolicy });
+    const optionError = findTouchOptionError({ parsed: parsedPrefix, now });
+    if (optionError !== undefined) {
+      await context.text().error({ text: `touch: ${optionError}\n` });
+      return { exitCode: 1 };
+    }
+    if (diagnostic !== undefined) {
       await writeCommandUsageError({
         context,
         command: 'touch',
         message: `touch: ${diagnostic.message}`,
-        argvSpec: touchArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: touchArgvHelp }),
       });
       return { exitCode: 1 };
-    }
-
-    if (firstPreHelpSemanticIssue !== undefined) {
-      switch (firstPreHelpSemanticIssue.kind) {
-      case 'time-kind':
-        await context.text().error({
-          text: `touch: invalid argument '${firstPreHelpSemanticIssue.value}' for '--time'\n`,
-        });
-        return { exitCode: 1 };
-      case 'timestamp':
-        await context.text().error({ text: `touch: ${firstPreHelpSemanticIssue.message}\n` });
-        return { exitCode: 1 };
-      default: {
-        const _ex: never = firstPreHelpSemanticIssue;
-        throw new Error(`Unhandled touch pre-help semantic issue: ${JSON.stringify(_ex)}`);
-      }
-      }
     }
 
     const text = context.text();
@@ -295,7 +301,7 @@ export const touchCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'touch',
-        argvSpec: touchArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: touchArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -305,7 +311,7 @@ export const touchCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'touch',
         message: 'touch: missing file operand',
-        argvSpec: touchArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: touchArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -383,11 +389,12 @@ export const touchCommandImplementation: WeshCommandImplementation = {
         continue;
       }
       try {
+        const operandPath = toAbsolutePath({ cwd: context.cwd, path: p });
         const affectSymbolicLink = noDereference && !p.endsWith('/');
         let fullPath: string;
         try {
           fullPath = affectSymbolicLink
-            ? resolvePath({ cwd: context.cwd, path: p })
+            ? operandPath
             : await canonicalizePathAllowingMissingLeaf({ context, path: p });
         } catch (error: unknown) {
           if (noCreate && isPathNotFoundError({ error })) {
@@ -419,7 +426,7 @@ export const touchCommandImplementation: WeshCommandImplementation = {
           if (setMtime === undefined && requiresExplicitMtime) {
             throw new Error('operation requires Wesh core mtime mutation support');
           }
-          await writeAllFileBytes({ files: context.files, path: fullPath, data: new Uint8Array(0) });
+          await writeAllFileBytes({ files: context.files, path: operandPath, data: new Uint8Array(0) });
           if (setMtime !== undefined) {
             await setMtime({
               path: fullPath,

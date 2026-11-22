@@ -1,11 +1,11 @@
-import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import {
   canonicalizeExistingPath,
   canonicalizePathAllowingMissingComponents,
   canonicalizePathAllowingMissingLeaf,
-  resolvePath,
+  toAbsolutePath,
 } from '@/features/wesh/path';
 
 type ReadlinkMode = 'link' | 'canonicalize' | 'existing' | 'missing';
@@ -144,10 +144,7 @@ async function resolveOperand({
 
   switch (mode) {
   case 'link': {
-    if (operand.length > 1 && operand.endsWith('/')) {
-      throw new Error(`Not a symbolic link: ${operand}`);
-    }
-    const inputPath = resolvePath({ cwd: context.cwd, path: operand });
+    const inputPath = toAbsolutePath({ cwd: context.cwd, path: operand });
     return context.files.readlink({ path: inputPath });
   }
   case 'canonicalize':

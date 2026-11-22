@@ -1,5 +1,5 @@
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
-import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, HELP_EARLY_EXIT_OPTIONS, parseStandardArgv, stopArgvAtFirstEarlyExit, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, HELP_EARLY_EXIT_OPTIONS, parseStandardArgv, stopArgvAtFirstEarlyExit, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';

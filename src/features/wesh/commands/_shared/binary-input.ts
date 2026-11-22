@@ -1,5 +1,5 @@
 import type { WeshCommandContext } from '@/features/wesh/types';
-import { resolvePath } from '@/features/wesh/path';
+import { toAbsolutePath } from '@/features/wesh/path';
 import { openFileReadStream, openHandleReadStream } from '@/features/wesh/utils/fs';
 
 
@@ -18,7 +18,7 @@ export async function openCommandInputStream({
 
   return openFileReadStream({
     files: context.files,
-    path: resolvePath({
+    path: toAbsolutePath({
       cwd: context.cwd,
       path: input,
     }),

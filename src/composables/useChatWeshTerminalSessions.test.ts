@@ -63,9 +63,6 @@ describe('useChatWeshTerminalSessions', () => {
     mocks.ensureChatTmpDirectory.mockResolvedValue({ handle: tmpHandle, mountPath: '/tmp' });
     mocks.createClient.mockResolvedValue({
       startExecution: vi.fn(),
-      awaitExecution: vi.fn(),
-      cancelExecution: vi.fn(),
-      disposeExecution: vi.fn(),
       dispose: vi.fn(),
     });
     vi.stubGlobal('navigator', {

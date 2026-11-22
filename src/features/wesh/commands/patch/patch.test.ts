@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -6,6 +6,11 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+import { patchCommandDefinition } from './definition';
+
+beforeAll(async () => {
+  await patchCommandDefinition.load();
+});
 
 describe('wesh patch', () => {
   let wesh: Wesh;
@@ -69,9 +74,11 @@ describe('wesh patch', () => {
   async function execute({
     script,
     stdinText,
+    signal,
   }: {
     script: string,
     stdinText?: string,
+    signal?: AbortSignal,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
@@ -80,6 +87,7 @@ describe('wesh patch', () => {
       stdin: createTestReadHandleFromText({ text: stdinText ?? '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
+      signal,
     });
     return { result, stdout, stderr };
   }
@@ -91,6 +99,37 @@ describe('wesh patch', () => {
     expect(stdout.text).toContain('usage: patch [OPTION]... [ORIGFILE [PATCHFILE]]');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('accepts an inline value on the help flag without hiding later diagnostics', async () => {
+    const help = await execute({ script: 'patch --help=ignored' });
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: patch');
+    expect(help.stderr.text).toBe('');
+
+    const invalid = await execute({ script: 'patch --help=ignored --ver' });
+    expect(invalid.result.exitCode).toBe(2);
+    expect(invalid.stdout.text).toBe('');
+    expect(invalid.stderr.text.split('\n')[0]).toBe("patch: unrecognized option '--ver'");
+  });
+
+  it('uses long inline directory and input values with option-like operands after double dash', async () => {
+    await writeFile({ path: 'outer/--file', data: 'old\n' });
+    await writeFile({
+      path: 'outer/edits',
+      data: `\
+--- --file
++++ --file
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+
+    const { result, stderr } = await execute({ script: 'patch --directory=outer --input=edits -- --file' });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(await readFile({ path: 'outer/--file' })).toBe('new\n');
   });
 
   it('uses the first help or version early-exit option in argv order', async () => {
@@ -2588,6 +2627,55 @@ old
     expect(result.exitCode).toBe(2);
   });
 
+  it.each([false, true])('rejects coincident reject and output paths before writing (output exists=%s)', async outputExists => {
+    await writeFile({ path: 'old.txt', data: 'actual\n' });
+    if (outputExists) {
+      await writeFile({ path: 'result', data: 'previous output\n' });
+    }
+    const { result, stderr } = await execute({
+      script: 'patch -o result -r ./result',
+      stdinText: `\
+--- old.txt
++++ old.txt
+@@ -1 +1 @@
+-expected
++patched
+`,
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(stderr.text).toContain("reject path would overwrite patch output '/result'");
+    expect(await readFile({ path: 'old.txt' })).toBe('actual\n');
+    expect(await exists({ path: 'result' })).toBe(outputExists);
+    if (outputExists) {
+      expect(await readFile({ path: 'result' })).toBe('previous output\n');
+    }
+  });
+
+  it.each([false, true])('rejects coincident missing paths reached through two directory names (via mount=%s)', async viaMount => {
+    await writeFile({ path: 'old.txt', data: 'actual\n' });
+    const real = await rootHandle.getDirectoryHandle('real', { create: true });
+    if (viaMount) {
+      await wesh.vfs.mount({ path: '/alias', handle: real as unknown as FileSystemDirectoryHandle });
+    } else {
+      await wesh.vfs.symlink({ path: '/alias', targetPath: '/real' });
+    }
+    const { result, stderr } = await execute({
+      script: 'patch -o real/deep/result -r alias/deep/result',
+      stdinText: `\
+--- old.txt
++++ old.txt
+@@ -1 +1 @@
+-expected
++patched
+`,
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(stderr.text).toContain("reject path would overwrite patch output '/real/deep/result'");
+    expect(await exists({ path: 'real/deep' })).toBe(false);
+  });
+
   it('does not overwrite an existing Git rename destination', async () => {
     await writeFile({ path: 'old.txt', data: 'source\n' });
     await writeFile({ path: 'new.txt', data: 'destination\n' });
@@ -2607,6 +2695,232 @@ rename to new.txt
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain('rename destination already exists');
     expect(result.exitCode).toBe(2);
+  });
+
+  it('keeps the original file when interrupted before publishing the replacement', async () => {
+    await writeFile({ path: 'file.txt', data: 'old\n' });
+    const output = await rootHandle.getFileHandle('file.txt');
+    const createWritable = output.createWritable.bind(output);
+    const opening = Promise.withResolvers<void>();
+    const proceed = Promise.withResolvers<void>();
+    using _release = {
+      [Symbol.dispose]() {
+        proceed.resolve();
+      },
+    };
+    using _writer = vi.spyOn(output, 'createWritable').mockImplementationOnce(async options => {
+      opening.resolve();
+      await proceed.promise;
+      return createWritable(options);
+    });
+
+    const controller = new AbortController();
+    const execution = execute({
+      script: 'patch',
+      signal: controller.signal,
+      stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+    await opening.promise;
+    controller.abort();
+    proceed.resolve();
+
+    expect((await execution).result.exitCode).toBe(130);
+    expect(await readFile({ path: 'file.txt' })).toBe('old\n');
+    expect(await Array.fromAsync(rootHandle.keys())).toEqual(['file.txt']);
+  });
+
+  it('keeps the prepared output when the destination close result is uncertain', async () => {
+    await writeFile({ path: 'file.txt', data: 'old\n' });
+    const output = await rootHandle.getFileHandle('file.txt');
+    const writable = await output.createWritable();
+    const close = writable.close.bind(writable);
+    using _writer = vi.spyOn(output, 'createWritable').mockResolvedValueOnce(writable);
+    using _close = vi.spyOn(writable, 'close').mockImplementationOnce(async () => {
+      await close();
+      throw new Error('lost destination close response');
+    });
+
+    const { result, stderr } = await execute({
+      script: 'patch',
+      stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+    expect(result.exitCode).toBe(2);
+    expect(stderr.text).toContain('Could not confirm destination commit');
+    expect(await readFile({ path: 'file.txt' })).toBe('new\n');
+    const staged = (await Array.fromAsync(rootHandle.keys())).filter(name => name.startsWith('.file.txt.wesh-patch-output-'));
+    expect(staged).toHaveLength(1);
+    expect(await readFile({ path: staged[0]! })).toBe('new\n');
+  });
+
+  it('keeps a Git rename destination that appears while preparing the output', async () => {
+    await writeFile({ path: 'old.txt', data: 'source\n' });
+    const getFileHandle = rootHandle.getFileHandle.bind(rootHandle);
+    const encoder = new TextEncoder();
+    using _create = vi.spyOn(rootHandle, 'getFileHandle').mockImplementation(async (name, options) => {
+      if (name.startsWith('.new.txt.wesh-patch-output-') && options?.create) {
+        const competing = await getFileHandle('new.txt', { create: true });
+        competing.content = encoder.encode('competing output\n');
+      }
+      return getFileHandle(name, options);
+    });
+
+    const { result, stderr } = await execute({
+      script: 'patch -p1',
+      stdinText: `\
+diff --git a/old.txt b/new.txt
+similarity index 100%
+rename from old.txt
+rename to new.txt
+`,
+    });
+    expect(result.exitCode).toBe(2);
+    expect(stderr.text).toContain('File exists: /new.txt');
+    expect(await readFile({ path: 'old.txt' })).toBe('source\n');
+    expect(await readFile({ path: 'new.txt' })).toBe('competing output\n');
+    expect(await Array.fromAsync(rootHandle.keys())).toEqual(['old.txt', 'new.txt']);
+  });
+
+  const renamePatch = `\
+diff --git a/old.txt b/new.txt
+similarity index 100%
+rename from old.txt
+rename to new.txt
+`;
+
+  it('keeps a different source that appeared while publishing a rename', async () => {
+    await writeFile({ path: 'old.txt', data: 'source\n' });
+    const publish = wesh.vfs.replaceEntry.bind(wesh.vfs);
+    using _replace = vi.spyOn(wesh.vfs, 'replaceEntry').mockImplementationOnce(async args => {
+      const installed = await publish(args);
+      await rootHandle.removeEntry('old.txt');
+      await writeFile({ path: 'old.txt', data: 'different source\n' });
+      return installed;
+    });
+
+    const { result, stderr } = await execute({ script: 'patch -p1', stdinText: renamePatch });
+    expect(result.exitCode).toBe(2);
+    expect(stderr.text).toContain('Source entry changed: /old.txt');
+    expect(await readFile({ path: 'old.txt' })).toBe('different source\n');
+    expect(await readFile({ path: 'new.txt' })).toBe('source\n');
+  });
+
+  it('keeps the source and a different output when the published output was replaced', async () => {
+    await writeFile({ path: 'old.txt', data: 'source\n' });
+    const publish = wesh.vfs.replaceEntry.bind(wesh.vfs);
+    using _replace = vi.spyOn(wesh.vfs, 'replaceEntry').mockImplementationOnce(async args => {
+      const installed = await publish(args);
+      await rootHandle.removeEntry('new.txt');
+      await writeFile({ path: 'new.txt', data: 'different output\n' });
+      return installed;
+    });
+
+    const { result, stderr } = await execute({ script: 'patch -p1', stdinText: renamePatch });
+    expect(result.exitCode).toBe(2);
+    expect(stderr.text).toContain('Destination entry changed: /new.txt');
+    expect(await readFile({ path: 'old.txt' })).toBe('source\n');
+    expect(await readFile({ path: 'new.txt' })).toBe('different output\n');
+  });
+
+  it.each([
+    { command: 'patch -b', diagnostic: 'Source entry changed: /old.txt' },
+    { command: 'patch -o old.txt', diagnostic: 'Destination entry changed: /old.txt' },
+  ])('keeps a replacement input and the existing backup when running $command', async ({ command, diagnostic }) => {
+    await writeFile({ path: 'old.txt', data: 'source\n' });
+    await writeFile({ path: 'old.txt.orig', data: 'previous backup\n' });
+    using _read = vi.spyOn(wesh.vfs, 'tryReadBlobEfficiently').mockImplementationOnce(async () => {
+      await rootHandle.removeEntry('old.txt');
+      await writeFile({ path: 'old.txt', data: 'different input\n' });
+      return { kind: 'blob', blob: new Blob(['source\n']) };
+    });
+
+    const { result, stderr } = await execute({
+      script: command,
+      stdinText: `\
+--- old.txt
++++ old.txt
+@@ -1 +1 @@
+-source
++patched
+`,
+    });
+    expect(result.exitCode).toBe(2);
+    expect(stderr.text).toContain(diagnostic);
+    expect(await readFile({ path: 'old.txt' })).toBe('different input\n');
+    expect(await readFile({ path: 'old.txt.orig' })).toBe('previous backup\n');
+  });
+
+  it('finishes an accepted deletion after Stop without moving the old file', async () => {
+    await writeFile({ path: 'old.txt', data: 'source\n' });
+    const remove = rootHandle.removeEntry.bind(rootHandle);
+    const deleting = Promise.withResolvers<void>();
+    const proceed = Promise.withResolvers<void>();
+    using _release = {
+      [Symbol.dispose]() {
+        proceed.resolve();
+      },
+    };
+    using _remove = vi.spyOn(rootHandle, 'removeEntry').mockImplementationOnce(async (name, options) => {
+      deleting.resolve();
+      await proceed.promise;
+      await remove(name, options);
+    });
+    const controller = new AbortController();
+    const execution = execute({
+      script: 'patch',
+      signal: controller.signal,
+      stdinText: `\
+--- old.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-source
+`,
+    });
+
+    await deleting.promise;
+    controller.abort();
+    expect(wesh.vfs.hasPendingFilePublications()).toBe(true);
+    expect(await Array.fromAsync(rootHandle.keys())).toEqual(['old.txt']);
+    proceed.resolve();
+
+    expect((await execution).result.exitCode).toBe(130);
+    expect(await Array.fromAsync(rootHandle.keys())).toEqual([]);
+    expect(wesh.vfs.hasPendingFilePublications()).toBe(false);
+  });
+
+  it('keeps the symbolic link target recoverable when the provider refuses to remove its backing', async () => {
+    await wesh.vfs.symlink({ path: '/link', targetPath: 'original-target' });
+    using _remove = vi.spyOn(rootHandle, 'removeEntry').mockRejectedValueOnce(new DOMException('Removal denied', 'NoModificationAllowedError'));
+    const { result, stderr } = await execute({
+      script: 'patch -p1',
+      stdinText: `\
+diff --git a/link b/link
+deleted file mode 120000
+--- a/link
++++ /dev/null
+@@ -1 +0,0 @@
+-original-target
+\\ No newline at end of file
+`,
+    });
+
+    expect(result.exitCode).toBe(2);
+    const recoveries = (await Array.fromAsync(rootHandle.keys())).filter(name => name.startsWith('.link.wesh-patch-recovery-'));
+    expect(recoveries).toHaveLength(1);
+    const recoveryPath = `/${recoveries[0]!}`;
+    expect(stderr.text).toContain(`Recovery path: '${recoveryPath}'`);
+    await expect(wesh.vfs.readlink({ path: recoveryPath })).resolves.toBe('original-target');
   });
 
   it('rejects unsupported Git entry modes', async () => {
@@ -2787,11 +3101,11 @@ LAST
       return originalSlice(start, end, contentType);
     });
     const originalEfficientRead = wesh.vfs.tryReadBlobEfficiently.bind(wesh.vfs);
-    vi.spyOn(wesh.vfs, 'tryReadBlobEfficiently').mockImplementation(async ({ path }) => {
-      if (path === '/streamed.txt') {
+    vi.spyOn(wesh.vfs, 'tryReadBlobEfficiently').mockImplementation(async args => {
+      if (args.entry?.fullPath === '/streamed.txt') {
         return { kind: 'blob', blob };
       }
-      return await originalEfficientRead({ path });
+      return originalEfficientRead(args);
     });
 
     const { result, stderr } = await execute({

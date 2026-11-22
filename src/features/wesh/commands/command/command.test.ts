@@ -105,6 +105,317 @@ du
     expect(bypassed.result.exitCode).toBe(0);
   });
 
+  it('lets a same-named shell function shadow command until builtin is selected', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+command() { printf 'function %s\\n' "$1"; }
+command echo
+builtin command echo builtin
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+function echo
+builtin
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('runs eval and cd in the current shell with scoped prefix assignments', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+mkdir work
+VALUE=outside
+VALUE=prefix command eval 'printf "seen=%s\\n" "$VALUE"; VALUE=inside; SIDE=kept'
+command cd work
+printf '%s|%s|%s\\n' "$VALUE" "$SIDE" "$PWD"
+(command eval 'SIDE=subshell'; printf 'inside=%s\\n' "$SIDE")
+printf 'outside=%s\\n' "$SIDE"
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+seen=prefix
+outside|kept|/work
+inside=subshell
+outside=kept
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps return and break in the surrounding function and loop', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+f() { command return 7; printf 'unreachable\\n'; }
+g() { command eval 'return 8'; printf 'unreachable\\n'; }
+f
+printf 'return=%s\\n' "$?"
+g
+printf 'eval-return=%s\\n' "$?"
+for item in first second; do
+  command break
+  printf '%s\\n' "$item"
+done
+for item in first second; do
+  printf 'eval=%s\\n' "$item"
+  command eval 'break'
+  printf 'unreachable\\n'
+done
+printf 'break\\n' > loop-source
+for item in first second; do
+  printf 'source=%s\\n' "$item"
+  source ./loop-source
+  printf 'unreachable\\n'
+done
+printf 'after-loop\\n'
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+return=7
+eval-return=8
+eval=first
+source=first
+after-loop
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('exits the current shell through command exit', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'command exit 9; printf unreachable' });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(9);
+  });
+
+  it('looks up and runs a current-directory script when PATH is unset', async () => {
+    const script = await rootHandle.getFileHandle('local-script', { create: true });
+    const writable = await script.createWritable();
+    await writable.write(`\
+#!/bin/sh
+printf 'local\\n'
+`);
+    await writable.close();
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+unset PATH
+command -v local-script
+command local-script
+local-script
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+./local-script
+local
+local
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps invalid pathnames from reaching registered compatibility commands', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+printf data > regular
+command -v /missing/../bin/echo /regular/../bin/echo /bin/echo/
+echo "lookup=$?"
+/missing/../bin/echo wrong
+echo "first=$?"
+/regular/../bin/echo wrong
+echo "second=$?"
+/bin/echo/ wrong
+echo "third=$?"
+/bin/./echo literal
+/usr/bin/echo compatible
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+lookup=1
+first=127
+second=127
+third=127
+literal
+compatible
+`);
+    expect(stderr.text).toContain('Command not found: /missing/../bin/echo');
+  });
+
+  it('uses the same physical path when observing and running scripts', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+mkdir -p real/inner
+ln -s real/inner hop
+printf '#!/bin/sh\\nprintf actual\\n' > real/probe
+printf '#!/bin/sh\\nprintf wrong\\n' > probe
+PATH=/hop/.. command -v probe
+PATH=/hop/.. command probe
+printf '\\n'
+command -v /hop/../probe
+command /hop/../probe
+printf '\\n'
+type -P /hop/../probe
+unset PATH
+PATH=/hop/..
+type -P probe
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+/hop/../probe
+actual
+/hop/../probe
+actual
+/hop/../probe
+/hop/../probe
+`);
+    expect(stderr.text).toBe('');
+  });
+
+  it('executes a linked shell entrypoint and keeps physical scripts on other aliased paths', async () => {
+    await rootHandle.getDirectoryHandle('bin', { create: true });
+    const { result, stdout, stderr } = await execute({
+      script: `\
+ln -s /bin/sh shell-link
+ln -s /bin bin-link
+printf '#!/bin/sh\\nprintf script\\n' > /bin/echo
+./shell-link -c 'printf "shell\\n"'
+/bin/echo registered
+/bin-link/echo
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+shell
+registered
+script`);
+    expect(stderr.text).toBe('');
+  });
+
+  it('skips FIFO candidates when searching PATH for a script', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+mkdir fifo-dir scripts
+mkfifo fifo-dir/probe
+printf '#!/bin/sh\\nprintf script\\n' > scripts/probe
+PATH=fifo-dir:scripts probe
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('script');
+    expect(stderr.text).toBe('');
+  });
+
+  it('uses the standard path only to find the requested command', async () => {
+    const bin = await rootHandle.getDirectoryHandle('bin', { create: true });
+    const script = await bin.getFileHandle('show-path', { create: true });
+    const writable = await script.createWritable();
+    await writable.write(`\
+#!/bin/sh
+printf 'child=%s\\n' "$PATH"
+`);
+    await writable.close();
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+PATH=/parent
+export PATH
+command -p -v show-path
+command -p show-path
+PATH=/prefix command -p eval 'printf "prefix=%s\\n" "$PATH"; PATH=/temporary; SIDE=kept'
+command -p eval 'printf "parent=%s\\n" "$PATH"; PATH=/changed'
+printf 'after=%s|%s\\n' "$PATH" "$SIDE"
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+/bin/show-path
+child=/parent
+prefix=/prefix
+parent=/parent
+after=/changed|kept
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('restores an outer redirected descriptor and keeps independent descriptor changes', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+exec 3>outer
+command eval 'printf "scoped\\n" >&3; exec 4>other' 3>inner
+printf 'outer\\n' >&3
+printf 'other\\n' >&4
+exec 3>&- 4>&-
+cat outer inner other
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+outer
+scoped
+other
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('restores an explicitly closed descriptor even when it was already closed', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+command eval 'exec 3>eval-out; printf "eval\\n" >&3' 3>&-
+printf 'unreachable\\n' >&3
+{ exec 3>compound-out; printf 'compound\\n' >&3; } 3>&-
+printf 'unreachable\\n' >&3
+cat eval-out compound-out
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+eval
+compound
+`);
+    expect(stderr.text).toBe(`\
+wesh: 3: bad file descriptor
+wesh: 3: bad file descriptor
+`);
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps the descriptors of an exec reached through argv wrappers', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+command exec 3>direct
+command command exec 4>nested
+time -p exec 5>timed
+printf 'direct\\n' >&3
+printf 'nested\\n' >&4
+printf 'timed\\n' >&5
+command exec 3>&-
+exec 4>&- 5>&-
+cat direct nested timed
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+direct
+nested
+timed
+`);
+    expect(stderr.text).toMatch(/^real \d+\.\d{2}\nuser 0\.00\nsys 0\.00\n$/u);
+    expect(result.exitCode).toBe(0);
+  });
+
   it('treats -- as the end of command options', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'command -- echo hello',

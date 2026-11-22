@@ -1,13 +1,13 @@
-import type { WeshCommandDefinition } from '@/features/wesh/types';
+import type { WeshShellBuiltinDefinition } from '@/features/wesh/types';
 
 export const killCommandDefinition = {
   meta: {
     name: 'kill',
-    description: 'List signals or signal a Wesh process or process group',
-    usage: 'kill -l [SIGNAL ...] | kill [-s SIGNAL | -SIGNAL] PID ...',
+    description: 'Send signals to processes or process groups, or list signal names',
+    usage: 'kill -l [SIGNAL ...] | kill [-s SIGNAL | -n NUMBER | -SIGNAL] [--] PID ...',
   },
-  load: async () => (await import('./index.ts')).killCommandImplementation.fn,
-} satisfies WeshCommandDefinition;
+  loadShellBuiltin: async () => (await import('./index.ts')).killCommandImplementation.fn,
+} satisfies WeshShellBuiltinDefinition;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

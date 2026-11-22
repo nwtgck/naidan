@@ -1,6 +1,6 @@
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
-import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 
 type BranchDeferredSemantic = 'delete-safe' | 'delete-force';
 

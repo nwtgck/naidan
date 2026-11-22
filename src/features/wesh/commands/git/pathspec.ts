@@ -76,29 +76,36 @@ function parseGitPathspec({ operand }: { operand: string }): ParsedGitPathspec {
   return { operand, pattern: operand.slice(close + 1), mode, exclude, top };
 }
 
-function matchOnePathspec({ repository, cwd, pathspec, paths }: {
+function pathspecAbsolutePath({ repository, cwd, pathspec }: {
   repository: GitRepository,
   cwd: string,
   pathspec: ParsedGitPathspec,
-  paths: readonly string[],
-}): string[] {
+}): string {
   const baseCwd = pathspec.top ? repository.worktreePath : cwd;
-  const absolutePath = normalizePath({ cwd: baseCwd, path: pathspec.pattern });
-  const relativePath = relativeToWorktree({ repository, absolutePath });
+  return normalizePath({ cwd: baseCwd, path: pathspec.pattern });
+}
+
+function matchOnePathspec({ relativePath, pathspec, paths, requiresDirectory }: {
+  relativePath: string,
+  pathspec: ParsedGitPathspec,
+  paths: readonly string[],
+  requiresDirectory: boolean,
+}): string[] {
   const hasWildcards = /[*?[]/u.test(relativePath);
+  const pattern = requiresDirectory ? `${relativePath}/` : relativePath;
   switch (pathspec.mode) {
   case 'literal':
     return relativePath.length === 0
       ? [...paths]
-      : paths.filter(path => path === relativePath || path.startsWith(`${relativePath}/`));
+      : paths.filter(path => (!requiresDirectory && path === relativePath) || path.startsWith(`${relativePath}/`));
   case 'glob': {
     if (!hasWildcards) {
       return relativePath.length === 0
         ? [...paths]
-        : paths.filter(path => path === relativePath || path.startsWith(`${relativePath}/`));
+        : paths.filter(path => (!requiresDirectory && path === relativePath) || path.startsWith(`${relativePath}/`));
     }
     const matcher = compileGitWildmatch({
-      pattern: relativePath,
+      pattern,
       slashMode: 'wildcards-exclude-slash',
       anchorMode: 'full',
     });
@@ -107,7 +114,7 @@ function matchOnePathspec({ repository, cwd, pathspec, paths }: {
   case 'default': {
     if (hasWildcards) {
       const matcher = compileGitWildmatch({
-        pattern: relativePath,
+        pattern,
         slashMode: 'wildcards-include-slash',
         anchorMode: 'full',
       });
@@ -115,7 +122,7 @@ function matchOnePathspec({ repository, cwd, pathspec, paths }: {
     }
     return relativePath.length === 0
       ? [...paths]
-      : paths.filter(path => path === relativePath || path.startsWith(`${relativePath}/`));
+      : paths.filter(path => (!requiresDirectory && path === relativePath) || path.startsWith(`${relativePath}/`));
   }
   default: {
     const _ex: never = pathspec.mode;
@@ -124,34 +131,41 @@ function matchOnePathspec({ repository, cwd, pathspec, paths }: {
   }
 }
 
-interface GitPathspecSelection {
-  byOperand: Map<string, readonly string[]>,
-  selected: Set<string>,
-  unmatchedPositiveOperands: string[],
-}
-
 export interface GitRepositoryPathSelection {
   readonly byOperand: Map<string, readonly string[]>,
   readonly selected: Set<string>,
+  readonly operands: readonly {
+    operand: string,
+    path: string,
+    mode: GitPathspecMatchMode,
+    exclude: boolean,
+    requiresDirectory: boolean,
+    matched: boolean,
+  }[],
 }
 
-function calculatePathspecSelection({ repository, cwd, operands, availablePaths }: {
+export function matchRepositoryPathSelection({ repository, cwd, operands, availablePaths, trailingSlash }: {
   repository: GitRepository,
   cwd: string,
   operands: readonly string[],
   availablePaths: Iterable<string>,
-}): GitPathspecSelection {
+  trailingSlash?: 'require-directory',
+}): GitRepositoryPathSelection {
   const paths = sortGitPaths({ paths: new Set(availablePaths) });
-  const specs = operands.map(operand => parseGitPathspec({ operand }));
-  const positives = specs.filter(spec => !spec.exclude);
-  const excludes = specs.filter(spec => spec.exclude);
-  const rawMatches = new Map<ParsedGitPathspec, string[]>();
-  for (const spec of specs) {
-    rawMatches.set(spec, matchOnePathspec({ repository, cwd, pathspec: spec, paths }));
-  }
+  const specs = operands.map(operand => {
+    const pathspec = parseGitPathspec({ operand });
+    const absolutePath = pathspecAbsolutePath({ repository, cwd, pathspec });
+    const path = relativeToWorktree({ repository, absolutePath });
+    const requiresDirectory = trailingSlash === 'require-directory'
+      && (pathspec.pattern.endsWith('/') || pathspec.pattern.endsWith('/.'));
+    const matches = matchOnePathspec({ relativePath: path, pathspec, paths, requiresDirectory });
+    return { pathspec, path, requiresDirectory, matches };
+  });
+  const positives = specs.filter(({ pathspec }) => !pathspec.exclude);
+  const excludes = specs.filter(({ pathspec }) => pathspec.exclude);
   const excluded = new Set<string>();
-  for (const spec of excludes) {
-    for (const path of rawMatches.get(spec)!) {
+  for (const { matches } of excludes) {
+    for (const path of matches) {
       excluded.add(path);
     }
   }
@@ -163,8 +177,8 @@ function calculatePathspecSelection({ repository, cwd, operands, availablePaths 
       }
     }
   } else {
-    for (const spec of positives) {
-      for (const path of rawMatches.get(spec)!) {
+    for (const { matches } of positives) {
+      for (const path of matches) {
         if (!excluded.has(path)) {
           selected.add(path);
         }
@@ -174,16 +188,23 @@ function calculatePathspecSelection({ repository, cwd, operands, availablePaths 
 
   const byOperand = new Map<string, readonly string[]>();
   if (positives.length === 0 && specs.length > 0) {
-    byOperand.set(specs[0]!.operand, [...selected]);
+    byOperand.set(specs[0]!.pathspec.operand, [...selected]);
   } else {
-    for (const spec of positives) {
-      byOperand.set(spec.operand, rawMatches.get(spec)!.filter(path => selected.has(path)));
+    for (const { pathspec, matches } of positives) {
+      byOperand.set(pathspec.operand, matches.filter(path => selected.has(path)));
     }
   }
   return {
     byOperand,
     selected,
-    unmatchedPositiveOperands: positives.filter(spec => rawMatches.get(spec)!.length === 0).map(spec => spec.operand),
+    operands: specs.map(({ pathspec, path, requiresDirectory, matches }) => ({
+      operand: pathspec.operand,
+      path,
+      mode: pathspec.mode,
+      exclude: pathspec.exclude,
+      requiresDirectory,
+      matched: matches.length > 0,
+    })),
   };
 }
 
@@ -201,8 +222,7 @@ export function selectedDirectoryPathForPathspec({ repository, cwd, operand, mat
   if (pathspec.exclude) {
     return undefined;
   }
-  const baseCwd = pathspec.top ? repository.worktreePath : cwd;
-  const absolutePath = normalizePath({ cwd: baseCwd, path: pathspec.pattern });
+  const absolutePath = pathspecAbsolutePath({ repository, cwd, pathspec });
   const relativePath = relativeToWorktree({ repository, absolutePath });
   if (relativePath.length === 0) {
     return undefined;
@@ -223,16 +243,6 @@ export function pathspecSelectsDirectory({ repository, cwd, operand, matchedPath
   return selectedDirectoryPathForPathspec({ repository, cwd, operand, matchedPaths }) !== undefined;
 }
 
-export function matchRepositoryPathSelection({ repository, cwd, operands, availablePaths }: {
-  repository: GitRepository,
-  cwd: string,
-  operands: readonly string[],
-  availablePaths: Iterable<string>,
-}): GitRepositoryPathSelection {
-  const selection = calculatePathspecSelection({ repository, cwd, operands, availablePaths });
-  return { byOperand: selection.byOperand, selected: selection.selected };
-}
-
 export function matchRepositoryPaths({ repository, cwd, operands, availablePaths }: {
   repository: GitRepository,
   cwd: string,
@@ -248,10 +258,10 @@ export function selectRepositoryPaths({ repository, cwd, operands, availablePath
   operands: readonly string[],
   availablePaths: Iterable<string>,
 }): Set<string> {
-  const selection = calculatePathspecSelection({ repository, cwd, operands, availablePaths });
-  const unmatched = selection.unmatchedPositiveOperands[0];
+  const selection = matchRepositoryPathSelection({ repository, cwd, operands, availablePaths });
+  const unmatched = selection.operands.find(({ exclude, matched }) => !exclude && !matched);
   if (unmatched !== undefined) {
-    throw new Error(`pathspec '${unmatched}' did not match any file(s) known to git`);
+    throw new Error(`pathspec '${unmatched.operand}' did not match any file(s) known to git`);
   }
   return selection.selected;
 }

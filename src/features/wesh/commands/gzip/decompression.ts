@@ -9,15 +9,11 @@ import type {
   WeshFileHandle,
   WeshOpenFlags,
 } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
-import { getGzipSuffixDiagnostic } from '@/features/wesh/commands/_shared/gzip-suffix';
 import {
   consumeGzipInput,
   peekGzipInput,
 } from '@/features/wesh/commands/_shared/gzip-decompression';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { resolvePath } from '@/features/wesh/path';
 import { writeAllStreamToHandle } from '@/features/wesh/utils/fs';
 import { pathExists, unlinkForcedOutputSymlink } from './filesystem';
@@ -48,114 +44,26 @@ async function openOutputFile({
   return context.files.open({ path, flags });
 }
 
-const gzipDecompressionArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'c',
-      long: 'stdout',
-      effects: [{ key: 'stdout', value: true }],
-      help: { summary: 'write on standard output, keep original files unchanged', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'f',
-      long: 'force',
-      effects: [{ key: 'force', value: true }],
-      help: { summary: 'force overwrite of output files', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'k',
-      long: 'keep',
-      effects: [{ key: 'keep', value: true }],
-      help: { summary: 'keep input files unchanged', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'q',
-      long: 'quiet',
-      effects: [{ key: 'quiet', value: true }],
-      help: { summary: 'suppress warning messages', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'S',
-      long: 'suffix',
-      key: 'suffix',
-      valueName: 'SUF',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'use suffix SUF on compressed files', valueName: 'SUF' },
-    },
-    {
-      kind: 'flag',
-      short: 't',
-      long: 'test',
-      effects: [{ key: 'test', value: true }],
-      help: { summary: 'test compressed file integrity', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
-};
-
-export async function executeGzipDecompressionCommand({
+export async function decompressGzipInputs({
   context,
+  inputs,
+  writeToStdout,
+  force,
+  quiet,
+  testOnly,
+  keepInput,
+  suffix,
 }: {
   context: WeshCommandContext,
+  inputs: readonly string[],
+  writeToStdout: boolean,
+  force: boolean,
+  quiet: boolean,
+  testOnly: boolean,
+  keepInput: boolean,
+  suffix: string,
 }): Promise<WeshCommandResult> {
-  const parsed = parseStandardArgv({
-    args: stopStandardArgvAtFirstEarlyExit({
-      args: context.args,
-      spec: gzipDecompressionArgvSpec,
-      earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
-    }),
-    spec: gzipDecompressionArgvSpec,
-  });
-
   const text = context.text();
-  const diagnostic = parsed.diagnostics[0];
-  if (diagnostic !== undefined) {
-    await writeCommandUsageError({
-      context,
-      command: 'gunzip',
-      message: `gunzip: ${diagnostic.message}`,
-      argvSpec: gzipDecompressionArgvSpec,
-    });
-    return { exitCode: 1 };
-  }
-
-  if (parsed.optionValues.help === true) {
-    await writeCommandHelp({
-      context,
-      command: 'gunzip',
-      argvSpec: gzipDecompressionArgvSpec,
-    });
-    return { exitCode: 0 };
-  }
-
-  const writeToStdout = parsed.optionValues.stdout === true;
-  const force = parsed.optionValues.force === true;
-  const quiet = parsed.optionValues.quiet === true;
-  const testOnly = parsed.optionValues.test === true;
-  const keepInput = parsed.optionValues.keep === true || writeToStdout || testOnly;
-  const suffix = (parsed.optionValues.suffix as string | undefined) ?? '.gz';
-  const suffixDiagnostic = getGzipSuffixDiagnostic({ suffix });
-  if (suffixDiagnostic !== undefined) {
-    await text.error({ text: suffixDiagnostic });
-    return { exitCode: 1 };
-  }
-  const inputs = parsed.positionals.length > 0 ? parsed.positionals : ['-'];
   let exitCode = 0;
 
   for (const input of inputs) {

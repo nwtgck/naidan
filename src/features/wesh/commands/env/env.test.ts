@@ -144,6 +144,28 @@ parent=<bar> removed=<old>
     expect(optionLookingAssignment.stderr.text).toBe('');
   });
 
+  it('distinguishes option values from option and operand boundaries', async () => {
+    const followedByDash = await execute({ script: 'env -u -- - ONLY=value' });
+    expect(followedByDash.result.exitCode).toBe(0);
+    expect(followedByDash.stdout.text).toBe('ONLY=value\n');
+    expect(followedByDash.stderr.text).toBe('');
+
+    const dashAfterDelimiter = await execute({ script: 'env -- -' });
+    expect(dashAfterDelimiter.result.exitCode).toBe(127);
+    expect(dashAfterDelimiter.stdout.text).toBe('');
+    expect(dashAfterDelimiter.stderr.text).toBe("env: '-': No such file or directory\n");
+
+    const helpAsUnsetName = await execute({ script: 'env -u --help -i ONLY=after' });
+    expect(helpAsUnsetName.result.exitCode).toBe(0);
+    expect(helpAsUnsetName.stdout.text).toBe('ONLY=after\n');
+    expect(helpAsUnsetName.stderr.text).toBe('');
+
+    const helpBeforeInvalidOption = await execute({ script: 'env --help --invalid' });
+    expect(helpBeforeInvalidOption.result.exitCode).toBe(0);
+    expect(helpBeforeInvalidOption.stdout.text).toContain('Run a command in a modified environment');
+    expect(helpBeforeInvalidOption.stderr.text).toBe('');
+  });
+
   it('parses bundled short options with GNU value consumption rules', async () => {
     const ignoredAndUnset = await execute({
       script: "env -iuREMOVE_ME FOO=inner | sort",
@@ -174,6 +196,21 @@ REMOVE_ME=old
     expect(invalid.stdout.text).toBe('');
     expect(invalid.stderr.text).toContain("env: invalid option -- 'x'");
     expect(invalid.result.exitCode).toBe(125);
+  });
+
+  it('applies every unset option and uses the last directory option', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+mkdir -p work
+env -u FOO --unset=REMOVE_ME --chdir=missing -Cwork sh -c 'pwd; printf "%s:%s\\n" "${'${FOO-unset}'}" "${'${REMOVE_ME-unset}'}"'`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+/work
+unset:unset
+`);
+    expect(stderr.text).toBe('');
   });
 
   it('matches GNU validation for unset names, empty chdir, and empty-name assignments', async () => {
@@ -231,6 +268,43 @@ REMOVE_ME=old
     });
 
     expect(stdout.text).toBe('alpha');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('changes the child working directory independently of its environment', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+mkdir -p work
+FOO=prefix env -i -C work PWD=/declared FOO=child env | sort
+env -i -C work PWD=/declared sh -c 'printf "shell=<%s>\n" "$PWD"'
+printf 'parent=<%s>:<%s>\n' "$FOO" "$PWD"
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+FOO=child
+PWD=/declared
+shell=</work>
+parent=<bar>:</>
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('does not resolve a child utility through the parent shell functions', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+printf() { echo function; }
+env printf 'child\n'
+printf
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+child
+function
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

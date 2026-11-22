@@ -9,7 +9,7 @@ import { createRef, deleteRef, listRefs, readRef } from '@/features/wesh/command
 import { discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
 import type { GitRepository } from '@/features/wesh/commands/git/repository';
 import { resolveRevision } from '@/features/wesh/commands/git/revision';
-import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 import { appendMessageParagraph, cleanupMessage } from '@/features/wesh/commands/git/commit-message';
 
 type TagDeferredSemantic = 'message';

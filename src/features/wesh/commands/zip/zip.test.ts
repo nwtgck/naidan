@@ -1464,6 +1464,26 @@ describe('wesh zip and unzip', () => {
     expect(nothing.result.exitCode).toBe(12);
   });
 
+  it('handles zip help and an unknown option in argument order', async () => {
+    const helpFirst = await execute({ script: 'zip --help --naidan-unknown', stdinText: '' });
+    expect(helpFirst.result.exitCode).toBe(0);
+    expect(helpFirst.stdout.text).toContain('Package and compress files into ZIP archives');
+    expect(helpFirst.stderr.text).toBe('');
+
+    const errorFirst = await execute({ script: 'zip --naidan-unknown --help', stdinText: '' });
+    expect(errorFirst.result.exitCode).toBe(2);
+    expect(errorFirst.stdout.text).toBe('');
+    expect(errorFirst.stderr.text).toContain("zip: unrecognized option '--naidan-unknown'");
+  });
+
+  it('rejects an inline value for the long quiet flag', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'zip --quiet=extra', stdinText: '' });
+
+    expect(result.exitCode).toBe(2);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("zip: option '--quiet' doesn't allow an argument");
+  });
+
   it('warns when zip operands do not match files', async () => {
     const missing = await execute({
       script: 'zip archive.zip missing.txt',

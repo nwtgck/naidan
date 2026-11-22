@@ -221,6 +221,49 @@ src/readme.md
     expect(terminatedAfterTraversal.result.exitCode).toBe(0);
   });
 
+  it.each([
+    { options: '-L -P', fileType: 'l' },
+    { options: '-P -H --', fileType: 'd' },
+  ])('uses the last leading symlink option in $options', async ({ options, fileType }) => {
+    const { result, stdout, stderr } = await execute({
+      script: `mkdir tree && ln -s tree tree.link && find ${options} tree.link -maxdepth 0 -type ${fileType} -print`,
+    });
+
+    expect(stdout.text).toBe('tree.link\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it.each([
+    { args: '-LP tree -print', predicate: '-LP' },
+    { args: '-- -P tree -print', predicate: '-P' },
+    { args: 'tree -- -print', predicate: '--' },
+    { args: '--help=extra', predicate: '--help=extra' },
+  ])('reports $predicate as an unknown predicate in $args', async ({ args, predicate }) => {
+    const { result, stdout, stderr } = await execute({ script: `find ${args}` });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe(`\
+find: unknown predicate '${predicate}'
+usage: find [path...] [expression]
+`);
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('accepts a single dash as a start path before the expression', async () => {
+    await writeFile({ path: '-', data: 'dash\n' });
+    await writeFile({ path: 'tree/file', data: 'file\n' });
+
+    const { result, stdout, stderr } = await execute({ script: 'find - tree -maxdepth 0 -print' });
+
+    expect(stdout.text).toBe(`\
+-
+tree
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('recognizes help and version after ordinary operands', async () => {
     const help = await execute({
       script: 'find missing --help',
@@ -235,6 +278,28 @@ src/readme.md
     expect(version.stdout.text).toBe('find (Wesh findutils) 1.0\n');
     expect(version.stderr.text).toBe('');
     expect(version.result.exitCode).toBe(0);
+  });
+
+  it('recognizes help after -- and keeps it in an expression when it is a predicate operand', async () => {
+    await writeFile({ path: 'tree/--help', data: 'file\n' });
+    const help = await execute({ script: 'find -- --help' });
+    const operand = await execute({ script: 'find tree -name --help -print' });
+
+    expect(help.stdout.text).toBe(`\
+Search for files in a directory hierarchy
+usage: find [path...] [expression]
+options:
+  --help                       display this help and exit
+  -H                           follow command-line symbolic links
+  -L                           follow symbolic links
+  -P                           never follow symbolic links
+  --version                    output version information and exit
+`);
+    expect(help.stderr.text).toBe('');
+    expect(help.result.exitCode).toBe(0);
+    expect(operand.stdout.text).toBe('tree/--help\n');
+    expect(operand.stderr.text).toBe('');
+    expect(operand.result.exitCode).toBe(0);
   });
 
   it('uses the first global find early-exit request', async () => {
@@ -306,6 +371,19 @@ tree/a
     expect(stdout.text).toBe('FOUND:src/app.ts\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('passes a help argument inside -exec to the child', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: "find . -maxdepth 0 -exec printf '%s\\n' --help '{}' ';'",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+--help
+.
+`);
+    expect(stderr.text).toBe('');
   });
 
   it('supports -exec without a placeholder in semicolon mode', async () => {
@@ -1065,6 +1143,55 @@ src/nested/main.ts
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
     expect(getFileSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads file metadata only for matches of a leading name test before -size', async () => {
+    await writeFile({ path: 'src/nested/wanted.ts', data: 'content' });
+    for (let index = 0; index < 130; index++) {
+      await writeFile({ path: `src/other-${index}.ts`, data: 'content' });
+    }
+    const getFile = vi.spyOn(MockFileSystemFileHandle.prototype, 'getFile');
+
+    const { result, stdout, stderr } = await execute({ script: 'find src -name wanted.ts -size +1c' });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('src/nested/wanted.ts\n');
+    expect(stderr.text).toBe('');
+    expect(getFile).toHaveBeenCalledOnce();
+  });
+
+  it('skips metadata for files rejected by a type and name conjunction before -printf', async () => {
+    await writeFile({ path: 'src/nested/wanted.ts', data: 'content' });
+    for (let index = 0; index < 32; index++) {
+      await writeFile({ path: `src/other-${index}.ts`, data: 'content' });
+    }
+    const getFile = vi.spyOn(MockFileSystemFileHandle.prototype, 'getFile');
+
+    const { result, stdout, stderr } = await execute({
+      script: "find src -type f -iname WANTED.TS -printf '%s %p\\n'",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('7 src/nested/wanted.ts\n');
+    expect(stderr.text).toBe('');
+    expect(getFile).toHaveBeenCalledOnce();
+  });
+
+  it('does not use a name test to skip an earlier print action', async () => {
+    await writeFile({ path: 'src/other.ts', data: 'content' });
+    await writeFile({ path: 'src/nested/wanted.ts', data: 'content' });
+
+    const { result, stdout, stderr } = await execute({
+      script: "find src -type f -print -name wanted.ts -printf '%s %p\\n'",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+src/other.ts
+src/nested/wanted.ts
+7 src/nested/wanted.ts
+`);
+    expect(stderr.text).toBe('');
   });
 
   it('uses whole-path Emacs regular expressions for -regex', async () => {

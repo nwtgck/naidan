@@ -3,11 +3,12 @@ import {
   analyzeArgvShortForm,
   defineArgvCatalog,
   type ArgvOptionDefinition,
-} from '@/features/wesh/argv-v2';
-import type {
-  ShellExecutionOptions,
-  ShellInvocationMode,
-  ShellOptionOverride,
+} from '@/features/wesh/argv';
+import {
+  createDefaultExecutionOptions,
+  type ShellInvocationMode,
+  type ShellOptionOverride,
+  type WeshExecutionOptions,
 } from '@/features/wesh/shell/invocation';
 
 export type BashInvocationSource =
@@ -26,9 +27,9 @@ export type BashInvocationSource =
 export interface BashInvocationPlan {
   readonly kind: 'run',
   readonly source: BashInvocationSource,
-  readonly argv0: string,
+  readonly argv0: string | undefined,
   readonly positionalArgs: readonly string[],
-  readonly executionOptions: ShellExecutionOptions,
+  readonly executionOptions: Readonly<WeshExecutionOptions>,
   readonly shellOptionOverrides: readonly ShellOptionOverride[],
   readonly mode: ShellInvocationMode,
 }
@@ -45,9 +46,7 @@ interface BashStartupEnvironmentResult {
 
 interface MutableBashInvocationState {
   mode: ShellInvocationMode,
-  errexit: boolean,
-  nounset: boolean,
-  pipefail: boolean,
+  readonly executionOptions: WeshExecutionOptions,
   readonly shellOptionOverrides: Map<ShellOptionOverride['name'], boolean>,
 }
 
@@ -129,22 +128,18 @@ function applyValidBashShellOption({ state, optionName, enabled }: {
   enabled: boolean,
 }): boolean {
   switch (optionName) {
+  case 'allexport':
   case 'errexit':
-    state.errexit = enabled;
-    return true;
   case 'nounset':
-    state.nounset = enabled;
+  case 'pipefail':
+    state.executionOptions[optionName] = enabled;
     return true;
   case 'noexec':
     state.mode = enabled ? 'parse-only' : 'execute';
     return true;
-  case 'pipefail':
-    state.pipefail = enabled;
-    return true;
   case 'nolog':
     // GNU Bash documents nolog as accepted but currently ignored.
     return true;
-  case 'allexport':
   case 'braceexpand':
   case 'emacs':
   case 'errtrace':
@@ -195,7 +190,7 @@ function applyRepresentableBashShoptOption({ state, optionName, enabled }: {
 function createBashInvocationPlan({ state, source, argv0, positionalArgs }: {
   state: MutableBashInvocationState,
   source: BashInvocationSource,
-  argv0: string,
+  argv0: string | undefined,
   positionalArgs: readonly string[],
 }): BashInvocationPlan {
   return {
@@ -203,11 +198,7 @@ function createBashInvocationPlan({ state, source, argv0, positionalArgs }: {
     source,
     argv0,
     positionalArgs,
-    executionOptions: {
-      errexit: state.errexit,
-      nounset: state.nounset,
-      pipefail: state.pipefail,
-    },
+    executionOptions: state.executionOptions,
     shellOptionOverrides: Array.from(
       state.shellOptionOverrides,
       ([name, enabled]) => ({ name, enabled }),
@@ -217,10 +208,11 @@ function createBashInvocationPlan({ state, source, argv0, positionalArgs }: {
 }
 
 
-// Bash owns invocation phase and argv-cursor semantics; argv-v2 owns only the
+// Bash owns invocation phase and argv-cursor semantics; argv owns only the
 // frozen token spelling/value-claim mechanics. In particular, this must remain
 // a direct token-local analyzer consumer rather than a parseStandardArgv wrapper.
 type BashArgvOptionSemantic =
+  | 'allexport'
   | 'errexit'
   | 'nounset'
   | 'parse-only'
@@ -237,6 +229,13 @@ type BashArgvOptionSemantic =
   | 'init-file';
 
 const BASH_ARGV_OPTION_DEFINITIONS = [
+  {
+    semantic: 'allexport',
+    forms: [
+      { kind: 'short', name: 'a', value: { kind: 'none' } },
+      { kind: 'plus-short', name: 'a', value: { kind: 'none' } },
+    ],
+  },
   {
     semantic: 'errexit',
     forms: [
@@ -385,14 +384,12 @@ export function parseBashArgv({ args }: {
   let shortOptionParsingStarted = false;
   const state: MutableBashInvocationState = {
     mode: 'execute',
-    errexit: false,
-    nounset: false,
-    pipefail: false,
+    executionOptions: createDefaultExecutionOptions(),
     shellOptionOverrides: new Map(),
   };
   const pendingShoptValueOptions: Array<{ enabled: boolean, optionName: string }> = [];
 
-  const basicOptionErrorExitCode = (): 1 | 2 => state.errexit ? 1 : 2;
+  const basicOptionErrorExitCode = (): 1 | 2 => state.executionOptions.errexit ? 1 : 2;
   const invalidOption = ({ argument }: { argument: string }): BashArgvResult => ({
     kind: 'error',
     message: `bash: ${argument}: invalid option\n`,
@@ -487,6 +484,7 @@ export function parseBashArgv({ args }: {
             throw new Error(`Unhandled Bash no-op long value claim: ${JSON.stringify(_ex)}`);
           }
           }
+        case 'allexport':
         case 'errexit':
         case 'nounset':
         case 'parse-only':
@@ -543,13 +541,11 @@ export function parseBashArgv({ args }: {
         return invalidOption({ argument: analysis.option });
       case 'matched':
         switch (analysis.semantic) {
+        case 'allexport':
         case 'errexit':
-          assertNoBashShortValue({ value: analysis.value, option: analysis.option });
-          state.errexit = enabled;
-          break;
         case 'nounset':
           assertNoBashShortValue({ value: analysis.value, option: analysis.option });
-          state.nounset = enabled;
+          state.executionOptions[analysis.semantic] = enabled;
           break;
         case 'parse-only':
           assertNoBashShortValue({ value: analysis.value, option: analysis.option });
@@ -688,7 +684,7 @@ export function parseBashArgv({ args }: {
         kind: 'command-string',
         script,
       },
-      argv0: args[argumentIndex + 1] ?? 'bash',
+      argv0: args[argumentIndex + 1],
       positionalArgs: args.slice(argumentIndex + 2),
     });
   }
@@ -703,7 +699,7 @@ export function parseBashArgv({ args }: {
     return createBashInvocationPlan({
       state,
       source: { kind: 'stdin' },
-      argv0: 'bash',
+      argv0: undefined,
       positionalArgs: args.slice(argumentIndex),
     });
   case 'automatic':
@@ -719,7 +715,7 @@ export function parseBashArgv({ args }: {
     return createBashInvocationPlan({
       state,
       source: { kind: 'stdin' },
-      argv0: 'bash',
+      argv0: undefined,
       positionalArgs: [],
     });
   }
@@ -739,7 +735,7 @@ export function parseBashArgv({ args }: {
  * Apply the startup option state Bash imports from SHELLOPTS/BASHOPTS after
  * successful argv parsing. GNU Bash applies these environment values after
  * command-line option processing, so an imported enabled option wins over a
- * preceding +e/+u/+n/+o/+O disable. Unsupported-but-valid options stay
+ * preceding +a/+e/+u/+n/+o/+O disable. Unsupported-but-valid options stay
  * command/core compatibility gaps rather than being misreported as invalid.
  */
 export function applyBashStartupEnvironmentOptions({ plan, shellopts, bashopts }: {
@@ -749,9 +745,7 @@ export function applyBashStartupEnvironmentOptions({ plan, shellopts, bashopts }
 }): BashStartupEnvironmentResult {
   const state: MutableBashInvocationState = {
     mode: plan.mode,
-    errexit: plan.executionOptions.errexit,
-    nounset: plan.executionOptions.nounset,
-    pipefail: plan.executionOptions.pipefail,
+    executionOptions: { ...plan.executionOptions },
     shellOptionOverrides: new Map(
       plan.shellOptionOverrides.map(({ name, enabled }) => [name, enabled]),
     ),

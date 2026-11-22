@@ -135,6 +135,29 @@ printf 'status=%s file=%s\n' "$?" "$(test -e file.txt; echo $?)"`,
     expect((await wesh.vfs.lstat({ path: '/file.txt' })).type).toBe('file');
   });
 
+  it('removes the entry in the real parent after a symlink component', async () => {
+    await writeFile({ path: 'parent/target', data: 'inside' });
+    await writeFile({ path: 'target', data: 'outside' });
+    const parent = await rootHandle.getDirectoryHandle('parent');
+    await parent.getDirectoryHandle('inner', { create: true });
+    await wesh.vfs.symlink({ path: '/link', targetPath: 'parent/inner' });
+
+    const removed = await execute({ script: 'rm link/../target' });
+    expect(removed.result.exitCode).toBe(0);
+    expect(removed.stderr.text).toBe('');
+    expect(await (await (await rootHandle.getFileHandle('target')).getFile()).text()).toBe('outside');
+    await expect(parent.getFileHandle('target')).rejects.toMatchObject({ name: 'NotFoundError' });
+  });
+
+  it('preserves the current directory when rm -d receives a dot operand', async () => {
+    await rootHandle.getDirectoryHandle('empty', { create: true });
+
+    const removed = await execute({ script: 'cd empty && rm -d .' });
+    expect(removed.result.exitCode).toBe(1);
+    expect(removed.stderr.text).toContain("refusing to remove '.' or '..'");
+    expect(await rootHandle.getDirectoryHandle('empty')).toBeDefined();
+  });
+
   it('refuses recursive removal of the filesystem root before traversing it', async () => {
     await writeFile({ path: 'file.txt', data: 'payload' });
 

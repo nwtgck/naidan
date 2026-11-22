@@ -188,10 +188,6 @@ export type PatchContent =
       pieces: OutputPiece[],
     }
   | {
-      kind: 'file',
-      path: string,
-    }
-  | {
       kind: 'sequence',
       contents: PatchContent[],
     };

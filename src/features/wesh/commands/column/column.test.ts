@@ -101,6 +101,17 @@ banana  12
     expect(result.exitCode).toBe(0);
   });
 
+  it('uses the last separator across a short bundle and a long alias', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: "column -ts, --input-separator=: -o'|'",
+      stdinText: 'a:b\n',
+    });
+
+    expect(stdout.text).toBe('a|b\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('reads files and explicit stdin operands in order', async () => {
     await writeFile({
       path: 'right.txt',

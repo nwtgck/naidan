@@ -19,6 +19,11 @@ export GIT_AUTHOR_DATE='981173106 +0000'
 export GIT_COMMITTER_DATE='981173106 +0000'
 git commit -m base >/dev/null`;
 
+  const oneStash = `\
+${base}
+printf 'one\\n' >> a
+git stash push -m one >/dev/null`;
+
   it('stores index and tracked worktree state as commit parents while leaving untracked files', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -200,6 +205,94 @@ test ! -e .git/logs/refs/stash`,
     expect(lines[2]).toMatch(/^Dropped stash@\{1\} \([0-9a-f]{40}\)$/u);
     expect(lines[3]).toBe('stash@{0}: On master: two');
     expect(lines).toHaveLength(4);
+  });
+
+  it.each([
+    { subcommand: 'drop', lock: 'refs/stash.lock' },
+    { subcommand: 'drop', lock: 'logs/refs/stash.lock' },
+    { subcommand: 'drop', lock: 'packed-refs.lock' },
+    { subcommand: 'clear', lock: 'packed-refs.lock' },
+  ])('preserves the ref and log if stash $subcommand cannot acquire $lock', async ({ subcommand, lock }) => {
+    const execute = await createGitTestExecutor();
+    const saved = await execute({
+      script: `${oneStash}\nprintf 'foreign lock' > .git/${lock}\ncat .git/refs/stash .git/logs/refs/stash`,
+    });
+    expect(saved.result.exitCode, saved.stderr.text).toBe(0);
+    const removed = await execute({ script: `git stash ${subcommand}` });
+    expect(removed.result.exitCode).not.toBe(0);
+    expect(removed.stderr.text).toContain(lock);
+    const after = await execute({ script: `cat .git/refs/stash .git/logs/refs/stash .git/${lock}` });
+    expect(after.result.exitCode, after.stderr.text).toBe(0);
+    expect(after.stdout.text).toBe(`${saved.stdout.text}foreign lock`);
+  });
+
+  it('clears the stash without removing an existing reflog lock', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${oneStash}
+printf 'foreign lock' > .git/logs/refs/stash.lock
+git stash clear && test ! -e .git/refs/stash && test ! -e .git/logs/refs/stash && cat .git/logs/refs/stash.lock`,
+    });
+    expect(result.exitCode, stderr.text).toBe(0);
+    expect(stdout.text).toBe('foreign lock');
+  });
+
+  it('leaves a reflog and foreign lock alone when the stash ref is absent', async () => {
+    const execute = await createGitTestExecutor();
+    const saved = await execute({
+      script: `${oneStash}\nrm .git/refs/stash\nprintf 'foreign lock' > .git/refs/stash.lock\ncat .git/logs/refs/stash`,
+    });
+    expect(saved.result.exitCode, saved.stderr.text).toBe(0);
+    const dropped = await execute({ script: 'git stash drop' });
+    expect(dropped.result.exitCode).toBe(1);
+    expect(dropped.stderr.text).toBe('No stash entries found.\n');
+    const cleared = await execute({ script: 'git stash clear && cat .git/logs/refs/stash .git/refs/stash.lock' });
+    expect(cleared.result.exitCode, cleared.stderr.text).toBe(0);
+    expect(cleared.stdout.text).toBe(`${saved.stdout.text}foreign lock`);
+  });
+
+  it('reconnects the stash log after a middle drop and removes a final packed reference', async () => {
+    const execute = await createGitTestExecutor();
+    const setup = await execute({
+      script: `\
+${oneStash}
+first=$(cat .git/refs/stash)
+printf 'two\\n' >> a
+git stash push -m two >/dev/null
+printf 'three\\n' >> a
+git stash push -m three >/dev/null
+newest=$(cat .git/refs/stash)
+printf '%s refs/stash\\n' "$newest" > .git/packed-refs
+rm .git/refs/stash
+printf '%s\\n' "$first" "$newest"`,
+    });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const [first, newest] = setup.stdout.text.trimEnd().split('\n');
+    expect(first).toMatch(/^[0-9a-f]{40}$/u);
+    expect(newest).toMatch(/^[0-9a-f]{40}$/u);
+    const dropped = await execute({
+      script: `git stash drop 'stash@{1}' && cat .git/refs/stash .git/packed-refs .git/logs/refs/stash`,
+    });
+    expect(dropped.result.exitCode, dropped.stderr.text).toBe(0);
+    expect(dropped.stdout.text.split('\n')).toEqual([
+      expect.stringMatching(/^Dropped stash@\{1\} /u),
+      newest,
+      `${newest} refs/stash`,
+      expect.stringContaining(`${'0'.repeat(40)} ${first} `),
+      expect.stringContaining(`${first} ${newest} `),
+      '',
+    ]);
+    const finished = await execute({
+      script: `git stash drop && git stash drop && test ! -e .git/refs/stash && test ! -e .git/logs/refs/stash && cat .git/packed-refs`,
+    });
+    expect(finished.result.exitCode, finished.stderr.text).toBe(0);
+    expect(finished.stdout.text.split('\n')).toEqual([
+      `Dropped refs/stash@{0} (${newest})`,
+      `Dropped refs/stash@{0} (${first})`,
+      expect.stringMatching(/^# pack-refs with: /u),
+      '',
+    ]);
   });
 
   it('applies tracked worktree changes while keeping modified and deleted index entries unstaged by default', async () => {

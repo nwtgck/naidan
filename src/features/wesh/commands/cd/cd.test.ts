@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -6,6 +6,11 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+import { cdCommandDefinition } from './definition';
+
+beforeAll(async () => {
+  await cdCommandDefinition.loadShellBuiltin();
+});
 
 describe('wesh cd', () => {
   let wesh: Wesh;
@@ -311,5 +316,24 @@ pwd`,
     expect(stdout.text).toBe('1\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('accepts a directory name beginning with a dash after --', async () => {
+    await makeDir({ path: '-physical' });
+    const { result, stdout, stderr } = await execute({
+      script: 'cd -- -physical && pwd',
+    });
+
+    expect(stdout.text).toBe('/-physical\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('rejects inline values for its long flags', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'cd --physical=ignored' });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("cd: option '--physical' doesn't allow an argument");
+    expect(result.exitCode).toBe(1);
   });
 });

@@ -1,11 +1,9 @@
-import type { ArgvSpecialParseResult } from '@/features/wesh/argv';
-
 export type UpdateMode = 'all' | 'none' | 'none-fail' | 'older';
 export type ExistingDestinationUpdateDecision = 'replace' | 'skip' | 'skip-error';
 
 const UPDATE_MODES = ['all', 'none', 'none-fail', 'older'] as const satisfies readonly UpdateMode[];
 
-function parseUpdateMode({ value }: { value: string }): UpdateMode | undefined {
+export function parseUpdateMode({ value }: { value: string }): UpdateMode | undefined {
   const exact = UPDATE_MODES.find((candidate) => candidate === value);
   if (exact !== undefined) {
     return exact;
@@ -16,46 +14,6 @@ function parseUpdateMode({ value }: { value: string }): UpdateMode | undefined {
 
   const matches = UPDATE_MODES.filter((candidate) => candidate.startsWith(value));
   return matches.length === 1 ? matches[0] : undefined;
-}
-
-export function parseUpdateLongOption({
-  token,
-}: {
-  token: string;
-}): ArgvSpecialParseResult | undefined {
-  if (token === '--update') {
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [{ key: 'updateMode', value: 'older' }],
-      occurrences: [{
-        kind: 'special',
-        option: '--update',
-        effects: [{ key: 'updateMode', value: 'older' }],
-      }],
-    };
-  }
-
-  const prefix = '--update=';
-  if (!token.startsWith(prefix)) {
-    return undefined;
-  }
-
-  const rawValue = token.slice(prefix.length);
-  const mode = parseUpdateMode({ value: rawValue });
-  const effects = mode === undefined
-    ? [{ key: 'updateParseError', value: rawValue }]
-    : [{ key: 'updateMode', value: mode }];
-  return {
-    kind: 'matched',
-    consumeCount: 1,
-    effects,
-    occurrences: [{
-      kind: 'special',
-      option: '--update',
-      effects,
-    }],
-  };
 }
 
 export function resolveExistingDestinationUpdate({
@@ -85,5 +43,4 @@ export function resolveExistingDestinationUpdate({
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 export const TEST_ONLY = {
-  parseUpdateMode,
 };

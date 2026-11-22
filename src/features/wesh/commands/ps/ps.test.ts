@@ -93,6 +93,18 @@ describe('wesh ps', () => {
     expect(invalidFormatBeforeHelp.stderr.text).toBe('');
   });
 
+  it('reports malformed PID lists and unknown options in argv order', async () => {
+    const invalidPidFirst = await execute({ script: 'ps -p invalid --definitely-invalid-option' });
+    const unknownOptionFirst = await execute({ script: 'ps --definitely-invalid-option -p invalid' });
+
+    expect(invalidPidFirst.result.exitCode).toBe(1);
+    expect(invalidPidFirst.stdout.text).toBe('');
+    expect(invalidPidFirst.stderr.text).toContain('ps: invalid process ID: invalid');
+    expect(unknownOptionFirst.result.exitCode).toBe(1);
+    expect(unknownOptionFirst.stdout.text).toBe('');
+    expect(unknownOptionFirst.stderr.text).toContain("ps: unrecognized option '--definitely-invalid-option'");
+  });
+
   it('formats process counts above the JavaScript function argument limit', () => {
     const processCount = 150_000;
     const processes: WeshProcessSnapshot[] = Array.from({ length: processCount }, (_value, index) => ({
@@ -101,6 +113,7 @@ describe('wesh ps', () => {
       pgid: 2,
       state: 'running',
       user: 'user',
+      image: 'worker',
       argv0: 'worker',
       args: ['worker'],
       cwd: '/',
@@ -142,6 +155,7 @@ b`,
       pgid: 2,
       state: 'running',
       user: 'user',
+      image: argv0,
       argv0,
       args: [],
       cwd: '/',
@@ -181,6 +195,7 @@ a?b           2
       pgid: 2,
       state: 'running',
       user: 'user',
+      image: argv0,
       argv0,
       args: [],
       cwd: '/',
@@ -277,6 +292,7 @@ e\u0301             4
       pgid: 1,
       state: 'running',
       user: 'user',
+      image: argv0,
       argv0,
       args: [],
       cwd: '/',
@@ -457,6 +473,16 @@ cycle-a
     expect(lines[0]).toBe('    PID    PPID');
     expect(lines[1]?.trim().split(/\s+/u)).toHaveLength(3);
     expect(lines[1]).toContain('wesh');
+  });
+
+  it('reports the launched program and arguments independently of the parent shell name', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: "sh -c '/bin/ps -e -o comm=,args=' shell-label",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toMatch(/^ps\s+\/bin\/ps -e -o comm=,args=$/mu);
   });
 
   it('uses GNU ps whitespace rules for PID and format lists', async () => {

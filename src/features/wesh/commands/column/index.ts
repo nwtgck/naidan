@@ -1,16 +1,17 @@
-import { parseStandardArgv } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv } from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
 import { renderList, renderTable } from './format';
 import { readCommandInput } from './input';
-import { columnArgvSpec, normalizeOptions } from './options';
+import { columnArgvCatalog, columnArgvHelp, columnArgvPolicy, normalizeOptions } from './options';
 
 export const columnCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: columnArgvSpec,
+      catalog: columnArgvCatalog,
+      policy: columnArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -19,7 +20,7 @@ export const columnCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'column',
         message: `column: ${diagnostic.message}`,
-        argvSpec: columnArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: columnArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -28,7 +29,7 @@ export const columnCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'column',
-        argvSpec: columnArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: columnArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -42,7 +43,7 @@ export const columnCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'column',
         message: optionsResult.message,
-        argvSpec: columnArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: columnArgvHelp }),
       });
       return { exitCode: 1 };
     }

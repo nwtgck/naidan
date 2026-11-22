@@ -161,6 +161,52 @@ def
     expect(unsafe.result.exitCode).toBe(1);
   });
 
+  it('keeps obsolete widths in option order and respects value claims and double dash', async () => {
+    await writeFile({ path: '-3', data: 'named-file\n' });
+
+    const obsoleteLast = await execute({ script: 'fold -w2 -3', stdinText: 'abcdef\n' });
+    const explicitLast = await execute({ script: 'fold -3 -w2', stdinText: 'abcdef\n' });
+    const claimedWidth = await execute({ script: 'fold -w -3 --help' });
+    const operand = await execute({ script: 'fold -- -3' });
+
+    expect(obsoleteLast.stdout.text).toBe(`\
+abc
+def
+`);
+    expect(explicitLast.stdout.text).toBe(`\
+ab
+cd
+ef
+`);
+    expect(claimedWidth.result.exitCode).toBe(1);
+    expect(claimedWidth.stderr.text).toContain("fold: invalid width: '-3'");
+    expect(claimedWidth.stdout.text).toBe('');
+    expect(operand.result.exitCode).toBe(0);
+    expect(operand.stdout.text).toBe('named-file\n');
+    expect(operand.stderr.text).toBe('');
+  });
+
+  it('keeps standard option diagnostics ahead of an overflowing obsolete width', async () => {
+    const result = await execute({ script: 'fold -9999999999999999999 --unknown' });
+
+    expect(result.result.exitCode).toBe(1);
+    expect(result.stdout.text).toBe('');
+    expect(result.stderr.text).toContain("fold: unrecognized option '--unknown'");
+  });
+
+  it('reports an overflowing obsolete width before help and ignores it after help', async () => {
+    const width = '9999999999999999999';
+    const widthFirst = await execute({ script: `fold -${width} --help --unknown` });
+    const helpFirst = await execute({ script: `fold --help -${width}` });
+
+    expect(widthFirst.result.exitCode).toBe(1);
+    expect(widthFirst.stdout.text).toBe('');
+    expect(widthFirst.stderr.text).toContain(`fold: invalid width: '${width}'\n`);
+    expect(helpFirst.result.exitCode).toBe(0);
+    expect(helpFirst.stdout.text).toContain('usage: fold');
+    expect(helpFirst.stderr.text).toBe('');
+  });
+
   it('supports long width option and preserves missing trailing newlines', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'fold --width=3',

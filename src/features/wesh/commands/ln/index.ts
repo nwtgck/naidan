@@ -1,14 +1,10 @@
-import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type ParsedStandardArgv, type StandardArgvAction, type StandardArgvPolicy, type StandardArgvRawValue, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type ParsedStandardArgv, type StandardArgvAction, type StandardArgvPolicy, type StandardArgvRawValue, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv';
 import { resolveBackupControl, selectBackupSuffix, type BackupControl } from '@/features/wesh/commands/_shared/backup-domain';
 import { createAffirmativeResponseReader } from '@/features/wesh/commands/_shared/confirmation';
 import { getPathErrorReason, isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
-import { normalizePath } from '@/features/wesh/path';
+import { canonicalizePathAllowingMissingComponents, toAbsolutePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
-
-function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
-  return normalizePath({ cwd, path });
-}
 
 function basename({ path }: { path: string }): string {
   const normalized = path.length > 1 ? path.replace(/\/+$/u, '') : path;
@@ -17,17 +13,13 @@ function basename({ path }: { path: string }): string {
 }
 
 function dirname({ path }: { path: string }): string {
-  const normalized = normalizePath({ cwd: '/', path });
-  if (normalized === '/') {
-    return '/';
-  }
-  const index = normalized.lastIndexOf('/');
-  return index <= 0 ? '/' : normalized.slice(0, index);
+  const index = path.lastIndexOf('/');
+  return index <= 0 ? '/' : path.slice(0, index);
 }
 
 function relativePath({ fromDirectory, toPath }: { fromDirectory: string; toPath: string }): string {
-  const fromParts = normalizePath({ cwd: '/', path: fromDirectory }).split('/').filter(Boolean);
-  const toParts = normalizePath({ cwd: '/', path: toPath }).split('/').filter(Boolean);
+  const fromParts = fromDirectory.split('/').filter(Boolean);
+  const toParts = toPath.split('/').filter(Boolean);
   let commonLength = 0;
   while (
     commonLength < fromParts.length
@@ -259,7 +251,7 @@ async function resolveExplicitTargetDirectory({
     return undefined;
   }
 
-  const requestedPath = resolvePath({ cwd: context.cwd, path: operand });
+  const requestedPath = toAbsolutePath({ cwd: context.cwd, path: operand });
   const target = await pathStatOrUndefined({ context, path: requestedPath, dereference: true });
   if (target === undefined) {
     await text.error({ text: `ln: failed to access '${operand}': No such file or directory\n` });
@@ -494,7 +486,7 @@ export const lnCommandImplementation: WeshCommandImplementation = {
 
       const requiresDirectory = requestedLinkPath.length > 1 && requestedLinkPath.endsWith('/');
       let displayLinkPath = initialDisplayLinkPath;
-      let linkPath = resolvePath({ cwd: context.cwd, path: requestedLinkPath });
+      let linkPath = toAbsolutePath({ cwd: context.cwd, path: requestedLinkPath });
       if (resolveDirectoryDestination && !noTargetDirectory) {
         const destinationLstat = await pathStatOrUndefined({ context, path: linkPath, dereference: false });
         const destinationActsAsDirectory = destinationLstat?.type === 'symlink' && noDereference
@@ -513,10 +505,19 @@ export const lnCommandImplementation: WeshCommandImplementation = {
         throw new Error(`failed to create symbolic link '${requestedLinkPath}': No such file or directory`);
       }
 
+      let storedTarget = targetPath;
+      if (relative) {
+        const parent = await context.files.resolve({ path: dirname({ path: linkPath }) });
+        const canonicalTarget = await canonicalizePathAllowingMissingComponents({ context, path: targetPath });
+        storedTarget = relativePath({ fromDirectory: parent.fullPath, toPath: canonicalTarget });
+        const leaf = basename({ path: linkPath });
+        linkPath = parent.fullPath === '/' ? `/${leaf}` : `${parent.fullPath}/${leaf}`;
+      }
+
       if (force && !backupEnabled) {
         try {
           const sourceEntry = await context.files.resolveEntry({
-            path: resolvePath({ cwd: context.cwd, path: targetPath }),
+            path: toAbsolutePath({ cwd: context.cwd, path: targetPath }),
             finalSymlinkTreatment: 'follow',
           });
           const destinationEntry = await context.files.resolveEntry({
@@ -538,12 +539,6 @@ export const lnCommandImplementation: WeshCommandImplementation = {
       if (!await prepareExistingDestination({ linkPath, displayLinkPath })) {
         return false;
       }
-      const storedTarget = relative
-        ? relativePath({
-          fromDirectory: dirname({ path: linkPath }),
-          toPath: resolvePath({ cwd: context.cwd, path: targetPath }),
-        })
-        : targetPath;
       try {
         await context.files.symlink({ path: linkPath, targetPath: storedTarget });
       } catch (error: unknown) {
@@ -564,7 +559,7 @@ export const lnCommandImplementation: WeshCommandImplementation = {
     if (targetDirectory !== undefined) {
       destinationPath = explicitTargetDirectoryPath;
     } else if (destinationIsDirectoryForm) {
-      destinationPath = resolvePath({ cwd: context.cwd, path: linkOperand });
+      destinationPath = toAbsolutePath({ cwd: context.cwd, path: linkOperand });
       const destination = await pathStatOrUndefined({ context, path: destinationPath, dereference: true });
       switch (destination) {
       case undefined:

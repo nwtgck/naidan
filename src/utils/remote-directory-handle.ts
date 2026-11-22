@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getRemoteFileSystemEntryId, registerRemoteFileSystemEntry } from './remote-directory-handle-identity';
 
 export const remoteDirectoryEntrySchema = z.object({
   id: z.string().min(1),
@@ -112,8 +113,6 @@ export function createRemoteDirectoryAccess({ dispatch }: {
   };
 }
 
-const remoteHandleEntries = new WeakMap<FileSystemHandle, { access: RemoteDirectoryAccess, id: string }>();
-
 /** Construct handles in the receiving realm; only entries and File snapshots cross RPC. */
 export function createRemoteDirectoryHandle({ access, root }: {
   access: RemoteDirectoryAccess,
@@ -176,16 +175,16 @@ export function createRemoteDirectoryHandle({ access, root }: {
       unhandled satisfies Record<PropertyKey, never>;
       this.name = name;
       this.id = id;
-      remoteHandleEntries.set(this, { access, id });
+      registerRemoteFileSystemEntry({ handle: this, access, id });
     }
 
     async isSameEntry(other: FileSystemHandle): Promise<boolean> {
-      const candidate = remoteHandleEntries.get(other);
       // Node IDs are capability-scoped; do not compare them across access grants.
-      if (candidate === undefined || candidate.access !== access) {
+      const id = getRemoteFileSystemEntryId({ handle: other, access });
+      if (id === undefined) {
         return false;
       }
-      return (await call({ request: { type: 'is_same_entry', firstId: this.id, secondId: candidate.id }, kind: 'boolean' })).value;
+      return (await call({ request: { type: 'is_same_entry', firstId: this.id, secondId: id }, kind: 'boolean' })).value;
     }
   }
 
@@ -223,11 +222,11 @@ export function createRemoteDirectoryHandle({ access, root }: {
     }
 
     async resolve(possibleDescendant: FileSystemHandle): Promise<string[] | null> {
-      const descendant = remoteHandleEntries.get(possibleDescendant);
-      if (descendant === undefined || descendant.access !== access) {
+      const id = getRemoteFileSystemEntryId({ handle: possibleDescendant, access });
+      if (id === undefined) {
         return null;
       }
-      return (await call({ request: { type: 'resolve', directoryId: this.id, targetId: descendant.id }, kind: 'path' })).path;
+      return (await call({ request: { type: 'resolve', directoryId: this.id, targetId: id }, kind: 'path' })).path;
     }
 
     async *entries(): AsyncGenerator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]> {

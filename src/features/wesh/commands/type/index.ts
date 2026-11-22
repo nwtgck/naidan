@@ -1,27 +1,48 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { hasShellFunction, resolveCommand, resolvePathCommands, shellControlFlowBuiltinNames } from '@/features/wesh/command-resolution';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction } from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import { resolveCommand, resolvePathCommands, shellIntrinsicNames } from '@/features/wesh/command-resolution';
 import type {
-  WeshCommandContext,
-  WeshCommandImplementation,
+  WeshBuiltinCommandContext,
+  WeshShellBuiltinFunction,
   WeshCommandResult,
 } from '@/features/wesh/types';
 
-const typeArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'a', long: undefined, effects: [{ key: 'all', value: true }], help: { summary: 'print all matching command locations' } },
-    { kind: 'flag', short: 'f', long: undefined, effects: [{ key: 'suppressFunctions', value: true }], help: { summary: 'suppress shell-function lookup' } },
-    { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'pathOnly', value: true }], help: { summary: 'print the executable path when available' } },
-    { kind: 'flag', short: 'P', long: undefined, effects: [{ key: 'forcePath', value: true }], help: { summary: 'force a PATH search for each name' } },
-    { kind: 'flag', short: 't', long: undefined, effects: [{ key: 'typeOnly', value: true }], help: { summary: 'print one word describing each command type' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
-};
+const typeOptions = [
+  {
+    forms: [{ kind: 'short', name: 'a', value: { kind: 'none' } }],
+    semantic: { kind: 'effects', effects: [{ key: 'all', value: true }] },
+    summary: 'print all matching command locations',
+  },
+  {
+    forms: [{ kind: 'short', name: 'f', value: { kind: 'none' } }],
+    semantic: { kind: 'effects', effects: [{ key: 'suppressFunctions', value: true }] },
+    summary: 'suppress shell-function lookup',
+  },
+  {
+    forms: [{ kind: 'short', name: 'p', value: { kind: 'none' } }],
+    semantic: { kind: 'effects', effects: [{ key: 'pathOnly', value: true }] },
+    summary: 'print the executable path when available',
+  },
+  {
+    forms: [{ kind: 'short', name: 'P', value: { kind: 'none' } }],
+    semantic: { kind: 'effects', effects: [{ key: 'forcePath', value: true }] },
+    summary: 'force a PATH search for each name',
+  },
+  {
+    forms: [{ kind: 'short', name: 't', value: { kind: 'none' } }],
+    semantic: { kind: 'effects', effects: [{ key: 'typeOnly', value: true }] },
+    summary: 'print one word describing each command type',
+  },
+  {
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const typeArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({ definitions: typeOptions, nonExecutableLongOptions: [] });
+const typeArgvHelp = defineArgvHelpPresentation({ catalog: typeArgvCatalog, rows: typeOptions });
 
 type CommandClassification =
   | { kind: 'alias', value: string }
@@ -32,11 +53,13 @@ type CommandClassification =
 async function resolvePathClassification({
   context,
   name,
+  searchPathEntries,
 }: {
-  context: WeshCommandContext,
+  context: WeshBuiltinCommandContext,
   name: string,
+  searchPathEntries: readonly string[],
 }): Promise<Extract<CommandClassification, { kind: 'file' }> | undefined> {
-  const resolved = (await resolvePathCommands({ context, name }))[0];
+  const resolved = (await resolvePathCommands({ context, name, searchPathEntries }))[0];
   return resolved === undefined
     ? undefined
     : {
@@ -47,24 +70,30 @@ async function resolvePathClassification({
 
 async function classifyCommands({
   context,
+  getAliases,
+  hasFunction,
   name,
+  searchPathEntries,
   includeAll,
   suppressFunctions,
   forcePath,
 }: {
-  context: WeshCommandContext,
+  context: WeshBuiltinCommandContext,
+  getAliases: () => readonly { name: string, value: string }[],
+  hasFunction: ({ name }: { name: string }) => boolean,
   name: string,
+  searchPathEntries: readonly string[],
   includeAll: boolean,
   suppressFunctions: boolean,
   forcePath: boolean,
 }): Promise<readonly CommandClassification[]> {
   if (forcePath) {
-    const path = await resolvePathClassification({ context, name });
+    const path = await resolvePathClassification({ context, name, searchPathEntries });
     return path === undefined ? [] : [path];
   }
 
   const classifications: CommandClassification[] = [];
-  const alias = context.getAliases().find(candidate => candidate.name === name);
+  const alias = getAliases().find(candidate => candidate.name === name);
   if (alias !== undefined) {
     classifications.push({ kind: 'alias', value: alias.value });
     if (!includeAll) {
@@ -72,20 +101,20 @@ async function classifyCommands({
     }
   }
 
-  if (!suppressFunctions && hasShellFunction({ context, name })) {
+  if (!suppressFunctions && hasFunction({ name })) {
     classifications.push({ kind: 'function' });
     if (!includeAll) {
       return classifications;
     }
   }
 
-  if (shellControlFlowBuiltinNames.has(name)) {
+  if (shellIntrinsicNames.has(name)) {
     classifications.push({ kind: 'builtin' });
     if (!includeAll) {
       return classifications;
     }
   } else {
-    const resolved = await resolveCommand({ context, name });
+    const resolved = await resolveCommand({ context, name, searchPathEntries });
     switch (resolved.kind) {
     case 'not_found':
       break;
@@ -124,7 +153,7 @@ async function classifyCommands({
   }
 
   if (includeAll) {
-    const path = await resolvePathClassification({ context, name });
+    const path = await resolvePathClassification({ context, name, searchPathEntries });
     if (path !== undefined) {
       classifications.push(path);
     }
@@ -174,11 +203,12 @@ function formatClassification({
   }
 }
 
-export const typeCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const typeCommandImplementation = {
+  fn: async ({ context, shell }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: typeArgvSpec }),
-      spec: typeArgvSpec,
+      args: context.args,
+      catalog: typeArgvCatalog,
+      policy: { longNameMatch: 'exact', optionBoundary: 'first-positional', occurrenceRetention: 'none' },
     });
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
@@ -186,12 +216,12 @@ export const typeCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'type',
         message: `type: ${diagnostic.message}`,
-        argvSpec: typeArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: typeArgvHelp }),
       });
       return { exitCode: 2 };
     }
     if (parsed.optionValues.help === true) {
-      await writeCommandHelp({ context, command: 'type', argvSpec: typeArgvSpec });
+      await writeCommandHelp({ context, command: 'type', optionLines: formatArgvOptionHelp({ presentation: typeArgvHelp }) });
       return { exitCode: 0 };
     }
     if (parsed.positionals.length === 0) {
@@ -203,12 +233,16 @@ export const typeCommandImplementation: WeshCommandImplementation = {
     const pathOnly = parsed.optionValues.pathOnly === true;
     const forcePath = parsed.optionValues.forcePath === true;
     const typeOnly = parsed.optionValues.typeOnly === true;
+    const searchPathEntries = (shell.getSearchPath() ?? '').split(':');
     let exitCode = 0;
 
     for (const name of parsed.positionals) {
       const classifications = await classifyCommands({
         context,
+        getAliases: shell.getAliases,
+        hasFunction: shell.hasFunction,
         name,
+        searchPathEntries,
         includeAll,
         suppressFunctions,
         forcePath,
@@ -247,7 +281,7 @@ export const typeCommandImplementation: WeshCommandImplementation = {
     }
     return { exitCode };
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'getAliases' | 'getSearchPath' | 'hasFunction'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

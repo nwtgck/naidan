@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition } from '@/features/wesh/types';
+import type { WeshShellBuiltinDefinition } from '@/features/wesh/types';
 
 export const exportCmdCommandDefinition = {
   meta: {
@@ -6,8 +6,8 @@ export const exportCmdCommandDefinition = {
     description: 'Set environment variables',
     usage: 'export [-pn] [name[=value]...]',
   },
-  load: async () => (await import('./index.ts')).exportCmdCommandImplementation.fn,
-} satisfies WeshCommandDefinition;
+  loadShellBuiltin: async () => (await import('./index.ts')).exportCmdCommandImplementation.fn,
+} satisfies WeshShellBuiltinDefinition;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

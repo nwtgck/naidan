@@ -307,4 +307,31 @@ describe('wesh realpath', () => {
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
   });
+
+  it('continues options after an operand until -- and consumes --help as an option value', async () => {
+    const options = await execute({ script: 'realpath first -z -- -m' });
+    const helpAsValue = await execute({ script: 'realpath --relative-to --help -m .' });
+    const missingValue = await execute({ script: 'realpath --relative-to' });
+
+    expect(options.result.exitCode).toBe(0);
+    expect(options.stdout.text).toBe('/first\0/-m\0');
+    expect(options.stderr.text).toBe('');
+    expect(helpAsValue.result.exitCode).toBe(0);
+    expect(helpAsValue.stdout.text).toBe('..\n');
+    expect(helpAsValue.stderr.text).toBe('');
+    expect(missingValue.result.exitCode).toBe(1);
+    expect(missingValue.stdout.text).toBe('');
+    expect(missingValue.stderr.text).toContain('realpath: --relative-to requires a value for DIR\n');
+  });
+
+  it.each([
+    { option: '--zero', args: '--zero=bad --help' },
+    { option: '--help', args: '--help=bad' },
+  ])('rejects an attached value on $option', async ({ option, args }) => {
+    const { result, stdout, stderr } = await execute({ script: `realpath ${args}` });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain(`realpath: option '${option}' doesn't allow an argument\n`);
+  });
 });

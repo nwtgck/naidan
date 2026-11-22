@@ -544,6 +544,17 @@ body
     expect(unknownThenSemantic.result.exitCode).toBe(0);
   });
 
+  it('claims a help-shaped token as a separator even before a later option', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'nl -s --help -nln -w1 -',
+      stdinText: 'alpha\n',
+    });
+
+    expect(stdout.text).toBe('1--helpalpha\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('preserves GNU semantic diagnostics that precede a later --help', async () => {
     const invalidFormat = await execute({ script: 'nl -n bad --help' });
     const invalidBody = await execute({ script: 'nl -b bad --help' });

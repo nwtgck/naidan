@@ -1,6 +1,13 @@
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  parseStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { openFileReadStream, openHandleReadStream, writeAllBytesToHandle } from '@/features/wesh/utils/fs';
@@ -257,10 +264,10 @@ function encodeOutputDelimiter({
   configuredOutputDelimiter,
   encoder,
 }: {
-  configuredOutputDelimiter: boolean | string | number | undefined,
+  configuredOutputDelimiter: string | undefined,
   encoder: TextEncoder,
 }): Uint8Array {
-  if (typeof configuredOutputDelimiter !== 'string') {
+  if (configuredOutputDelimiter === undefined) {
     return Uint8Array.of(TAB_BYTE);
   }
   if (configuredOutputDelimiter.length === 0) {
@@ -304,57 +311,141 @@ function visibleColumnsBefore({
   ].slice(0, column - 1).filter(Boolean).length;
 }
 
-const commArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: '1', long: undefined, effects: [{ key: 'suppress1', value: true }], help: { summary: 'suppress column 1', category: 'common' } },
-    { kind: 'flag', short: '2', long: undefined, effects: [{ key: 'suppress2', value: true }], help: { summary: 'suppress column 2', category: 'common' } },
-    { kind: 'flag', short: '3', long: undefined, effects: [{ key: 'suppress3', value: true }], help: { summary: 'suppress column 3', category: 'common' } },
-    { kind: 'flag', short: 'z', long: 'zero-terminated', effects: [{ key: 'zeroTerminated', value: true }], help: { summary: 'line delimiter is NUL, not newline', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'check-order', effects: [{ key: 'orderCheckMode', value: 'always' }], help: { summary: 'check that the input is correctly sorted', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'nocheck-order', effects: [{ key: 'orderCheckMode', value: 'never' }], help: { summary: 'do not check that the input is correctly sorted', category: 'advanced' } },
-    { kind: 'value', short: undefined, long: 'output-delimiter', key: 'outputDelimiter', valueName: 'STR', allowAttachedValue: false, parseValue: undefined, help: { summary: 'separate columns with STR', valueName: 'STR', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'total', effects: [{ key: 'total', value: true }], help: { summary: 'output a summary', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const commOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'suppress1', value: true }] },
+    forms: [{ kind: 'short', name: '1', value: { kind: 'none' } }],
+    summary: 'suppress column 1',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'suppress2', value: true }] },
+    forms: [{ kind: 'short', name: '2', value: { kind: 'none' } }],
+    summary: 'suppress column 2',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'suppress3', value: true }] },
+    forms: [{ kind: 'short', name: '3', value: { kind: 'none' } }],
+    summary: 'suppress column 3',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'zeroTerminated', value: true }] },
+    forms: [
+      { kind: 'short', name: 'z', value: { kind: 'none' } },
+      { kind: 'long', name: 'zero-terminated', value: { kind: 'none' } },
+    ],
+    summary: 'line delimiter is NUL, not newline',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'orderCheckMode', value: 'always' }] },
+    forms: [{ kind: 'long', name: 'check-order', value: { kind: 'none' } }],
+    summary: 'check that the input is correctly sorted',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'orderCheckMode', value: 'never' }] },
+    forms: [{ kind: 'long', name: 'nocheck-order', value: { kind: 'none' } }],
+    summary: 'do not check that the input is correctly sorted',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'outputDelimiter' },
+    forms: [{ kind: 'long', name: 'output-delimiter', value: { kind: 'required', missingValueName: 'STR' } }],
+    summary: 'separate columns with STR',
+    valueName: 'STR',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'total', value: true }] },
+    forms: [{ kind: 'long', name: 'total', value: { kind: 'none' } }],
+    summary: 'output a summary',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'help' },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'version' },
+    forms: [{ kind: 'long', name: 'version', value: { kind: 'none' } }],
+    summary: 'output version information and exit',
+    category: 'common',
+  },
+] as const;
+
+type CommArgvTag = Extract<(typeof commOptions)[number]['semantic'], { kind: 'deferred' }>['tag'];
+
+const commArgvCatalog = defineArgvCatalog<StandardArgvAction<CommArgvTag>>({
+  definitions: commOptions,
+  nonExecutableLongOptions: [],
+});
+const commArgvHelp = defineArgvHelpPresentation({ catalog: commArgvCatalog, rows: commOptions });
+const commArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 export const commCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: commArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
-      spec: commArgvSpec,
+      args: context.args,
+      catalog: commArgvCatalog,
+      policy: commArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
+    let outputDelimiter: string | undefined;
+    // A conflicting delimiter is diagnosed at the second occurrence, before
+    // any later help, version, or syntax error.
+    for (const occurrence of parsed.deferred) {
+      if (diagnostic !== undefined && diagnostic.argvIndex <= occurrence.argvIndex) {
+        break;
+      }
+
+      const tag = occurrence.semantic.tag;
+      switch (tag) {
+      case 'outputDelimiter': {
+        const { value } = occurrence;
+        if (!('rawValue' in value)) {
+          throw new Error('Missing parsed comm output delimiter');
+        }
+        if (outputDelimiter !== undefined && outputDelimiter !== value.rawValue) {
+          await context.text().error({ text: 'comm: multiple output delimiters specified\n' });
+          return { exitCode: 1 };
+        }
+        outputDelimiter = value.rawValue;
+        break;
+      }
+      case 'help':
+        await writeCommandHelp({
+          context,
+          command: 'comm',
+          optionLines: formatArgvOptionHelp({ presentation: commArgvHelp }),
+        });
+        return { exitCode: 0 };
+      case 'version':
+        await context.text().print({ text: 'comm (wesh)\n' });
+        return { exitCode: 0 };
+      default: {
+        const _ex: never = tag;
+        throw new Error(`Unhandled comm option: ${_ex}`);
+      }
+      }
+    }
+
     if (diagnostic !== undefined) {
       await writeCommandUsageError({
         context,
         command: 'comm',
         message: `comm: ${diagnostic.message}`,
-        argvSpec: commArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: commArgvHelp }),
       });
-      return { exitCode: 1 };
-    }
-
-    if (parsed.optionValues.help === true) {
-      await writeCommandHelp({
-        context,
-        command: 'comm',
-        argvSpec: commArgvSpec,
-      });
-      return { exitCode: 0 };
-    }
-
-    const outputDelimiterCount = parsed.occurrences.filter((occurrence) => (
-      occurrence.kind === 'value'
-      && occurrence.key === 'outputDelimiter'
-    )).length;
-    if (outputDelimiterCount > 1) {
-      await context.text().error({ text: 'comm: multiple output delimiters specified\n' });
       return { exitCode: 1 };
     }
 
@@ -363,7 +454,7 @@ export const commCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'comm',
         message: 'comm: missing operand',
-        argvSpec: commArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: commArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -373,7 +464,7 @@ export const commCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'comm',
         message: `comm: extra operand '${parsed.positionals[2] ?? ''}'`,
-        argvSpec: commArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: commArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -391,7 +482,7 @@ export const commCommandImplementation: WeshCommandImplementation = {
       : 'default';
     const encoder = new TextEncoder();
     const outputDelimiterBytes = encodeOutputDelimiter({
-      configuredOutputDelimiter: parsed.optionValues.outputDelimiter,
+      configuredOutputDelimiter: outputDelimiter,
       encoder,
     });
     const recordTerminatorBytes = Uint8Array.of(zeroTerminated ? NUL_BYTE : NEWLINE_BYTE);

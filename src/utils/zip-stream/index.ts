@@ -121,6 +121,7 @@ const ZIP_IO_CHUNK_SIZE = 64 * 1024;
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+const blobZipSources = new WeakSet<ZipRandomAccessSource>();
 
 export type ZipCompression = 'store' | 'deflate';
 
@@ -687,7 +688,7 @@ export class StreamingZipWriter {
 }
 
 export function createBlobZipSource({ blob }: { blob: Blob }): ZipRandomAccessSource {
-  return {
+  const source: ZipRandomAccessSource = {
     size: blob.size,
     async read({ offset, length }) {
       assertReadRange({ size: blob.size, offset, length });
@@ -695,6 +696,8 @@ export function createBlobZipSource({ blob }: { blob: Blob }): ZipRandomAccessSo
     },
     async close() {},
   };
+  blobZipSources.add(source);
+  return source;
 }
 
 class BufferedZipSource {
@@ -706,18 +709,37 @@ class BufferedZipSource {
     this.source = source;
   }
 
-  async read({ offset, length }: { offset: number, length: number }): Promise<Uint8Array> {
+  contains({ offset, length }: { offset: number, length: number }): boolean {
+    return offset >= this.bufferOffset
+      && offset + length <= this.bufferOffset + this.buffer.byteLength;
+  }
+
+  copyBufferedPrefix({ offset, length }: { offset: number, length: number }): {
+    chunk: Uint8Array,
+    copiedLength: number,
+  } | undefined {
+    const start = offset - this.bufferOffset;
+    if (start < 0 || start >= this.buffer.byteLength) {
+      return undefined;
+    }
+    const copiedLength = Math.min(length, this.buffer.byteLength - start);
+    // Consumers can mutate or transfer the chunk. Keep the shared window private.
+    const chunk = new Uint8Array(length);
+    chunk.set(this.buffer.subarray(start, start + copiedLength));
+    return { chunk, copiedLength };
+  }
+
+  async read({ offset, length, readAheadLength }: { offset: number, length: number, readAheadLength: number }): Promise<Uint8Array> {
     assertReadRange({ size: this.source.size, offset, length });
     if (length === 0) {
       return new Uint8Array(0);
     }
-    const bufferEnd = this.bufferOffset + this.buffer.byteLength;
-    if (offset >= this.bufferOffset && offset + length <= bufferEnd) {
+    if (this.contains({ offset, length })) {
       return this.buffer.subarray(offset - this.bufferOffset, offset - this.bufferOffset + length);
     }
     const readLength = Math.min(
       this.source.size - offset,
-      Math.max(length, ZIP_IO_CHUNK_SIZE),
+      Math.max(length, readAheadLength),
     );
     this.buffer = await readZipSourceRange({
       source: this.source,
@@ -778,10 +800,12 @@ function createRangeStream({
   source,
   offset,
   length,
+  bufferedSource,
 }: {
   source: ZipRandomAccessSource,
   offset: number,
   length: number,
+  bufferedSource: BufferedZipSource | undefined,
 }): ReadableStream<Uint8Array> {
   assertReadRange({ size: source.size, offset, length });
   let currentOffset = offset;
@@ -793,11 +817,21 @@ function createRangeStream({
         return;
       }
       const chunkLength = Math.min(remaining, ZIP_IO_CHUNK_SIZE);
-      const chunk = await readZipSourceRange({
-        source,
-        offset: currentOffset,
-        length: chunkLength,
-      });
+      const cached = bufferedSource?.copyBufferedPrefix({ offset: currentOffset, length: chunkLength });
+      let chunk: Uint8Array;
+      if (cached === undefined) {
+        chunk = await readZipSourceRange({ source, offset: currentOffset, length: chunkLength });
+      } else {
+        chunk = cached.chunk;
+        if (cached.copiedLength < chunkLength) {
+          const suffix = await readZipSourceRange({
+            source,
+            offset: currentOffset + cached.copiedLength,
+            length: chunkLength - cached.copiedLength,
+          });
+          chunk.set(suffix, cached.copiedLength);
+        }
+      }
       currentOffset += chunkLength;
       remaining -= chunkLength;
       controller.enqueue(chunk);
@@ -806,7 +840,10 @@ function createRangeStream({
 }
 
 export class StreamingZipReader {
-  private readonly bufferedSource: BufferedZipSource;
+  private readonly centralDirectorySource: BufferedZipSource;
+  private readonly localHeaderSource: BufferedZipSource;
+  private localHeaderReadAheadLength = ZIP_IO_CHUNK_SIZE;
+  private nextLocalHeaderRange: { start: number, end: number } | undefined;
   private centralDirectoryPromise: Promise<ZipCentralDirectoryInfo> | undefined;
   private readonly source: ZipRandomAccessSource;
   private readonly compressionCodec: ZipCompressionCodec;
@@ -822,7 +859,8 @@ export class StreamingZipReader {
     decodeEntryName?: ZipEntryNameDecoder,
   }) {
     this.source = source;
-    this.bufferedSource = new BufferedZipSource({ source });
+    this.centralDirectorySource = new BufferedZipSource({ source });
+    this.localHeaderSource = new BufferedZipSource({ source });
     this.compressionCodec = compressionCodec;
     this.decodeEntryName = decodeEntryName;
   }
@@ -835,7 +873,7 @@ export class StreamingZipReader {
       if (offset + 46 > endOffset) {
         throw new Error('ZIP central directory entry exceeds directory bounds');
       }
-      const fixed = await this.bufferedSource.read({ offset, length: 46 });
+      const fixed = await this.centralDirectorySource.read({ offset, length: 46, readAheadLength: ZIP_IO_CHUNK_SIZE });
       const view = new DataView(fixed.buffer, fixed.byteOffset, fixed.byteLength);
       if (view.getUint32(0, true) !== ZIP_CENTRAL_DIRECTORY_HEADER_SIGNATURE) {
         throw new Error('Invalid ZIP central directory entry');
@@ -861,7 +899,7 @@ export class StreamingZipReader {
       if (nextOffset > endOffset) {
         throw new Error('ZIP central directory entry exceeds directory bounds');
       }
-      const nameBytes = await this.bufferedSource.read({ offset: offset + 46, length: nameLength });
+      const nameBytes = await this.centralDirectorySource.read({ offset: offset + 46, length: nameLength, readAheadLength: ZIP_IO_CHUNK_SIZE });
       const name = this.decodeEntryName({
         bytes: nameBytes,
         isUtf8: (flags & ZIP_GENERAL_PURPOSE_UTF8_FLAG) !== 0,
@@ -908,7 +946,32 @@ export class StreamingZipReader {
     if (entry.isDirectory) {
       return new ReadableStream({ start: controller => controller.close() });
     }
-    const fixed = await this.bufferedSource.read({ offset: entry.localHeaderOffset, length: 30 });
+    const central = await this.getCentralDirectory();
+    const expectedNameLength = assertUint16({ value: entry.nameBytes.byteLength, field: 'entry name length' });
+    const localHeaderReadLength = 30 + expectedNameLength;
+    if (
+      entry.localHeaderOffset >= central.offset
+      || localHeaderReadLength > central.offset - entry.localHeaderOffset
+    ) {
+      throw new Error(`ZIP local entry header exceeds file-data bounds: ${entry.name}`);
+    }
+    // Keep directory read-ahead independent of local-header access. Physical
+    // neighbors benefit from a window, while random jumps reset to exact reads.
+    // Grow gradually after a jump so short runs do not each fetch a full window.
+    if (this.nextLocalHeaderRange !== undefined) {
+      const followsPreviousEntry = entry.localHeaderOffset >= this.nextLocalHeaderRange.start
+        && entry.localHeaderOffset <= this.nextLocalHeaderRange.end;
+      if (!followsPreviousEntry) {
+        this.localHeaderReadAheadLength = localHeaderReadLength;
+      } else if (!this.localHeaderSource.contains({ offset: entry.localHeaderOffset, length: localHeaderReadLength })) {
+        this.localHeaderReadAheadLength = Math.min(ZIP_IO_CHUNK_SIZE, this.localHeaderReadAheadLength * 2);
+      }
+    }
+    const fixed = await this.localHeaderSource.read({
+      offset: entry.localHeaderOffset,
+      length: localHeaderReadLength,
+      readAheadLength: this.localHeaderReadAheadLength,
+    });
     const view = new DataView(fixed.buffer, fixed.byteOffset, fixed.byteLength);
     if (view.getUint32(0, true) !== ZIP_LOCAL_FILE_HEADER_SIGNATURE) {
       throw new Error(`Invalid local ZIP header: ${entry.name}`);
@@ -927,17 +990,13 @@ export class StreamingZipReader {
     }
     const nameLength = view.getUint16(26, true);
     const extraLength = view.getUint16(28, true);
-    const central = await this.getCentralDirectory();
     const localHeaderEnd = entry.localHeaderOffset + 30 + nameLength + extraLength;
     if (entry.localHeaderOffset >= central.offset || localHeaderEnd > central.offset) {
       throw new Error(`ZIP local entry header exceeds file-data bounds: ${entry.name}`);
     }
-    const localNameBytes = await this.bufferedSource.read({
-      offset: entry.localHeaderOffset + 30,
-      length: nameLength,
-    });
+    const localNameBytes = fixed.subarray(30);
     if (
-      localNameBytes.byteLength !== entry.nameBytes.byteLength
+      nameLength !== expectedNameLength
       || localNameBytes.some((byte, index) => byte !== entry.nameBytes[index])
     ) {
       throw new Error(`ZIP local entry name mismatch: ${entry.name}`);
@@ -958,10 +1017,18 @@ export class StreamingZipReader {
     if (dataOffset + entry.compressedSize > central.offset) {
       throw new Error(`ZIP entry data exceeds archive bounds: ${entry.name}`);
     }
+    const nextHeaderOffset = dataOffset + entry.compressedSize;
+    this.nextLocalHeaderRange = {
+      start: nextHeaderOffset,
+      // Non-ZIP64 descriptors are 12 bytes, with an optional 4-byte signature.
+      end: nextHeaderOffset + ((localFlags & ZIP_GENERAL_PURPOSE_DATA_DESCRIPTOR_FLAG) === 0 ? 0 : 16),
+    };
     const compressedStream = createRangeStream({
       source: this.source,
       offset: dataOffset,
       length: entry.compressedSize,
+      // Blob inputs are snapshots. Other sources can change while a stream is open.
+      bufferedSource: blobZipSources.has(this.source) ? this.localHeaderSource : undefined,
     });
     const decompressedStream = (() => {
       switch (entry.compression) {

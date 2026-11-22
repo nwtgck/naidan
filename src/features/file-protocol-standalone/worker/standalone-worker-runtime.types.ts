@@ -29,6 +29,7 @@ export type StandaloneWorkerRuntimeDiagnostics = Readonly<{
 export type StandaloneWorkerCreateOptions = Readonly<{
   name?: string,
   startupTimeoutMs?: number,
+  signal?: AbortSignal,
 }>;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
