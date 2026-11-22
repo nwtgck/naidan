@@ -21,6 +21,10 @@ on:
         description: 'Existing vX.Y.Z tag to publish; only accepted from its tag-push workflow'
         type: string
         default: ''
+      distribution-artifact-id:
+        description: 'ID of the signed release candidate from this run'
+        type: string
+        default: ''
       dry-run:
         type: boolean
         default: false
@@ -44,10 +48,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: write
-      id-token: write
-      attestations: write
-    # Include asset publishing in the same lock: GoReleaser keep-existing still
-    # sends back the body it read. Overlapping synchronizers could be rolled back.
+    # Keep writes to the stable Release in the same lock.
     # Keep queued tag publications; the default single pending slot drops jobs.
     concurrency:
       group: naidan-release-notes-and-publication
@@ -57,7 +58,6 @@ jobs:
       PUBLISH_TAG: ${{ inputs.publish-tag }}
       # Official Python image index, pinned for reproducible offline planning.
       PLANNER_IMAGE: python:3.13-slim-bookworm@sha256:281d39ff02e3b389401586134ff9e6572954687822a58055ec07a60ded4e0b7f
-      INTEGRITY_IMAGE: node:22-bookworm
       DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}
     steps:
       - name: Checkout tooling (and tagged source for asset publication)
@@ -65,7 +65,6 @@ jobs:
         with:
           ref: ${{ inputs.publish-tag != '' && github.ref || 'refs/heads/develop' }}
           persist-credentials: false
-          submodules: recursive
 
       - name: Set release-note temporary directory
         # The runner context is unavailable at jobs.<job_id>.env. Use the
@@ -214,6 +213,10 @@ jobs:
               core.info('Dry run: no release mutations. Inspect the release-note-plan artifact.');
               return;
             }
+            if (publishTag) {
+              const {data: commit} = await github.rest.repos.getCommit({...context.repo, ref: `refs/tags/${publishTag}`});
+              assert(commit.sha === context.sha, 'Release tag no longer points to the signed source commit.');
+            }
             let writes = 0;
             const pace = async () => {
               // Serialize writes and leave one second between content mutations.
@@ -252,12 +255,25 @@ jobs:
 
       # Asset publication stays in the same job/lock as note synchronization.
       # This path is never enabled for changelog-only pushes or manual previews.
+      - name: Download the signed release candidate
+        if: ${{ inputs.publish-tag != '' && !inputs.dry-run && inputs.distribution-artifact-id != '' }}
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ inputs.distribution-artifact-id }}
+          path: ${{ runner.temp }}/distribution
+          digest-mismatch: error
+
       - name: Refuse to overwrite an already signed publication
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
         id: guard_publication
         uses: actions/github-script@v9.0.0
+        env:
+          DISTRIBUTION_ARTIFACT_ID: ${{ inputs.distribution-artifact-id }}
         with:
           script: |
+            if (!/^[1-9][0-9]*$/.test(process.env.DISTRIBUTION_ARTIFACT_ID)) {
+              throw new Error('Expected an artifact ID for this signed release candidate.');
+            }
             const {data: release} = await github.rest.repos.getReleaseByTag({
               ...context.repo, tag: process.env.PUBLISH_TAG,
             });
@@ -270,137 +286,21 @@ jobs:
             if (assets.some(asset => asset.name === 'naidan-release-integrity.yaml')) {
               throw new Error('This release already has signed integrity evidence. No payload assets were changed; use a new version for a new publication.');
             }
+            const fs = require('node:fs/promises');
+            const candidates = new Set(await fs.readdir(process.env.RUNNER_TEMP + '/distribution/assets'));
+            const unexpected = assets.find(asset => !candidates.has(asset.name));
+            if (unexpected) throw new Error(`Unexpected existing Release Asset: ${unexpected.name}`);
             core.setOutput('release-id', String(release.id));
 
-      - name: Download full dist build artifact
-        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        uses: actions/download-artifact@v8.0.2
-        with:
-          name: full-dist-build
-          path: dist
-
-      - name: Pull the integrity tooling image (online)
-        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        run: docker pull "$INTEGRITY_IMAGE"
-
-      - name: Check downloaded source and build inputs (offline)
-        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        run: |
-          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
-            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
-            --mount "type=bind,source=$PWD,target=/work,readonly" -w /work \
-            -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT \
-            "$INTEGRITY_IMAGE" node scripts/release-integrity.mjs verify-build dist/naidan-build-receipt.json
-
-      - name: Rename zips with tag for release
-        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          for zip_path in dist/naidan-standalone-*.zip; do
-            [ -f "$zip_path" ] || continue
-            mv "$zip_path" "${zip_path%.zip}-${PUBLISH_TAG}.zip"
-          done
-          mv dist/naidan-standalone.zip "dist/naidan-standalone-${PUBLISH_TAG}.zip"
-          mv dist/naidan-hosted.zip "dist/naidan-hosted-${PUBLISH_TAG}.zip"
-
-      - name: Upload extra assets to the existing GitHub Release
+      - name: Upload candidate assets to the existing Release
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
         uses: softprops/action-gh-release@v3.0.4
         with:
-          # No body, body_path, or generated notes: keep the synchronized text.
-          files: |
-            dist/naidan-standalone-${{ inputs.publish-tag }}.zip
-            dist/naidan-standalone-*-${{ inputs.publish-tag }}.zip
-            dist/naidan-hosted-${{ inputs.publish-tag }}.zip
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+          tag_name: ${{ inputs.publish-tag }}
+          files: ${{ runner.temp }}/distribution/assets/*
+          fail_on_unmatched_files: true
 
-      - name: Set up Go
-        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        uses: actions/setup-go@v7.0.0
-        with:
-          go-version-file: naidan-server/go.mod
-
-      - name: Run GoReleaser (assets only; preserve synchronized release notes)
-        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        uses: goreleaser/goreleaser-action@v7.3.0
-        with:
-          distribution: goreleaser
-          version: v2.7.0
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Read the Release and its complete Asset list (online)
-        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        id: read_publication
-        uses: actions/github-script@v9.0.0
-        env:
-          RELEASE_ID: ${{ steps.guard_publication.outputs.release-id }}
-        with:
-          script: |
-            const fs = require('node:fs/promises');
-            const directory = process.env.NOTES_DIR + '/integrity';
-            const {data: release} = await github.rest.repos.getReleaseByTag({...context.repo, tag: process.env.PUBLISH_TAG});
-            const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
-              ...context.repo, release_id: Number(process.env.RELEASE_ID), per_page: 100,
-            });
-            await fs.mkdir(directory, {recursive: true});
-            await fs.writeFile(directory + '/remote.json', JSON.stringify({release, assets}));
-
-      - name: Match uploaded Assets against local outputs and freeze the YAML (offline)
-        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        id: seal_publication
-        env:
-          RELEASE_ID: ${{ steps.guard_publication.outputs.release-id }}
-        run: |
-          sha256="$(
-            docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
-              --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
-              --mount "type=bind,source=$PWD,target=/work,readonly" \
-              --mount "type=bind,source=$NOTES_DIR/integrity,target=/proof" \
-              -w /work "$INTEGRITY_IMAGE" node scripts/release-integrity.mjs \
-              prepare dist/naidan-build-receipt.json /proof "$PUBLISH_TAG" "$RELEASE_ID"
-          )"
-          [[ "$sha256" =~ ^[0-9a-f]{64}$ ]]
-          printf 'sha256=%s\n' "$sha256" >> "$GITHUB_OUTPUT"
-
-      - name: Attest the exact integrity YAML
-        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        id: attest_integrity
-        uses: actions/attest@v4.2.2
-        with:
-          subject-name: naidan-release-integrity.yaml
-          subject-digest: sha256:${{ steps.seal_publication.outputs.sha256 }}
-          create-storage-record: false
-
-      - name: Stage the signature bundle next to the YAML (offline)
-        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        env:
-          BUNDLE_PATH: ${{ steps.attest_integrity.outputs.bundle-path }}
-          SIGNED_SHA256: ${{ steps.seal_publication.outputs.sha256 }}
-        run: |
-          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
-            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
-            --mount "type=bind,source=$BUNDLE_PATH,target=/bundle.json,readonly" \
-            --mount "type=bind,source=$NOTES_DIR/integrity,target=/proof" \
-            -e SIGNED_SHA256 "$INTEGRITY_IMAGE" bash -euc '
-              printf "%s  /proof/naidan-release-integrity.yaml\\n" "$SIGNED_SHA256" | sha256sum --check --status
-              cp /bundle.json /proof/attestation.bundle.json
-            '
-
-      - name: Upload the signed YAML and bundle as an Actions Artifact
-        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: release-integrity-attestation-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/release-notes/integrity/naidan-release-integrity.yaml
-            ${{ runner.temp }}/release-notes/integrity/attestation.bundle.json
-          if-no-files-found: error
-
-      - name: Upload the signed YAML to the Release (online)
+      - name: Upload the signed YAML to the Release
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
         id: publish_integrity
         uses: actions/github-script@v9.0.0
@@ -410,9 +310,8 @@ jobs:
           # A single POST by Release ID. GitHub rejects duplicate names.
           script: |
             const fs = require('node:fs/promises');
-            const directory = process.env.NOTES_DIR + '/integrity';
             const name = 'naidan-release-integrity.yaml';
-            const data = await fs.readFile(directory + '/' + name);
+            const data = await fs.readFile(process.env.RUNNER_TEMP + '/distribution/' + name);
             await github.rest.repos.uploadReleaseAsset({
               ...context.repo, release_id: Number(process.env.RELEASE_ID), name, data,
               headers: {'content-type': 'application/yaml', 'content-length': data.length},

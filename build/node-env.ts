@@ -15,6 +15,7 @@ export const READ_ENV_HOMEPATH = () => process.env.HOMEPATH;
 export const READ_ENV_TEMP = () => process.env.TEMP;
 export const READ_ENV_TMP = () => process.env.TMP;
 export const READ_ENV_GITHUB_REPOSITORY = () => process.env.GITHUB_REPOSITORY;
+export const READ_ENV_GITHUB_REF = () => process.env.GITHUB_REF;
 export const READ_ENV_GITHUB_SHA = () => process.env.GITHUB_SHA;
 export const READ_ENV_GITHUB_RUN_ID = () => process.env.GITHUB_RUN_ID;
 export const READ_ENV_GITHUB_RUN_ATTEMPT = () => process.env.GITHUB_RUN_ATTEMPT;

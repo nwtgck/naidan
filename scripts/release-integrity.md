@@ -1,10 +1,10 @@
 # Release integrity
 
-New tag publications attach `naidan-release-integrity.yaml` to the GitHub
-Release and create one GitHub artifact attestation for its exact SHA-256
-digest. The YAML binds the committed-source tree fingerprint to every
-uploaded distribution ZIP, server archive, Linux package and `checksums.txt`.
-It includes the complete Bash fingerprint recipe and a checksum verification
+GitHub Actions publishes a distribution candidate on each push with
+`naidan-release-integrity.yaml` and an attestation for its exact SHA-256 digest.
+Tagged pushes also publish the staged payload and the same YAML to GitHub
+Releases. The inventory binds the committed-source tree fingerprint to the
+staged files. It includes the complete Bash fingerprint recipe and a checksum verification
 block. No project-specific Python, YAML parser, or package installation is
 needed to copy and audit those commands.
 
@@ -15,32 +15,37 @@ cannot influence a build, or that a reproducible rebuild produces equal bytes.
 
 ## Verify a download
 
-Choose the expected tag and source revision independently. Download the YAML
-and the distribution files you intend to use. Verify the YAML **before trusting
+Choose the expected source ref and revision independently. Download the
+distribution Artifact or the YAML and the payload files from a GitHub Release.
+Verify the YAML **before trusting
 its data or running a command copied from it**:
 
 ```bash
 gh attestation verify naidan-release-integrity.yaml \
   --repo nwtgck/naidan \
-  --signer-workflow nwtgck/naidan/.github/workflows/sync-release-notes.yml \
-  --source-ref "refs/tags/$EXPECTED_TAG" \
+  --signer-workflow nwtgck/naidan/.github/workflows/main.yml \
+  --source-ref "$EXPECTED_SOURCE_REF" \
   --source-digest "$EXPECTED_SOURCE_COMMIT" \
   --deny-self-hosted-runners
 ```
 
-`gh` is the GitHub command-line interface. The signer is the reusable
-`sync-release-notes.yml` workflow, not its `main.yml` caller. A stricter verifier
+`gh` is the GitHub command-line interface. Use the full ref, such as
+`refs/heads/develop` or `refs/tags/v0.72.1`. A stricter verifier
 may also pin `--signer-digest` to the reviewed signing-workflow revision.
 Neither the repository nor a tag alone identifies an acceptable workflow
 revision; review the YAML and invoked code at the expected commit.
 
 After successful attestation verification:
 
-1. Check `release_tag` and the source repository/commit against your expectations.
+1. Check the source repository, ref and commit. A tagged candidate also
+   records its `release_tag`.
 2. Hash your downloaded files and compare each file's `size` and `sha256`.
    The included `verification.artifacts` Bash block checks all listed hashes
-   with GNU `sha256sum --strict --check`. It requires every listed file; for a
-   selective download, compare only your selected files' entries.
+   with GNU `sha256sum --strict --check`. Run it in `assets/` for an Actions
+   Artifact or in the directory with the Release downloads. For a selective
+   download, compare the selected files' entries.
+   To run the verified Linux server binary from a branch Artifact, restore its
+   executable bit from the extracted candidate root with `chmod +x assets/naidan-server`.
 3. To check the source, recursively check out `source.commit` and run the
    `source.tree_fingerprint.reproduce` block from that checkout's root.
    Compare its output with `source.tree_fingerprint.value`.
@@ -97,64 +102,32 @@ directory, shell options, variables and function definitions out of the
 caller's shell. Explicit failure guards also handle conditional sourcing,
 where Bash's automatic `errexit` behavior alone is insufficient.
 
-## Publication flow and failure behavior
+## Candidate build and publication
 
-1. On a tag build, capture the clean committed source before dependency
-   installation. Keep that source record in the runner's private temporary
-   directory, outside the workspace mount used by build containers.
-2. Make Git metadata and host integrity tooling read-only in dependency and
-   build containers, including the entire `build` source directory so imports
-   cannot be substituted by replacing their parent. After installation, require the original event commit
-   and unchanged tracked sources before building. Build-time generated source
-   files are allowed; the fingerprint describes committed inputs.
-3. After the web build, seal a local receipt containing this run's source
-   evidence and exact hashes/sizes for all web ZIPs and every hosted file.
-   The latter is necessary because the Go server embeds `dist/hosted`.
-4. In the existing serialized release publication job, refuse an existing
-   integrity YAML **before uploading any payload**. Ordinary release-note
-   synchronization remains available because release notes are outside this
-   attestation's coverage.
-5. Download the same run's build artifact and compare its receipt, all ZIPs,
-   and the exact hosted file set against the tagged checkout. A release-only
-   retry may have a later attempt number; run ID and source must still match.
-6. Publish the existing ZIPs and GoReleaser outputs. Rehash actual local files,
-   select the public `Archive`, `Linux Package` and `Checksum` records from
-   GoReleaser's `artifacts.json`, and create the YAML. Unknown types, duplicate
-   names and unexpected paths fail closed. Server output hashes do not come
-   from remote release metadata or unverified GoReleaser checksum fields.
-7. Fetch the complete Release Asset list in the workflow. Compare the list
-   with the local names, sizes and SHA-256 hashes in an offline container.
-   A missing digest, unexpected Asset or incomplete upload prevents signing.
-8. Call `actions/attest` once with the frozen YAML digest and default build
-   provenance. It obtains the workflow identity from GitHub and stores the
-   attestation in GitHub's attestation service. No custom predicate replaces
-   the standard provenance. Both caller and reusable job grant `id-token:
-   write` and `attestations: write`; no registry-storage permission is needed.
-9. Verify the YAML digest offline and stage the bundle alongside it. Upload
-   both files in one workflow artifact, then add the YAML to the Release
-   with a single upload request that fails on a duplicate name.
+1. For each push, capture the clean committed source before dependency
+   installation, then confirm that installation left the tracked source intact.
+   Keep Git metadata and the source tooling read-only in the install and build
+   containers.
+2. Record this run's source and the hashes of all Web ZIPs and hosted files.
+   The candidate job downloads the build from the same run and verifies that
+   receipt and those bytes. The Go server embeds the verified hosted files.
+3. For a branch push, stage the Web ZIPs and the Linux server binary already
+   produced by CI. For a tag push, build the full GoReleaser matrix offline
+   with `--skip=publish`, then stage the Web ZIPs, server archives, Linux
+   packages and `checksums.txt`. The tag sets the tagged build's version.
+   Branch builds use the version in `package.json`.
+4. Generate the YAML from the staged files inside the offline container.
+   The candidate job obtains an attestation for the exact YAML digest and
+   saves the staged assets, YAML and Sigstore bundle in one Actions Artifact.
+5. For a stable tag, the serialized release job downloads that exact
+   candidate by Artifact ID. It checks for existing integrity evidence and
+   unrelated Release Assets before uploading the staged files and their YAML.
+   A tag such as `v0.72.1-release-trigger-1` makes the same files
+   available as a GitHub prerelease outside the Latest release.
 
-This deliberately keeps the existing mutable Release workflow. GitHub may
-show payloads before the final proof arrives. If publication fails before the
-YAML upload, the release is incomplete evidence and an unsigned retry can
-resume. If the YAML is already present, reruns stop before payload changes;
-use a new version for a new signed publication. If the last network response
-is lost, inspect and verify the release rather than blindly deleting proof.
-
-The job's concurrency group serializes this workflow's publishers and release
-note updates. It cannot lock out an administrator, another token or a separate
-workflow. The asset check observes the set before signing. Later file
-additions, deletion or replacement leave previously saved signatures valid
-and change the current release
-relative to its signed snapshot. An older valid attestation is not proof of
-the latest release, freshness, revocation or absence of rollback.
-
-Only uploaded distribution assets are in the inventory. GitHub's generated
-“Source code (zip/tar.gz)” links, descriptions, release notes, debug reports,
-the receipt and the integrity YAML itself are outside that payload list.
-The YAML's digest is authenticated by the external attestation, avoiding a
-self-hash cycle. The receipt is internal workflow evidence, not a second
-unsigned public authority.
+The signed inventory describes the candidate's bytes. Later additions or
+replacements on a Release can change what GitHub serves. GitHub-generated
+source archives, release notes and debug reports are outside the inventory.
 
 ## Offline verification and disclosure
 
@@ -163,8 +136,8 @@ verification, preserve the exact YAML, selected payloads, the Sigstore bundle
 and a trusted root obtained through a trusted channel. Use the same identity
 policy with `--bundle /path/to/bundle.json` and
 `--custom-trusted-root /path/to/trusted-root.jsonl`. Trust roots must not come
-only from the untrusted artifact being checked. The Actions artifact
-`release-integrity-attestation-<run-id>-<run-attempt>` contains the exact YAML
+only from the untrusted artifact being checked. The Actions Artifact
+`naidan-distribution-<attempt>` contains the exact YAML
 and `attestation.bundle.json`, with normal artifact retention. GitHub's
 attestation service is the online lookup path. Offline verification uses historical names;
 it cannot determine current repository renames or latest-release state.
@@ -188,8 +161,8 @@ imports without installing packages. Workflow Node 22.x setup and the
 Run focused tooling tests with `node --test scripts/tests/*.test.mjs`; the
 workflow runs them offline. New tests exercise failure paths and actual
 inline publication code, including source/run substitution, corrupted hosted
-inputs, unknown assets, absent remote digests, signature/upload races and
-adversarial Git trees.
+inputs, malformed metadata, branch and tagged candidates, and adversarial
+Git trees.
 
 - [actions/attest](https://github.com/actions/attest)
 - [GitHub CLI attestation verification](https://cli.github.com/manual/gh_attestation_verify)

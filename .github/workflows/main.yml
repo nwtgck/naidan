@@ -214,12 +214,10 @@ jobs:
           node-version: 22.x
           cache: 'npm'
 
-      - name: Pull the release integrity tooling image (online)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Pull the build tooling image
         run: docker pull node:22-bookworm
 
-      - name: Capture committed release source before dependency installation (offline)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Capture committed source before dependency installation
         run: |
           docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
             --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
@@ -233,8 +231,7 @@ jobs:
         with:
           node-image: node:22-bookworm
 
-      - name: Require unchanged tracked release source after installation
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Require unchanged tracked source after installation
         run: |
           test "$(git --no-replace-objects rev-parse HEAD)" = "$GITHUB_SHA"
           git --no-replace-objects diff --quiet --no-ext-diff "$GITHUB_SHA" --
@@ -245,7 +242,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=6144
         run: |
           # The build may generate TypeScript/router files in the checkout.
-          # Keep Go build scripts read-only: the next step runs them on the host.
+          # Keep Go build scripts read-only for the separate server build.
           docker run --rm \
             --network none \
             --cap-drop=ALL \
@@ -265,12 +262,12 @@ jobs:
         uses: actions/setup-go@v7.0.0
         with:
           go-version-file: naidan-server/go.mod
+          cache: false
 
       - name: Verify naidan-server build
         run: |
           # build.go copies hosted assets as files and follows source symlinks.
-          # Reject non-regular entries before handling Docker-produced outputs
-          # with the unsandboxed Go toolchain.
+          # Reject non-regular entries before copying the hosted build.
           test -d dist/hosted
           test ! -L dist
           test ! -L dist/hosted
@@ -279,8 +276,16 @@ jobs:
             echo "::error::Unsafe hosted build asset: $UNSAFE_ASSET"
             exit 1
           fi
-          cd naidan-server
-          go run build.go
+          mkdir "$RUNNER_TEMP/naidan-go"
+          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev \
+            --mount "type=bind,source=$PWD,target=/work,readonly" \
+            --mount "type=bind,source=$PWD/naidan-server,target=/work/naidan-server" \
+            --mount "type=bind,source=$(go env GOROOT),target=/goroot,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/naidan-go,target=/scratch" \
+            -w /work/naidan-server -e HOME=/tmp -e GOROOT=/goroot -e GOTOOLCHAIN=local \
+            -e GOCACHE=/scratch/cache -e GOTMPDIR=/scratch \
+            node:22-bookworm bash -euc 'export PATH="/goroot/bin:$PATH"; go run build.go'
 
       - name: Verify individual artifact inputs
         run: |
@@ -309,8 +314,7 @@ jobs:
           test -f dist/naidan-hosted.zip
           test -d dist/debug-tailwind-hosted
 
-      - name: Bind release ZIPs and embedded hosted files to this build (offline)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Bind release ZIPs and embedded hosted files to this build
         run: |
           docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
             --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
@@ -786,14 +790,142 @@ jobs:
             --mount "type=bind,source=$PWD,target=/work,readonly" -w /work \
             node:22-bookworm node --test scripts/tests/*.test.mjs
 
-  release_to_github:
+  prepare_release:
     needs: [build, test_release_tooling]
-    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       id-token: write
       attestations: write
+    outputs:
+      artifact-id: ${{ steps.distribution.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Download the web build
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: full-dist-build
+          path: dist
+      - name: Download the CI server binary
+        if: github.ref_type == 'branch'
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: naidan-server-binary
+          path: dist/ci-server
+      - name: Pull the release tooling image
+        run: docker pull node:22-bookworm
+      - name: Verify the web build from this run
+        run: |
+          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
+            --mount "type=bind,source=$PWD,target=/work,readonly" -w /work \
+            -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT \
+            node:22-bookworm node scripts/release-integrity.mjs verify-build dist/naidan-build-receipt.json
+      - name: Acquire Go
+        if: github.ref_type == 'tag'
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: naidan-server/go.mod
+          cache: false
+      - name: Acquire GoReleaser
+        if: github.ref_type == 'tag'
+        uses: goreleaser/goreleaser-action@v7.3.0
+        with:
+          distribution: goreleaser
+          version: v2.7.0
+          install-only: true
+      - name: Package server targets for this tag
+        if: github.ref_type == 'tag'
+        run: |
+          # GoReleaser's before hook executes a temporary Go binary.
+          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev \
+            --mount "type=bind,source=$PWD,target=/work,readonly" \
+            --mount "type=bind,source=$PWD/naidan-server,target=/work/naidan-server" \
+            --mount "type=bind,source=$PWD/dist,target=/work/dist" \
+            --mount "type=bind,source=$(go env GOROOT),target=/goroot,readonly" \
+            --mount "type=bind,source=$(command -v goreleaser),target=/usr/local/bin/goreleaser,readonly" \
+            -w /work -e HOME=/tmp -e GOROOT=/goroot -e GOTOOLCHAIN=local \
+            -e GOCACHE=/work/dist/go-cache -e GOTMPDIR=/work/dist \
+            node:22-bookworm bash -euc 'export PATH="/goroot/bin:$PATH"; goreleaser release --skip=publish --clean'
+
+      - name: Assemble the release candidate and freeze its YAML
+        id: prepare
+        run: |
+          mkdir "$RUNNER_TEMP/distribution"
+          sha256="$(
+            docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+              --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
+              --mount "type=bind,source=$PWD,target=/work,readonly" \
+              --mount "type=bind,source=$RUNNER_TEMP/distribution,target=/output" \
+              -w /work -e GITHUB_REF node:22-bookworm node scripts/release-integrity.mjs \
+              prepare dist/naidan-build-receipt.json /output
+          )"
+          [[ "$sha256" =~ ^[0-9a-f]{64}$ ]]
+          printf 'sha256=%s\n' "$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Attest the candidate YAML
+        id: attest
+        uses: actions/attest@v4.2.2
+        with:
+          subject-name: naidan-release-integrity.yaml
+          subject-digest: sha256:${{ steps.prepare.outputs.sha256 }}
+          create-storage-record: false
+      - name: Stage the attestation bundle
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+          SIGNED_SHA256: ${{ steps.prepare.outputs.sha256 }}
+        run: |
+          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
+            --mount "type=bind,source=$BUNDLE_PATH,target=/bundle.json,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/distribution,target=/output" \
+            -e SIGNED_SHA256 node:22-bookworm bash -euc '
+              printf "%s  /output/naidan-release-integrity.yaml\n" "$SIGNED_SHA256" | sha256sum --check --status
+              cp /bundle.json /output/attestation.bundle.json
+            '
+      - name: Upload the signed release candidate
+        id: distribution
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: naidan-distribution-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/distribution/
+          if-no-files-found: error
+          compression-level: 0
+
+  release_to_github:
+    needs: prepare_release
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    permissions:
+      contents: write
     # A single reusable job serializes note synchronization AND asset publishing.
     uses: $/.github/workflows/sync-release-notes.yml
     with:
       publish-tag: ${{ github.ref_name }}
+      distribution-artifact-id: ${{ needs.prepare_release.outputs.artifact-id }}
+
+  prerelease_to_github:
+    needs: prepare_release
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the signed release candidate
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.prepare_release.outputs.artifact-id }}
+          path: ${{ runner.temp }}/distribution
+          digest-mismatch: error
+      - name: Publish the candidate as a GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          test "$(gh api -H 'Accept: application/vnd.github.sha' "repos/$GITHUB_REPOSITORY/commits/refs%2Ftags%2F$TAG")" = "$GITHUB_SHA"
+          gh release create "$TAG" "$RUNNER_TEMP"/distribution/assets/* \
+            "$RUNNER_TEMP/distribution/naidan-release-integrity.yaml" \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease --latest=false --notes ""

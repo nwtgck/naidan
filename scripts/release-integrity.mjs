@@ -3,12 +3,12 @@
 // !!! ALLOW-EXTERNAL-COMMAND bash:* !!! -- Execute the exact auditable committed-tree fingerprint recipe.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {createReadStream, writeSync} from 'node:fs';
-import {lstat, readFile, readdir, writeFile} from 'node:fs/promises';
+import {constants, createReadStream, writeSync} from 'node:fs';
+import {copyFile, lstat, mkdir, readFile, readdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {runCommandSync} from '../build/command.ts';
-import {READ_ENV_GITHUB_REPOSITORY, READ_ENV_GITHUB_SHA, READ_ENV_GITHUB_RUN_ID, READ_ENV_GITHUB_RUN_ATTEMPT,
+import {READ_ENV_GITHUB_REPOSITORY, READ_ENV_GITHUB_REF, READ_ENV_GITHUB_SHA, READ_ENV_GITHUB_RUN_ID, READ_ENV_GITHUB_RUN_ATTEMPT,
   READ_ENV_PATH, READ_ENV_HOME} from '../build/node-env.ts';
 
 export const integrityName = 'naidan-release-integrity.yaml';
@@ -18,6 +18,19 @@ const sha256Pattern = /^[0-9a-f]{64}$/;
 const sourceCommitPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const zipPattern = /^naidan-(?:hosted|standalone(?:-[A-Za-z0-9-]+)?)\.zip$/;
 const safeAssetPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const distributionVersionPattern = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/;
+
+export function distributionVersion({sourceRef, packageVersion}) {
+  if (sourceRef.startsWith('refs/tags/')) {
+    const tag = sourceRef.slice('refs/tags/'.length);
+    assert.ok(tag.startsWith('v'), 'Expected a release tag starting with v');
+    assert.match(tag.slice(1), distributionVersionPattern, 'Invalid release tag');
+    return tag.slice(1);
+  }
+  assert.ok(sourceRef.startsWith('refs/heads/'), 'Expected a branch or tag push');
+  assert.match(packageVersion, distributionVersionPattern, 'Invalid package version for distribution');
+  return packageVersion;
+}
 
 function checkKeys({value, keys}) {
   assert.ok(value && typeof value === 'object' && !Array.isArray(value), 'Expected an object');
@@ -147,18 +160,35 @@ export async function verifyBuild({root, receipt, source}) {
   assert.deepEqual(await collectBuildInputs({root}), receipt.files, 'Downloaded build input changed');
 }
 
-export async function releaseAssets({root, receipt, tag}) {
+export async function stageReleaseAssets({root, receipt, version, sourceRef, output}) {
   checkReceipt({receipt});
-  assert.match(tag, /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/);
+  assert.match(version, distributionVersionPattern);
+  await mkdir(output);
   const assets = [];
-  for (const entry of receipt.files.filter(file => zipPattern.test(file.path))) {
-    const name = `${entry.path.slice(0, -4)}-${tag}.zip`;
-    const actual = await hashFile({file: path.join(root, 'dist', name)});
-    assert.deepEqual(actual, {size: entry.size, sha256: entry.sha256}, 'Release ZIP differs from this build');
-    assets.push({name, ...actual});
-  }
+  const names = new Set();
+  const stage = async ({file, name}) => {
+    assert.ok(!names.has(name) && name !== integrityName, `Duplicate release asset: ${name}`);
+    names.add(name);
+    const info = await lstat(file);
+    assert.ok(info.isFile() && !info.isSymbolicLink(), `Expected a regular file: ${file}`);
+    const destination = path.join(output, name);
+    await copyFile(file, destination, constants.COPYFILE_EXCL);
+    const identity = await hashFile({file: destination});
+    assets.push({name, ...identity});
+    return identity;
+  };
+  const expectedZips = receipt.files.filter(file => zipPattern.test(file.path));
   const zipNames = (await readdir(path.join(root, 'dist'))).filter(name => name.endsWith('.zip')).sort();
-  assert.deepEqual(zipNames, assets.map(asset => asset.name).sort(), 'Unexpected release ZIP');
+  assert.deepEqual(zipNames, expectedZips.map(({path}) => path).sort(), 'Unexpected release ZIP');
+  for (const entry of expectedZips) {
+    const name = `${entry.path.slice(0, -4)}-v${version}.zip`;
+    const actual = await stage({file: path.join(root, 'dist', entry.path), name});
+    assert.deepEqual(actual, {size: entry.size, sha256: entry.sha256}, 'Release ZIP differs from this build');
+  }
+  if (sourceRef.startsWith('refs/heads/')) {
+    await stage({file: path.join(root, 'dist/ci-server/naidan-server'), name: 'naidan-server'});
+    return assets.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  }
   await directory({file: path.join(root, 'dist/goreleaser-dist')});
   const goArtifacts = JSON.parse(await readFile(path.join(root, 'dist/goreleaser-dist/artifacts.json'), 'utf8'));
   assert.ok(Array.isArray(goArtifacts), 'Invalid GoReleaser metadata');
@@ -172,46 +202,25 @@ export async function releaseAssets({root, receipt, tag}) {
     assert.ok(acceptedTypes.has(entry.type), `Unsupported public GoReleaser type: ${entry.type}`);
     assert.match(entry.name, safeAssetPattern);
     assert.equal(entry.path, `dist/goreleaser-dist/${entry.name}`, 'Unexpected GoReleaser artifact path');
-    assets.push({name: entry.name, ...await hashFile({file: path.join(root, entry.path)})});
+    await stage({file: path.join(root, entry.path), name: entry.name});
     foundTypes.add(entry.type);
   }
   assert.deepEqual(foundTypes, acceptedTypes, 'Incomplete GoReleaser distribution');
   assert.equal(assets.filter(asset => asset.name === 'checksums.txt').length, 1, 'Missing GoReleaser checksums');
-  assert.equal(new Set(assets.map(asset => asset.name)).size, assets.length, 'Duplicate release asset');
-  assert.ok(!assets.some(asset => asset.name === integrityName), 'Integrity file must not hash itself');
   return assets.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 }
 
 const readJson = async ({file}) => JSON.parse(await readFile(file, 'utf8'));
 const writeNewJson = ({file, value}) => writeFile(file, JSON.stringify(value), {flag: 'wx'});
 
-function sortAssets({assets}) {
-  return [...assets].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-}
-
-function readUploadedAssets({remote, tag, releaseId}) {
-  const {release, assets} = remote;
-  assert.ok(Number.isSafeInteger(release.id) && release.id > 0, 'Invalid release ID');
-  assert.equal(String(release.id), releaseId, 'Release was replaced');
-  assert.equal(release.tag_name, tag, 'Release has a different tag');
-  assert.ok(release.draft === false && release.prerelease === false, 'Expected a stable published release');
-  assert.ok(Array.isArray(assets), 'Invalid release asset list');
-  const entries = assets.map(({name, size, digest, state}) => {
-    assert.match(name, safeAssetPattern);
-    assert.ok(Number.isSafeInteger(size) && size >= 0, `Invalid Asset size: ${name}`);
-    assert.equal(state, 'uploaded', `Asset is not uploaded: ${name}`);
-    assert.match(digest, /^sha256:[0-9a-f]{64}$/, `Missing or invalid Asset digest: ${name}`);
-    return {name, size, digest};
-  });
-  return sortAssets({assets: entries});
-}
-
-export async function renderIntegrity({receipt, tag, assets}) {
+export async function renderIntegrity({receipt, version, sourceRef, assets}) {
   checkReceipt({receipt});
-  assert.match(tag, /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/);
+  assert.equal(version, distributionVersion({sourceRef, packageVersion: version}));
   assert.ok(assets.length > 0);
   const {source} = receipt;
   const quote = JSON.stringify;
+  const shellRef = "'" + sourceRef.replaceAll("'", "'\\''") + "'";
+  const releaseTag = sourceRef.startsWith('refs/tags/') ? `v${version}` : null;
   const indent = ({text, spaces}) => text.trimEnd().split('\n').map(line => ' '.repeat(spaces) + line).join('\n');
   const recipe = await readFile(new URL('./treefingerprint.sh', import.meta.url), 'utf8');
   for (const asset of assets) {
@@ -225,9 +234,11 @@ export async function renderIntegrity({receipt, tag, assets}) {
 # GitHub's generated source archives, release notes, and this YAML are not payload assets.
 schema_version: 1
 kind: naidan_release_integrity
-release_tag: ${quote(tag)}
+release_tag: ${quote(releaseTag)}
+version: ${quote(version)}
 source:
   repository: ${quote(source.repository)}
+  ref: ${quote(sourceRef)}
   # Git commit is a locator; the independent content fingerprint follows.
   commit: ${quote(source.commit)}
   # Untracked, generated, and dependency files are excluded from this source fingerprint.
@@ -247,13 +258,12 @@ build:
 artifacts:
 ${assets.map(asset => `  - name: ${quote(asset.name)}\n    size: ${asset.size}\n    sha256: ${quote(asset.sha256)}`).join('\n')}
 verification:
-  # Choose the expected tag/commit yourself. Do not derive trust policy from unverified YAML.
-  # The reusable workflow below is the signer; the calling main.yml is not the signer.
+  # Choose the expected ref and commit yourself. Verify the signature before running the recipe.
   attestation: |
     gh attestation verify ${integrityName} \\
       --repo ${source.repository.slice('https://github.com/'.length)} \\
-      --signer-workflow ${source.repository.slice('https://github.com/'.length)}/.github/workflows/sync-release-notes.yml \\
-      --source-ref refs/tags/${tag} \\
+      --signer-workflow ${source.repository.slice('https://github.com/'.length)}/.github/workflows/main.yml \\
+      --source-ref ${shellRef} \\
       --source-digest ${source.commit} \\
       --deny-self-hosted-runners
   # After verifying the signature, run in a directory with the listed downloaded payloads.
@@ -269,7 +279,7 @@ ${assets.map(asset => `    ${asset.sha256}  ${asset.name}`).join('\n')}
 }
 
 async function main() {
-  const [command, input, output, tag, releaseId] = process.argv.slice(2);
+  const [command, input, output] = process.argv.slice(2);
   const root = process.cwd();
   const source = async () => captureSource({root, repository: READ_ENV_GITHUB_REPOSITORY(),
     commit: READ_ENV_GITHUB_SHA(), runId: READ_ENV_GITHUB_RUN_ID(), buildAttempt: READ_ENV_GITHUB_RUN_ATTEMPT()});
@@ -286,11 +296,10 @@ async function main() {
     await verifyBuild({root, receipt: await readJson({file: input}), source: await source()});
   } else if (command === 'prepare') {
     const receipt = await readJson({file: input});
-    const assets = await releaseAssets({root, receipt, tag});
-    const remote = await readJson({file: path.join(output, 'remote.json')});
-    assert.deepEqual(readUploadedAssets({remote, tag, releaseId}),
-      assets.map(({name, size, sha256}) => ({name, size, digest: `sha256:${sha256}`})), 'Uploaded Assets differ from this build');
-    const yaml = await renderIntegrity({receipt, tag, assets});
+    const sourceRef = READ_ENV_GITHUB_REF();
+    const version = distributionVersion({sourceRef, packageVersion: (await readJson({file: path.join(root, 'package.json')})).version});
+    const assets = await stageReleaseAssets({root, receipt, version, sourceRef, output: path.join(output, 'assets')});
+    const yaml = await renderIntegrity({receipt, version, sourceRef, assets});
     await writeFile(path.join(output, integrityName), yaml, {flag: 'wx'});
     writeSync(process.stdout.fd, createHash('sha256').update(yaml).digest('hex'));
   } else {

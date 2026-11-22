@@ -1,6 +1,6 @@
 // !!! ALLOW-EXTERNAL-COMMAND git:* !!! -- Create and inspect temporary source fixtures for release evidence.
 // !!! ALLOW-EXTERNAL-COMMAND bash -c:* !!! -- Execute the published artifact-verification recipe against fixture files.
-// !!! ALLOW-EXTERNAL-COMMAND node:* !!! -- Run the offline release integrity CLI against recorded API responses.
+// !!! ALLOW-EXTERNAL-COMMAND node:* !!! -- Run the offline release integrity CLI against fixture packages.
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -10,8 +10,8 @@ import {fileURLToPath} from 'node:url';
 import {it} from 'node:test';
 import {runCommandSync} from '../../build/command.ts';
 import {READ_ENV_PATH, READ_ENV_HOME, READ_ENV_TMPDIR} from '../../build/node-env.ts';
-import {captureSource, collectBuildInputs, fingerprintScheme, hashFile, integrityName, releaseAssets,
-  renderIntegrity, sealBuild, verifyBuild} from '../release-integrity.mjs';
+import {captureSource, collectBuildInputs, distributionVersion, fingerprintScheme, hashFile, integrityName,
+  renderIntegrity, sealBuild, stageReleaseAssets, verifyBuild} from '../release-integrity.mjs';
 
 const require = createRequire(import.meta.url);
 const workflow = await readFile(new URL('../../.github/workflows/sync-release-notes.yml', import.meta.url), 'utf8');
@@ -44,14 +44,11 @@ async function fixture({t}) {
     await writeFile(path.join(root, 'dist', name), bytes);
   }
   const receipt = await sealBuild({root, source: source()});
-  const prepare = async () => {
-    for (const entry of receipt.files.filter(entry => entry.path.endsWith('.zip'))) {
-      await rename(path.join(root, 'dist', entry.path), path.join(root, 'dist', `${entry.path.slice(0, -4)}-v1.2.3.zip`));
-    }
+  const prepare = async ({version}) => {
     await mkdir(path.join(root, 'dist/goreleaser-dist'));
     const go = [
-      {name: 'naidan-server-v1.2.3-Linux-x86_64.tar.gz', type: 'Archive'},
-      {name: 'naidan-server-v1.2.3-linux-amd64.deb', type: 'Linux Package'},
+      {name: `naidan-server-v${version}-Linux-x86_64.tar.gz`, type: 'Archive'},
+      {name: `naidan-server-v${version}-linux-amd64.deb`, type: 'Linux Package'},
       {name: 'checksums.txt', type: 'Checksum'},
     ].map(entry => ({...entry, path: `dist/goreleaser-dist/${entry.name}`}));
     for (const entry of go) {
@@ -136,8 +133,10 @@ it('rejects unsafe/duplicate receipt paths and non-regular input directories', a
 
 it('derives public GoReleaser assets from rehashed files, rejecting escapes and duplicate names', async t => {
   const {root, receipt, prepare} = await fixture({t});
-  const go = await prepare();
-  const assets = await releaseAssets({root, receipt, tag: 'v1.2.3'});
+  const go = await prepare({version: '1.2.3'});
+  const stage = async () => stageReleaseAssets({root, receipt, version: '1.2.3',
+    sourceRef: 'refs/tags/v1.2.3', output: path.join(await mkdtemp(path.join(root, 'stage-')), 'assets')});
+  const assets = await stage();
   assert.equal(assets.length, 6);
   assert.equal(assets.find(entry => entry.name === 'checksums.txt').sha256,
     (await hashFile({file: path.join(root, 'dist/goreleaser-dist/checksums.txt')})).sha256);
@@ -148,30 +147,24 @@ it('derives public GoReleaser assets from rehashed files, rejecting escapes and 
     [...go, {name: 'surprise', type: 'SBOM', path: 'dist/goreleaser-dist/surprise'}],
   ]) {
     await save({entries});
-    await assert.rejects(releaseAssets({root, receipt, tag: 'v1.2.3'}));
+    await assert.rejects(stage());
   }
   await save({entries: go});
-  await writeFile(path.join(root, 'dist/naidan-hosted-v1.2.3.zip'), 'replaced');
-  await assert.rejects(releaseAssets({root, receipt, tag: 'v1.2.3'}), /Release ZIP differs/);
+  await writeFile(path.join(root, 'dist/naidan-hosted.zip'), 'replaced');
+  await assert.rejects(stage(), /Release ZIP differs/);
 });
 
 it('embeds the exact fingerprint script and runnable artifact checks, without self-hashing', async t => {
   const {root, receipt, prepare} = await fixture({t});
-  await prepare();
-  const assets = await releaseAssets({root, receipt, tag: 'v1.2.3'});
-  const yaml = await renderIntegrity({receipt, tag: 'v1.2.3', assets});
+  await prepare({version: '1.2.3'});
+  const proofDirectory = path.join(root, 'assets');
+  const assets = await stageReleaseAssets({root, receipt, version: '1.2.3', sourceRef: 'refs/tags/v1.2.3', output: proofDirectory});
+  const yaml = await renderIntegrity({receipt, version: '1.2.3', sourceRef: 'refs/tags/v1.2.3', assets});
   const script = await readFile(new URL('../treefingerprint.sh', import.meta.url), 'utf8');
   assert.ok(yaml.includes(script.trimEnd().split('\n').map(line => `      ${line}`).join('\n')));
-  assert.match(yaml, /--signer-workflow nwtgck\/naidan\/\.github\/workflows\/sync-release-notes\.yml/);
-  assert.match(yaml, /--source-ref refs\/tags\/v1\.2\.3/);
+  assert.match(yaml, /--signer-workflow nwtgck\/naidan\/\.github\/workflows\/main\.yml/);
+  assert.match(yaml, /--source-ref 'refs\/tags\/v1\.2\.3'/);
   assert.ok(!assets.some(entry => entry.name === integrityName));
-  const proofDirectory = path.join(root, 'proof');
-  await mkdir(proofDirectory);
-  for (const asset of assets) {
-    const input = asset.name.startsWith('naidan-hosted-') || asset.name.startsWith('naidan-standalone-')
-      ? path.join(root, 'dist', asset.name) : path.join(root, 'dist/goreleaser-dist', asset.name);
-    await writeFile(path.join(proofDirectory, asset.name), await readFile(input));
-  }
   // Execute the published literal block, rather than a separate verifier implementation.
   const artifactScript = yaml.split('  artifacts: |\n')[1].split('\n').filter(line => line.startsWith('    '))
     .map(line => line.slice(4)).join('\n');
@@ -201,131 +194,109 @@ function inlineScript({stepId}) {
   return new AsyncFunction('github', 'context', 'core', 'require', 'process', body.join('\n'));
 }
 
-async function publicationHarness({t}) {
+async function candidateFixture({t, sourceRef}) {
   const {root, receipt, prepare} = await fixture({t});
-  await prepare();
-  const assets = await releaseAssets({root, receipt, tag: 'v1.2.3'});
-  const directory = path.join(root, 'notes/integrity');
-  await mkdir(directory, {recursive: true});
-  const yaml = await renderIntegrity({receipt, tag: 'v1.2.3', assets});
+  const packageVersion = '1.2.4-dev';
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({version: packageVersion}));
+  const version = distributionVersion({sourceRef, packageVersion});
+  if (sourceRef.startsWith('refs/heads/')) {
+    await mkdir(path.join(root, 'dist/ci-server'));
+    await writeFile(path.join(root, 'dist/ci-server/naidan-server'), 'existing CI server executable');
+  } else {
+    await prepare({version});
+  }
+  const directory = path.join(root, 'distribution');
+  await mkdir(directory);
   const receiptFile = path.join(root, 'dist/naidan-build-receipt.json');
   await writeFile(receiptFile, JSON.stringify(receipt));
-  const remote = assets.map((entry, index) => ({id: index + 1, name: entry.name, size: entry.size,
-    digest: `sha256:${entry.sha256}`, state: 'uploaded'}));
+  const prepareIntegrity = () => {
+    const options = commandOptions({cwd: root});
+    const result = completed({result: runCommandSync({
+      argv: ['node', integrityScript, 'prepare', receiptFile, directory],
+      options: {...options, env: {...options.env, GITHUB_REF: sourceRef}},
+    })});
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout;
+  };
+  return {root, directory, prepareIntegrity};
+}
+
+it('seals branch, stable tag and prerelease candidates through the same entry point', async t => {
+  for (const [sourceRef, version] of [
+    ['refs/heads/feature/artifact-integrity', '1.2.4-dev'],
+    ['refs/tags/v1.2.3', '1.2.3'],
+    ['refs/tags/v0.72.1-release-trigger-1', '0.72.1-release-trigger-1'],
+  ]) {
+    const {directory, prepareIntegrity} = await candidateFixture({t, sourceRef});
+    const digest = prepareIntegrity();
+    const file = path.join(directory, integrityName);
+    const yaml = await readFile(file, 'utf8');
+    assert.equal(digest, (await hashFile({file})).sha256);
+    assert.ok(yaml.includes(`version: "${version}"`));
+    assert.ok(yaml.includes(`  ref: "${sourceRef}"`));
+    assert.ok(yaml.includes(`naidan-hosted-v${version}.zip`));
+    if (sourceRef.startsWith('refs/heads/')) {
+      assert.match(yaml, /release_tag: null/);
+      assert.match(yaml, /name: "naidan-server"/);
+      assert.doesNotMatch(yaml, /name: "checksums.txt"/);
+    } else {
+      assert.ok(yaml.includes(`release_tag: "v${version}"`));
+      assert.ok(yaml.includes(`naidan-server-v${version}-Linux-x86_64.tar.gz`));
+    }
+    assert.throws(prepareIntegrity, /EEXIST/);
+    assert.equal((await hashFile({file})).sha256, digest);
+  }
+});
+
+it('rejects a malformed tag before naming the candidate', () => {
+  for (const sourceRef of ['refs/tags/vbad', 'refs/tags/v1.2', 'refs/pull/42/merge']) {
+    assert.throws(() => distributionVersion({sourceRef, packageVersion: '1.2.3'}));
+  }
+});
+
+it('guards stable releases and uploads the exact signed candidate YAML by Release ID', async t => {
+  const {root, directory, prepareIntegrity} = await candidateFixture({t, sourceRef: 'refs/tags/v1.2.3'});
+  prepareIntegrity();
   const release = {id: 42, tag_name: 'v1.2.3', draft: false, prerelease: false};
-  const writes = [], outputs = {};
-  const tag = 'v1.2.3';
+  const assets = [], uploads = [], outputs = {};
+  const context = {repo: {owner: 'nwtgck', repo: 'naidan'}};
   const github = {rest: {repos: {
-    getReleaseByTag: async params => {
-      assert.deepEqual(params, {owner: 'nwtgck', repo: 'naidan', tag});
+    getReleaseByTag: async args => {
+      assert.deepEqual(args, {...context.repo, tag: release.tag_name});
       return {data: release};
     },
     listReleaseAssets: () => {
       throw new Error('Pagination required');
     },
     uploadReleaseAsset: async payload => {
-      writes.push(payload);
-      assert.equal(payload.name, integrityName);
-      assert.equal(payload.release_id, 42);
-      assert.equal(payload.data.toString(), yaml);
-      const file = path.join(directory, 'uploaded');
-      await writeFile(file, payload.data);
-      const hash = await hashFile({file});
-      const asset = {id: 100, name: payload.name, size: hash.size, digest: `sha256:${hash.sha256}`, state: 'uploaded'};
-      remote.push(asset);
-      return {data: asset};
+      uploads.push(payload);
+      assets.push({name: payload.name});
     },
-  }}, paginate: async (method, params) => {
+  }}, paginate: async (method, args) => {
     assert.equal(method, github.rest.repos.listReleaseAssets);
-    assert.equal(params.per_page, 100);
-    assert.equal(params.release_id, 42);
-    return remote.map(entry => ({...entry}));
+    assert.deepEqual(args, {...context.repo, release_id: 42, per_page: 100});
+    return assets;
   }};
-  const context = {repo: {owner: 'nwtgck', repo: 'naidan'}};
   const core = {setOutput: (name, value) => {
     outputs[name] = value;
-  }, info: () => {}};
-  const env = {PUBLISH_TAG: 'v1.2.3', NOTES_DIR: path.join(root, 'notes'), RELEASE_ID: '42'};
-  const online = ({stepId}) => inlineScript({stepId})(github, context, core, require, {env});
-  const guard = () => online({stepId: 'guard_publication'});
-  const upload = () => online({stepId: 'publish_integrity'});
-  const prepareIntegrity = async () => {
-    await online({stepId: 'read_publication'});
-    const result = completed({result: runCommandSync({
-      argv: ['node', integrityScript, 'prepare', receiptFile, directory, tag, '42'],
-      options: commandOptions({cwd: root}),
-    })});
-    assert.equal(result.status, 0, result.stderr);
-    return result.stdout;
-  };
-  return {directory, remote, release, writes, outputs, guard, upload, prepareIntegrity};
-}
-
-it('guards signed releases before uploading and accepts only a complete matching remote inventory', async t => {
-  const h = await publicationHarness({t});
-  await h.guard();
-  assert.equal(h.outputs['release-id'], '42');
-  h.remote.push({name: integrityName});
-  await assert.rejects(h.guard(), /already has signed/);
-  assert.deepEqual(h.writes, []);
-  await assert.rejects(h.prepareIntegrity(), /Asset/);
-});
-
-it('rejects substituted, incomplete, unexpected, duplicate or unhashable remote assets before signing', async t => {
-  const attacks = [
-    h => {
-      h.remote[0].digest = `sha256:${'0'.repeat(64)}`;
-    },
-    h => {
-      h.remote[0].digest = null;
-    }, h => {
-      h.remote[0].state = 'starter';
-    },
-    h => {
-      h.remote[0].size += 1;
-    }, h => {
-      h.remote.pop();
-    },
-    h => {
-      h.remote[1].name = h.remote[0].name;
-    }, h => {
-      h.remote.push({...h.remote[0], name: 'injected.zip'});
-    },
-    h => {
-      h.release.id = 43;
-    },
-  ];
-  for (const attack of attacks) {
-    const h = await publicationHarness({t});
-    attack(h);
-    await assert.rejects(h.prepareIntegrity(), /Asset|Release was replaced/);
-    await assert.rejects(readFile(path.join(h.directory, integrityName)), {code: 'ENOENT'});
-    assert.deepEqual(h.writes, []);
-  }
-});
-
-it('signs the digest of the exact YAML passed to the single Release upload', async t => {
-  const h = await publicationHarness({t});
-  const sha256 = await h.prepareIntegrity();
-  assert.equal(sha256, (await hashFile({file: path.join(h.directory, integrityName)})).sha256);
-  await h.upload();
-  assert.equal(h.writes.length, 1);
-  assert.equal(h.remote.at(-1).name, integrityName);
-  await assert.rejects(h.guard(), /already has signed/);
-  assert.equal(h.writes.length, 1);
-});
-
-it('refuses to replace a prepared integrity YAML', async t => {
-  const h = await publicationHarness({t});
-  const sha256 = await h.prepareIntegrity();
-  await assert.rejects(h.prepareIntegrity(), /EEXIST/);
-  assert.equal((await hashFile({file: path.join(h.directory, integrityName)})).sha256, sha256);
-  assert.deepEqual(h.writes, []);
-});
-
-it('refuses to prepare a proof when the Release is no longer a published stable tag', async t => {
-  const h = await publicationHarness({t});
-  h.release.draft = true;
-  await assert.rejects(h.prepareIntegrity(), /stable published release/);
-  await assert.rejects(readFile(path.join(h.directory, integrityName)), {code: 'ENOENT'});
+  }};
+  const env = {PUBLISH_TAG: 'v1.2.3', RUNNER_TEMP: root, DISTRIBUTION_ARTIFACT_ID: '', RELEASE_ID: '42'};
+  const run = ({stepId}) => inlineScript({stepId})(github, context, core, require, {env});
+  await assert.rejects(run({stepId: 'guard_publication'}), /artifact ID/);
+  env.DISTRIBUTION_ARTIFACT_ID = '100';
+  release.prerelease = true;
+  await assert.rejects(run({stepId: 'guard_publication'}), /stable release/);
+  release.prerelease = false;
+  assets.push({name: 'extra.zip'});
+  await assert.rejects(run({stepId: 'guard_publication'}), /Unexpected existing Release Asset/);
+  assets.pop();
+  assets.push({name: 'naidan-hosted-v1.2.3.zip'});
+  await run({stepId: 'guard_publication'});
+  assert.equal(outputs['release-id'], '42');
+  await run({stepId: 'publish_integrity'});
+  assert.equal(uploads.length, 1);
+  assert.equal(uploads[0].release_id, 42);
+  assert.equal(uploads[0].name, integrityName);
+  assert.deepEqual(uploads[0].data, await readFile(path.join(directory, integrityName)));
+  await assert.rejects(run({stepId: 'guard_publication'}), /already has signed/);
 });

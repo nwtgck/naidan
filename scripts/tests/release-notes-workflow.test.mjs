@@ -58,6 +58,10 @@ async function harness(t, {releases = [release()], updates = plan(), publishTag 
     listReleases: () => {
       throw new Error('Use pagination');
     },
+    getCommit: async payload => {
+      assert.deepEqual(payload, {...context.repo, ref: `refs/tags/${publishTag}`});
+      return {data: {sha: context.sha}};
+    },
     updateRelease: async payload => {
       calls.push({method: 'PATCH', payload});
       return {data: payload};
@@ -107,6 +111,15 @@ it('dry run validates the complete plan but never calls mutation endpoints', asy
   await h.execute(applyNotes);
   assert.deepEqual(h.calls, []);
   assert.match(h.logs.join('\n'), /Dry run/);
+});
+
+it('rejects a changed tag before creating a release or updating its notes', async t => {
+  const h = await harness(t, {
+    publishTag: 'v0.3.0', updates: plan([update()], {tag_name: 'v0.3.0', body: 'new release'}),
+  });
+  h.github.rest.repos.getCommit = async () => ({data: {sha: 'b'.repeat(40)}});
+  await assert.rejects(h.execute(applyNotes), /no longer points to the signed source commit/);
+  assert.deepEqual(h.calls, []);
 });
 
 it('validates every update before performing even the first mutation', async t => {
@@ -263,33 +276,49 @@ it('workflow keeps audit boundaries, shared non-dropping lock, and guarded asset
   const offline = workflow.split('- name: Plan all release-note changes offline')[1].split('- name: Validate')[0];
   assert.doesNotMatch(offline, /GH_TOKEN|GITHUB_TOKEN|docker\.sock|--privileged|--network host/);
   assert.doesNotMatch(workflow, /require\(['"]\.\//);
-  const assets = workflow.slice(workflow.indexOf('      - name: Refuse to overwrite an already signed publication'));
+  const assets = workflow.slice(workflow.indexOf('      # Asset publication stays in the same job/lock'));
   for (const step of assets.split(/^      - name:/m).slice(1)) {
-    assert.match(step, /if: \$\{\{ inputs.publish-tag != '' && !inputs.dry-run \}\}/,
+    assert.match(step, /if: \$\{\{ inputs.publish-tag != '' && !inputs.dry-run\b/,
       'Every publication step must require a non-dry tag publication');
   }
   assert.ok(assets.indexOf('id: guard_publication') < assets.indexOf('uses: softprops/action-gh-release'));
-  const readAssets = assets.indexOf('id: read_publication');
-  const seal = assets.indexOf('id: seal_publication');
-  const attest = assets.indexOf('uses: actions/attest@');
-  assert.ok(0 <= readAssets && readAssets < seal && seal < attest);
-  assert.match(assets.slice(seal, attest), /--pull=never --network none/);
-  assert.match(assets, /subject-digest: sha256:\$\{\{ steps\.seal_publication\.outputs\.sha256 \}\}/);
-  const proof = assets.slice(assets.indexOf('name: Upload the signed YAML and bundle as an Actions Artifact'));
-  assert.match(proof, /path: \|\n +\$\{\{ runner\.temp \}\}\/release-notes\/integrity\/naidan-release-integrity\.yaml\n +\$\{\{ runner\.temp \}\}\/release-notes\/integrity\/attestation\.bundle\.json/);
-  assert.ok(assets.indexOf('uses: actions/attest@') < assets.indexOf('id: publish_integrity'));
-  assert.equal((assets.match(/uses: actions\/attest@/g) || []).length, 1);
+  assert.match(assets, /artifact-ids: \$\{\{ inputs\.distribution-artifact-id \}\}/);
+  assert.match(assets, /digest-mismatch: error/);
+  assert.match(assets, /distribution\/assets\/\*/);
+  assert.ok(assets.indexOf('uses: softprops/action-gh-release') < assets.indexOf('id: publish_integrity'));
+  assert.doesNotMatch(assets, /actions\/attest|goreleaser\/goreleaser-action|attestation\.bundle\.json/);
   assert.doesNotMatch(assets, /^\s+(body|body_path|generate_release_notes):/m);
+});
+
+it('shares the signed candidate across branch builds and both Release destinations', async () => {
   const main = await readFile(new URL('.github/workflows/main.yml', root), 'utf8');
-  assert.match(main, /needs: \[build, test_release_tooling\]/);
-  assert.match(main, /uses: \$\/\.github\/workflows\/sync-release-notes.yml/);
-  const caller = main.split('  release_to_github:')[1];
-  assert.match(caller, /id-token: write/);
-  assert.match(caller, /attestations: write/);
-  assert.doesNotMatch(main, /uses: goreleaser\/goreleaser-action/);
-  const config = await readFile(new URL('.goreleaser.yaml', root), 'utf8');
-  assert.match(config, /changelog:\n(?:  #[^\n]*\n)*  disable: true/);
-  assert.match(config, /mode: keep-existing/);
+  const [candidate, publications] = main.split('  prepare_release:\n')[1].split('  release_to_github:\n');
+  const [stable, prerelease] = publications.split('  prerelease_to_github:\n');
+  assert.match(candidate, /needs: \[build, test_release_tooling\]/);
+  assert.doesNotMatch(candidate.split('    steps:')[0], /\n    if:/);
+  assert.match(candidate, /id-token: write/);
+  assert.match(candidate, /attestations: write/);
+  for (const step of candidate.split(/^      - name:/m)) {
+    if (/uses: .*setup-go@|uses: .*goreleaser-action@|goreleaser release/.test(step)) {
+      assert.match(step, /if: github\.ref_type == 'tag'/);
+    }
+    if (/id: (prepare|attest|distribution)\b/.test(step)) {
+      assert.doesNotMatch(step, /\n        if:/);
+    }
+  }
+  assert.match(candidate, /--network none[\s\S]*goreleaser release --skip=publish --clean/);
+  assert.match(candidate, /GOTMPDIR=\/work\/dist/);
+  assert.match(candidate, /subject-digest: sha256:\$\{\{ steps\.prepare\.outputs\.sha256 \}\}/);
+  assert.match(candidate, /attestation\.bundle\.json/);
+  assert.match(candidate, /path: \$\{\{ runner\.temp \}\}\/distribution\//);
+  assert.match(stable, /!contains\(github\.ref_name, '-'\)/);
+  assert.match(stable, /distribution-artifact-id: \$\{\{ needs\.prepare_release\.outputs\.artifact-id \}\}/);
+  assert.match(prerelease, /&& contains\(github\.ref_name, '-'\)/);
+  assert.match(prerelease, /artifact-ids: \$\{\{ needs\.prepare_release\.outputs\.artifact-id \}\}/);
+  assert.match(prerelease, /--verify-tag --prerelease --latest=false/);
+  assert.match(prerelease, /commits\/refs%2Ftags%2F\$TAG"\)" = "\$GITHUB_SHA"/);
+  assert.match(prerelease, /distribution\/naidan-release-integrity\.yaml/);
+  assert.doesNotMatch(publications, /attestations: write|goreleaser|actions\/attest/);
 });
 
 it('action lockfile covers every dependency moved into the reusable workflow', async () => {
@@ -341,4 +370,7 @@ it('protects host publication tooling and Git state across dependency installati
   assert.ok(build.indexOf('rev-parse HEAD)" = "$GITHUB_SHA"') < build.indexOf('name: Run build'));
   assert.ok(build.includes('diff --quiet --no-ext-diff "$GITHUB_SHA" --'));
   assert.ok(build.indexOf('seal-build') < build.indexOf('name: Upload full dist build artifact'));
+  const server = build.split('name: Verify naidan-server build')[1].split('name: Verify individual artifact inputs')[0];
+  assert.match(server, /--pull=never --network none[\s\S]*go run build\.go/);
+  assert.match(server, /GOTMPDIR=\/scratch/);
 });
