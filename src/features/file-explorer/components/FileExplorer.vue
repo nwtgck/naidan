@@ -16,6 +16,7 @@ import { useFileExplorerKeyboard } from '@/features/file-explorer/composables/us
 import { FILE_EXPLORER_FILE_VIEW_KEY } from '@/features/file-explorer/composables/file-explorer-file-view-context';
 import type { FileExplorerEntry, ViewMode, PreviewVisibility } from '@/features/file-explorer/logic/types';
 import { getFileViewKind, isFileViewPathWithin } from '@/features/file-explorer/logic/file-view';
+import type { FileViewKind } from '@/features/file-explorer/logic/file-view';
 import type { FileExplorerRemoteMount, FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
 import { lazyStrings } from '@/strings';
 
@@ -36,6 +37,7 @@ let lastContentFocus: HTMLElement | undefined;
 let leaveFocus: HTMLElement | undefined;
 let leaveRequest: ReturnType<typeof Promise.withResolvers<boolean>> | undefined;
 const activeFile = shallowRef<FileExplorerEntry>();
+const activeFileKind = shallowRef<FileViewKind>();
 const startEditingFile = shallowRef(false);
 const forceTextFile = shallowRef(false);
 const isFileView = shallowRef(false);
@@ -50,11 +52,11 @@ const directoryRevision = shallowRef(0);
 const showLeaveDialog = shallowRef(false);
 const savingToLeave = shallowRef(false);
 const pendingTreeMutation = shallowRef<{ paths: readonly string[], mutating: boolean }>();
-const pendingFolderReveal = shallowRef<string>();
+const pendingFolderReveal = shallowRef<{ path: string, archive?: boolean }>();
 const explorerRoot = useTemplateRef<HTMLElement>('explorerRoot');
 const leaveDialog = useTemplateRef<HTMLElement>('leaveDialog');
 const cancelLeaveButton = useTemplateRef<HTMLButtonElement>('cancelLeaveButton');
-const fileView = useTemplateRef<{ revealDirectory({ path }: { path: string }): void }>('fileView');
+const fileView = useTemplateRef<{ revealDirectory({ path, archive }: { path: string, archive?: boolean }): void }>('fileView');
 const fileContent = useTemplateRef<{
   hasChanges(): boolean,
   isBusy(): boolean,
@@ -169,7 +171,7 @@ const canFocusEditor = computed(() => {
   if (entry === undefined) {
     return false;
   }
-  const kind = getFileViewKind({ entry });
+  const kind = activeFileKind.value ?? getFileViewKind({ entry });
   return kind === 'text' || kind === 'markdown' || kind === 'delimited' || kind === 'patch' || kind === 'model';
 });
 const editorFocused = computed(() => canFocusEditor.value && focusEditor.value);
@@ -296,6 +298,7 @@ async function openFileView({ entry, startEditing, forceText }: { entry: FileExp
   enterFileView();
   viewInstance.value += 1;
   revealTreeTemporarily.value = false;
+  activeFileKind.value = undefined;
   startEditingFile.value = startEditing === true;
   forceTextFile.value = forceText === true;
   activeFile.value = entry;
@@ -337,17 +340,17 @@ async function activateFileView(): Promise<void> {
   }
 }
 
-async function revealFileFolder({ path }: { path: string }): Promise<void> {
+async function revealFileFolder({ path, archive }: { path: string, archive?: boolean }): Promise<void> {
   revealTreeTemporarily.value = true;
   focusEditor.value = false;
-  pendingFolderReveal.value = path;
+  pendingFolderReveal.value = { path, ...(archive && { archive }) };
   await nextTick();
 }
 
-watch([fileView, pendingFolderReveal], ([view, path]) => {
-  if (view !== null && path !== undefined) {
+watch([fileView, pendingFolderReveal], ([view, reveal]) => {
+  if (view !== null && reveal !== undefined) {
     pendingFolderReveal.value = undefined;
-    view.revealDirectory({ path });
+    view.revealDirectory(reveal);
   }
 }, { flush: 'post' });
 
@@ -596,6 +599,8 @@ function handleBrowserKeyDown({ event }: { event: KeyboardEvent }): void {
           :mutation-pending="activeFileIsMutating"
           @saved="refreshAfterSave"
           @download="context.downloadEntry"
+          @open-archive="revealFileFolder({ path: $event.path, archive: true })"
+          @view-kind="activeFileKind = $event.kind"
         />
       </template>
     </FileExplorerFileView>

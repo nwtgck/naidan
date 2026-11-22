@@ -85,13 +85,13 @@ export function createFileExplorerStreamClient({ remote, sessionId, worker }: {
   }
 
   const fileAccess = {
-    read({ path, mode, maxBytes, signal }) {
+    read({ signal, ...request }) {
       return runFileViewOperation({
         signal,
         onProgress: undefined,
         async run({ port }) {
           const result = await remote.readFileForView(workerTransfer({
-            value: { request: { sessionId, path, mode, maxBytes }, port },
+            value: { request: { sessionId, ...request }, port },
             transferables: [port],
           }));
           return fileExplorerReadFileForViewResponseSchema.parse(result);

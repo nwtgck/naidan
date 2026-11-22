@@ -933,8 +933,13 @@ import { FeatureFlagsSettings__tool_persistence_enabled_details } from '@/string
 import { FeatureFlagsSettings__use_fake_lm_endpoint } from '@/strings/messages/FeatureFlagsSettings__use_fake_lm_endpoint/zh-Hans';
 import { FeatureFlagsSettings__uses_bundled_fake_lm } from '@/strings/messages/FeatureFlagsSettings__uses_bundled_fake_lm/zh-Hans';
 import { FeatureFlagsSettings__view_token_counts_and_measurement_intervals } from '@/strings/messages/FeatureFlagsSettings__view_token_counts_and_measurement_intervals/zh-Hans';
+import { FileExplorerBinaryPreview__byte_offset } from '@/strings/messages/FileExplorerBinaryPreview__byte_offset/zh-Hans';
+import { FileExplorerBinaryPreview__byte_range } from '@/strings/messages/FileExplorerBinaryPreview__byte_range/zh-Hans';
+import { FileExplorerBinaryPreview__file_changed } from '@/strings/messages/FileExplorerBinaryPreview__file_changed/zh-Hans';
 import { FileExplorerBinaryPreview__first_bytes } from '@/strings/messages/FileExplorerBinaryPreview__first_bytes/zh-Hans';
+import { FileExplorerBinaryPreview__go_to_offset } from '@/strings/messages/FileExplorerBinaryPreview__go_to_offset/zh-Hans';
 import { FileExplorerBinaryPreview__show_as_text } from '@/strings/messages/FileExplorerBinaryPreview__show_as_text/zh-Hans';
+import { FileExplorerBinaryPreview__show_more } from '@/strings/messages/FileExplorerBinaryPreview__show_more/zh-Hans';
 import { FileExplorerDelimitedView__could_not_display_as_a_table } from '@/strings/messages/FileExplorerDelimitedView__could_not_display_as_a_table/zh-Hans';
 import { FileExplorerDelimitedView__no_complete_rows_to_display } from '@/strings/messages/FileExplorerDelimitedView__no_complete_rows_to_display/zh-Hans';
 import { FileExplorerDelimitedView__row_column } from '@/strings/messages/FileExplorerDelimitedView__row_column/zh-Hans';
@@ -2850,6 +2855,7 @@ import { fileExplorer__analyzing_zip } from '@/strings/messages/fileExplorer__an
 import { fileExplorer__archive_name } from '@/strings/messages/fileExplorer__archive_name/zh-Hans';
 import { fileExplorer__binary_file } from '@/strings/messages/fileExplorer__binary_file/zh-Hans';
 import { fileExplorer__blocked_count } from '@/strings/messages/fileExplorer__blocked_count/zh-Hans';
+import { fileExplorer__browse_archive_contents } from '@/strings/messages/fileExplorer__browse_archive_contents/zh-Hans';
 import { fileExplorer__byte_count } from '@/strings/messages/fileExplorer__byte_count/zh-Hans';
 import { fileExplorer__cannot_be_placed } from '@/strings/messages/fileExplorer__cannot_be_placed/zh-Hans';
 import { fileExplorer__chat_file_system } from '@/strings/messages/fileExplorer__chat_file_system/zh-Hans';
@@ -2968,6 +2974,7 @@ import { fileExplorer__unsupported_items_were_skipped } from '@/strings/messages
 import { fileExplorer__upload_files } from '@/strings/messages/fileExplorer__upload_files/zh-Hans';
 import { fileExplorer__upload_files_unlock_to_enable } from '@/strings/messages/fileExplorer__upload_files_unlock_to_enable/zh-Hans';
 import { fileExplorer__uploading } from '@/strings/messages/fileExplorer__uploading/zh-Hans';
+import { fileExplorer__view_bytes } from '@/strings/messages/fileExplorer__view_bytes/zh-Hans';
 import { fileExplorer__view_source } from '@/strings/messages/fileExplorer__view_source/zh-Hans';
 import { fileExplorer__zip_archive } from '@/strings/messages/fileExplorer__zip_archive/zh-Hans';
 import { fileExplorer__zip_cannot_be_extracted } from '@/strings/messages/fileExplorer__zip_cannot_be_extracted/zh-Hans';
@@ -5429,8 +5436,13 @@ export const catalog = {
   FeatureFlagsSettings__use_fake_lm_endpoint,
   FeatureFlagsSettings__uses_bundled_fake_lm,
   FeatureFlagsSettings__view_token_counts_and_measurement_intervals,
+  FileExplorerBinaryPreview__byte_offset,
+  FileExplorerBinaryPreview__byte_range,
+  FileExplorerBinaryPreview__file_changed,
   FileExplorerBinaryPreview__first_bytes,
+  FileExplorerBinaryPreview__go_to_offset,
   FileExplorerBinaryPreview__show_as_text,
+  FileExplorerBinaryPreview__show_more,
   FileExplorerDelimitedView__could_not_display_as_a_table,
   FileExplorerDelimitedView__no_complete_rows_to_display,
   FileExplorerDelimitedView__row_column,
@@ -7346,6 +7358,7 @@ export const catalog = {
   fileExplorer__archive_name,
   fileExplorer__binary_file,
   fileExplorer__blocked_count,
+  fileExplorer__browse_archive_contents,
   fileExplorer__byte_count,
   fileExplorer__cannot_be_placed,
   fileExplorer__chat_file_system,
@@ -7464,6 +7477,7 @@ export const catalog = {
   fileExplorer__upload_files,
   fileExplorer__upload_files_unlock_to_enable,
   fileExplorer__uploading,
+  fileExplorer__view_bytes,
   fileExplorer__view_source,
   fileExplorer__zip_archive,
   fileExplorer__zip_cannot_be_extracted,

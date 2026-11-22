@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, shallowRef, useTemplateRef, watch } from 'vue';
-import { DownloadIcon, EyeIcon, FileCodeIcon, FileTextIcon, Loader2Icon, LockIcon, MicIcon } from 'lucide-vue-next';
+import { BinaryIcon, DownloadIcon, EyeIcon, FileArchiveIcon, FileCodeIcon, FileTextIcon, Loader2Icon, LockIcon, MicIcon } from 'lucide-vue-next';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { usePrompt } from '@/composables/usePrompt';
 import { useToast } from '@/composables/useToast';
+import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
+import type { AllowedHtml } from '@/logic/security/allowedHtml';
+import { createFileExplorerCodeHighlighter } from '@/features/file-explorer/composables/createFileExplorerCodeHighlighter';
 import { useFileExplorerLineNumbers, useFileExplorerTextWrap } from '@/features/file-explorer/composables/useFileExplorerEditorPreferences';
 import { MEDIA_PREVIEW_SIZE_LIMIT, TEXT_PREVIEW_SIZE_LIMIT } from '@/features/file-explorer/logic/constants';
-import { BINARY_PREVIEW_BYTES, decodeFileViewText, formatFileViewText, getDelimitedFormat, getFileViewImageExtensions, getFileViewKind, getFileViewMediaType, getFileViewParentPath, getFileViewSaveTarget, withFileViewExtension } from '@/features/file-explorer/logic/file-view';
+import { BINARY_PREVIEW_BYTES, decodeFileViewText, formatFileViewText, getDelimitedFormat, getFileViewImageExtensions, getFileViewKind, getFileViewMediaType, getFileViewParentPath, getFileViewSaveTarget, inspectFileView, withFileViewExtension } from '@/features/file-explorer/logic/file-view';
 import type { FileViewKind } from '@/features/file-explorer/logic/file-view';
 import type { FileExplorerBinaryPreview as BinaryPreview, FileExplorerEntry } from '@/features/file-explorer/logic/types';
 import { getFileExtension, getMimeCategory } from '@/features/file-explorer/logic/utils';
@@ -16,6 +19,8 @@ import FileExplorerTextWrapButton from './FileExplorerTextWrapButton.vue';
 
 const fileExplorerTextWrap = useFileExplorerTextWrap();
 const fileExplorerLineNumbers = useFileExplorerLineNumbers();
+const codeHighlighter = createFileExplorerCodeHighlighter();
+const MAX_HIGHLIGHT_CODE_UNITS = 64 * 1024;
 
 type Source = Extract<FileExplorerReadFileForViewResponse, { kind: 'file' }>;
 type FileText = ReturnType<typeof decodeFileViewText>;
@@ -35,6 +40,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   saved: [value: { entry: FileExplorerEntry | undefined }],
   download: [value: { entry: FileExplorerEntry }],
+  'open-archive': [value: { path: string }],
+  'view-kind': [value: { kind: FileViewKind }],
 }>();
 
 const FileExplorerDelimitedView = defineAsyncComponent(() => import('./FileExplorerDelimitedView.vue'));
@@ -63,6 +70,8 @@ const kind = ref<FileViewKind>(getFileViewKind({ entry: props.entry }));
 const source = shallowRef<Source>();
 const fileText = shallowRef<FileText>();
 const binaryPreview = shallowRef<BinaryPreview>();
+const showBytes = shallowRef(false);
+const detectedExtension = shallowRef<string>();
 const markdown = ref('');
 let markdownTimer: ReturnType<typeof setTimeout> | undefined;
 const loading = ref(true);
@@ -107,6 +116,24 @@ const mediaType = computed(() => {
   });
 });
 const textPreview = computed(() => fileText.value?.raw ?? '');
+const highlightedText = shallowRef<AllowedHtml>();
+
+watch(kind, value => emit('view-kind', { kind: value }), { immediate: true });
+
+watch([textPreview, kind, () => currentEntry.value.extension], async ([text, displayKind, extension], _previous, onCleanup) => {
+  highlightedText.value = undefined;
+  if (displayKind !== 'text' || text.length === 0 || text.length > MAX_HIGHLIGHT_CODE_UNITS) {
+    return;
+  }
+  let current = true;
+  onCleanup(() => {
+    current = false;
+  });
+  const html = await codeHighlighter.highlight({ extension, text });
+  if (current) {
+    highlightedText.value = html;
+  }
+});
 
 watch(editor, instance => {
   if ((props.startEditing || forcedText.value) && showSource.value) {
@@ -119,50 +146,6 @@ function replaceObjectUrl({ blob }: { blob: Blob | undefined }): void {
     URL.revokeObjectURL(objectUrl.value);
   }
   objectUrl.value = blob === undefined ? undefined : URL.createObjectURL(blob);
-}
-
-async function detectBinaryKind({ access }: { access: FileExplorerFileAccess }): Promise<FileViewKind | undefined> {
-  const prefix = await access.read({
-    path: currentEntry.value.path,
-    mode: 'prefix',
-    maxBytes: 4 * 1024,
-    signal: readController.signal,
-  });
-  switch (prefix.kind) {
-  case 'file': break;
-  case 'too-large': case 'unsupported': return undefined;
-  default: {
-    const exhaustive: never = prefix;
-    throw new Error(`Unhandled file prefix: ${((exhaustive satisfies never) as { readonly kind: string }).kind}`);
-  }
-  }
-  const bytes = new Uint8Array(await prefix.blob.arrayBuffer());
-  if (readController.signal.aborted) {
-    return undefined;
-  }
-  if (bytes.length === 0 && !prefix.partial) {
-    return 'text';
-  }
-  binaryPreview.value = { bytes: bytes.slice(0, BINARY_PREVIEW_BYTES), partial: prefix.partial || bytes.length > BINARY_PREVIEW_BYTES };
-  if (bytes[0] === 0x47 && bytes[1] === 0x47 && bytes[2] === 0x55 && bytes[3] === 0x46) {
-    return 'model';
-  }
-  if (bytes.length < 4) {
-    return undefined;
-  }
-  try {
-    const { fileTypeFromBuffer } = await import('file-type');
-    const detected = await fileTypeFromBuffer(bytes);
-    const category = detected?.mime.split('/')[0];
-    switch (category) {
-    case 'audio': case 'image': case 'video':
-      detectedMimeType.value = detected?.mime;
-      return category;
-    default: return undefined;
-    }
-  } catch {
-    return undefined;
-  }
 }
 
 async function readSource({ access, path, useSnapshot, maxBytes }: {
@@ -193,15 +176,32 @@ async function loadFile(): Promise<void> {
   limitReached.value = false;
   loadError.value = undefined;
   try {
-    switch (kind.value) {
-    case 'binary': {
-      const detected = await detectBinaryKind({ access });
-      if (detected === undefined) {
-        return;
+    const { path } = currentEntry.value;
+    const signal = readController.signal;
+    const sample = await inspectFileView({ access, path, signal });
+    signal.throwIfAborted();
+    if (sample !== undefined) {
+      const { format, binary } = sample;
+      binaryPreview.value = binary;
+      detectedMimeType.value = format?.mimeType;
+      detectedExtension.value = format?.extension;
+      if (binary.bytes.length > 0 || binary.partial) {
+        kind.value = getFileViewKind({ entry: currentEntry.value, format });
+      } else {
+        const initialKind = kind.value;
+        switch (initialKind) {
+        case 'binary': kind.value = 'text';
+          break;
+        case 'text': case 'image': case 'audio': case 'video': case 'model': case 'archive': case 'markdown': case 'delimited': case 'patch': break;
+        default: {
+          const exhaustive: never = initialKind;
+          throw new Error(`Unexpected empty file view: ${String(exhaustive)}`);
+        }
+        }
       }
-      kind.value = detected;
-      break;
     }
+    switch (kind.value) {
+    case 'binary': case 'archive': return;
     case 'image': case 'audio': case 'video': case 'model': case 'text': case 'markdown': case 'patch': case 'delimited':
       break;
     default: {
@@ -209,8 +209,6 @@ async function loadFile(): Promise<void> {
       throw new Error(`Unhandled file view: ${exhaustive}`);
     }
     }
-    const { path } = currentEntry.value;
-    const signal = readController.signal;
     const media = kind.value === 'image' || kind.value === 'audio' || kind.value === 'video';
     const result = await readSource({
       access,
@@ -283,6 +281,7 @@ async function editBinaryAsText(): Promise<void> {
       }
       kind.value = 'text';
       forcedText.value = true;
+      showBytes.value = false;
       source.value = result;
       fileText.value = decoded;
       replaceObjectUrl({ blob: undefined });
@@ -316,6 +315,7 @@ function openEditor(): void {
     return;
   }
   showSource.value = true;
+  showBytes.value = false;
   editorMounted.value = true;
 }
 
@@ -460,16 +460,32 @@ async function saveBlob({
       break;
     case 'image':
       detectedMimeType.value = blob.type;
+      detectedExtension.value = extension.slice(1);
       replaceObjectUrl({ blob });
       source.value = { ...previousSource, blob, name, size: blob.size, lastModified: undefined, revision: result.revision };
       break;
-    case 'audio': case 'video': case 'binary': case 'text': case 'markdown': case 'delimited': case 'patch':
+    case 'audio': case 'video': case 'binary': case 'text': case 'markdown': case 'delimited': case 'patch': case 'archive':
       source.value = { ...previousSource, blob, name, size: blob.size, lastModified: undefined, revision: result.revision };
       break;
     default: {
       const exhaustive: never = kind.value;
       throw new Error(`Unhandled saved file view: ${exhaustive}`);
     }
+    }
+    if (binaryPreview.value !== undefined) {
+      try {
+        const bytes = new Uint8Array(await blob.slice(0, BINARY_PREVIEW_BYTES).arrayBuffer());
+        binaryPreview.value = {
+          bytes,
+          size: blob.size,
+          partial: bytes.length < blob.size,
+          lastModified: source.value?.lastModified,
+          rangeReadable: binaryPreview.value.rangeReadable,
+        };
+      } catch {
+        showBytes.value = false;
+        binaryPreview.value = undefined;
+      }
     }
     emit('saved', { entry: currentEntry.value });
     return true;
@@ -511,7 +527,7 @@ async function saveEditor({ saveAs }: { saveAs: boolean }): Promise<boolean> {
   case 'delimited': case 'patch': case 'text':
     kind.value = savedKind;
     break;
-  case 'model': case 'image': case 'audio': case 'video': case 'binary':
+  case 'model': case 'image': case 'audio': case 'video': case 'binary': case 'archive':
     kind.value = 'text';
     break;
   default: {
@@ -642,12 +658,13 @@ async function saveChanges(): Promise<boolean> {
 
 onMounted(async () => {
   await loadFile();
-  if (props.forceText && !showSource.value && !readController.signal.aborted && (binaryPreview.value || isEmptySource.value)) {
+  if (props.forceText && !showSource.value && !readController.signal.aborted && (kind.value === 'binary' || isEmptySource.value)) {
     await editBinaryAsText();
   }
 });
 onUnmounted(() => {
   readController.abort();
+  codeHighlighter.dispose();
   writeController.value?.abort();
   clearWriteStatus();
   clearTimeout(markdownTimer);
@@ -697,7 +714,7 @@ defineExpose({
           </button>
         </div>
         <button
-          v-if="(binaryPreview || isEmptySource) && !fileText && canEditBinaryAsText && !loading"
+          v-if="(kind === 'binary' || isEmptySource) && !fileText && canEditBinaryAsText && !loading"
           type="button"
           :aria-busy="loadingTextEditor"
           :disabled="loadingTextEditor"
@@ -730,6 +747,18 @@ defineExpose({
         </button>
       </div>
       <div tw-class="flex flex-wrap items-center gap-2">
+        <button
+          v-if="binaryPreview && binaryPreview.bytes.length > 0 && kind !== 'binary' && !loading"
+          type="button"
+          :title="lazyStrings.fileExplorer__view_bytes()"
+          :aria-label="lazyStrings.fileExplorer__view_bytes()"
+          :aria-pressed="showBytes"
+          data-testid="file-view-bytes-toggle"
+          :tw-class="['rounded-md p-1.5 transition-colors', showBytes ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800']"
+          @click="showBytes = !showBytes"
+        >
+          <BinaryIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />
+        </button>
         <FileExplorerTextWrapButton v-if="fileText && !showSource && (kind === 'text' || kind === 'patch')" data-testid="file-view-wrap-toggle" />
         <button v-if="showSource && canEditText" type="button" :disabled="saving || !canOverwrite" tw-class="rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40" data-testid="file-view-save" @click="saveEditor({ saveAs: false })">
           {{ lazyStrings.fileExplorer__save() }}
@@ -764,80 +793,104 @@ defineExpose({
       </button>
     </div>
 
-    <div v-if="loading" tw-class="flex flex-1 items-center justify-center" role="status">
-      <Loader2Icon aria-hidden="true" tw-class="h-5 w-5 animate-spin text-gray-400" />
-    </div>
-    <p v-else-if="loadError" role="alert" tw-class="p-4 text-sm text-red-700 dark:text-red-300">{{ loadError }}</p>
-    <p v-else-if="limitReached" tw-class="p-4 text-sm text-gray-500">{{ lazyStrings.fileExplorer__file_is_too_large_to_preview() }}</p>
-    <p v-else-if="isEmptySource && !fileText" data-testid="file-view-empty-file" tw-class="flex flex-1 items-center justify-center p-4 text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.fileExplorer__file_is_empty() }}</p>
-    <FileExplorerBinaryPreview v-else-if="binaryPreview && !fileText && !source" :preview="binaryPreview" />
-    <FileExplorerModelView
-      v-else-if="kind === 'model' && source && client.fileAccess"
-      ref="model"
-      :file="source.blob"
+    <FileExplorerBinaryPreview
+      v-if="!loading && binaryPreview && (showBytes || kind === 'binary')"
+      :preview="binaryPreview"
+      :path="currentEntry.path"
       :access="client.fileAccess"
-      :can-save="canWrite"
-      :saving="saving"
-      @dirty-change="modelDirty = $event.dirty"
-      @save="saveModel({ rewrite: $event, saveAs: false })"
+      allow-jump
     />
-    <FileExplorerImageView v-else-if="kind === 'image' && objectUrl && source" :url="objectUrl" :file-name="currentEntry.name" :mime-type="mediaType" :can-save="canWrite && !saving" @save="saveImage({ blob: $event.blob, saveAs: false })" />
-    <div v-else-if="kind === 'audio' && objectUrl" tw-class="flex flex-1 items-center justify-center p-5">
-      <audio :src="objectUrl" controls preload="metadata" tw-class="w-full max-w-xl" />
-    </div>
-    <div v-else-if="kind === 'video' && objectUrl" tw-class="flex min-h-0 flex-1 items-center justify-center p-3">
-      <video :src="objectUrl" controls preload="metadata" tw-class="max-h-full max-w-full rounded" />
-    </div>
-
-    <template v-else-if="fileText">
-      <div v-show="showSource" :inert="!showSource" tw-class="flex min-h-0 flex-1 overflow-hidden">
-        <EditorV4
-          v-if="editorMounted"
-          ref="editor"
-          v-model:word-wrap="fileExplorerTextWrap"
-          v-model:line-numbers="fileExplorerLineNumbers"
-          :initial-text="fileText.editorText"
-          :read-only="!canEditText"
-          tw-class="min-w-0 flex-1"
-          @change="updateEditorPreview"
-          @request-save="saveEditor({ saveAs: false })"
-        />
-        <div v-if="kind === 'markdown' && showSource && !focused" tw-class="min-w-0 flex-1 overflow-auto border-l border-gray-100 p-4 dark:border-gray-800">
-          <BlockMarkdownRenderer :content="markdown" />
-        </div>
+    <div v-show="!showBytes && (kind !== 'binary' || !binaryPreview || loading)" :inert="showBytes" tw-class="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div v-if="loading" tw-class="flex flex-1 items-center justify-center" role="status">
+        <Loader2Icon aria-hidden="true" tw-class="h-5 w-5 animate-spin text-gray-400" />
       </div>
-      <div v-show="!showSource" :inert="showSource" tw-class="flex min-h-0 flex-1 flex-col overflow-auto">
-        <p v-if="isEmptySource" data-testid="file-view-empty-file" tw-class="flex flex-1 items-center justify-center p-4 text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.fileExplorer__file_is_empty() }}</p>
-        <FileExplorerDelimitedView
-          v-else-if="delimitedFormat"
-          ref="table"
-          :text="textPreview"
-          :format="delimitedFormat"
-          mode="detail"
-          :partial="false"
-          :editable="canEditText"
-          :saving="saving"
-          @dirty-change="tableDirty = $event.dirty"
-          @save="saveTable({ text: $event.text })"
-        />
-        <FileExplorerPatchView v-else-if="kind === 'patch'" :text="textPreview" />
-        <template v-else-if="kind === 'markdown'">
-          <div v-if="!showSource" tw-class="min-w-0 p-4">
+      <p v-else-if="loadError" role="alert" tw-class="p-4 text-sm text-red-700 dark:text-red-300">{{ loadError }}</p>
+      <p v-else-if="limitReached" tw-class="p-4 text-sm text-gray-500">{{ lazyStrings.fileExplorer__file_is_too_large_to_preview() }}</p>
+      <p v-else-if="isEmptySource && !fileText" data-testid="file-view-empty-file" tw-class="flex flex-1 items-center justify-center p-4 text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.fileExplorer__file_is_empty() }}</p>
+      <div v-else-if="kind === 'archive'" tw-class="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-gray-500 dark:text-gray-400">
+        <FileArchiveIcon aria-hidden="true" tw-class="h-7 w-7" />
+        <span tw-class="text-xs font-medium uppercase">{{ detectedExtension }}</span>
+        <button type="button" data-testid="file-view-open-archive" tw-class="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300" @click="emit('open-archive', { path: currentEntry.path })">
+          {{ lazyStrings.fileExplorer__browse_archive_contents() }}
+        </button>
+      </div>
+      <FileExplorerModelView
+        v-else-if="kind === 'model' && source && client.fileAccess"
+        ref="model"
+        :file="source.blob"
+        :access="client.fileAccess"
+        :can-save="canWrite"
+        :saving="saving"
+        @dirty-change="modelDirty = $event.dirty"
+        @save="saveModel({ rewrite: $event, saveAs: false })"
+      />
+      <FileExplorerImageView v-else-if="kind === 'image' && objectUrl && source" :url="objectUrl" :file-name="currentEntry.name" :mime-type="mediaType" :can-save="canWrite && !saving" @save="saveImage({ blob: $event.blob, saveAs: false })" />
+      <div v-else-if="kind === 'audio' && objectUrl" tw-class="flex flex-1 items-center justify-center p-5">
+        <audio :src="objectUrl" controls preload="metadata" tw-class="w-full max-w-xl" />
+      </div>
+      <div v-else-if="kind === 'video' && objectUrl" tw-class="flex min-h-0 flex-1 items-center justify-center p-3">
+        <video :src="objectUrl" controls preload="metadata" tw-class="max-h-full max-w-full rounded" />
+      </div>
+
+      <template v-else-if="fileText">
+        <div v-show="showSource" :inert="!showSource" tw-class="flex min-h-0 flex-1 overflow-hidden">
+          <EditorV4
+            v-if="editorMounted"
+            ref="editor"
+            v-model:word-wrap="fileExplorerTextWrap"
+            v-model:line-numbers="fileExplorerLineNumbers"
+            :initial-text="fileText.editorText"
+            :read-only="!canEditText"
+            tw-class="min-w-0 flex-1"
+            @change="updateEditorPreview"
+            @request-save="saveEditor({ saveAs: false })"
+          />
+          <div v-if="kind === 'markdown' && showSource && !focused" tw-class="min-w-0 flex-1 overflow-auto border-l border-gray-100 p-4 dark:border-gray-800">
             <BlockMarkdownRenderer :content="markdown" />
           </div>
-        </template>
-        <pre
-          v-else
-          :tw-class="['m-0 p-3 font-mono text-xs leading-relaxed text-gray-700 dark:text-gray-300', fileExplorerTextWrap
-            ? 'whitespace-pre-wrap wrap-anywhere'
-            : 'min-w-max whitespace-pre']"
-          data-testid="file-view-text"
-        >{{ textPreview }}</pre>
+        </div>
+        <div v-show="!showSource" :inert="showSource" tw-class="flex min-h-0 flex-1 flex-col overflow-auto">
+          <p v-if="isEmptySource" data-testid="file-view-empty-file" tw-class="flex flex-1 items-center justify-center p-4 text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.fileExplorer__file_is_empty() }}</p>
+          <FileExplorerDelimitedView
+            v-else-if="delimitedFormat"
+            ref="table"
+            :text="textPreview"
+            :format="delimitedFormat"
+            mode="detail"
+            :partial="false"
+            :editable="canEditText"
+            :saving="saving"
+            @dirty-change="tableDirty = $event.dirty"
+            @save="saveTable({ text: $event.text })"
+          />
+          <FileExplorerPatchView v-else-if="kind === 'patch'" :text="textPreview" />
+          <template v-else-if="kind === 'markdown'">
+            <div v-if="!showSource" tw-class="min-w-0 p-4">
+              <BlockMarkdownRenderer :content="markdown" />
+            </div>
+          </template>
+          <AllowedHtmlView
+            v-else-if="highlightedText"
+            as="pre"
+            :html="highlightedText"
+            :tw-class="['m-0 p-3 font-mono text-xs leading-relaxed text-gray-700 dark:text-gray-300', fileExplorerTextWrap
+              ? 'whitespace-pre-wrap wrap-anywhere'
+              : 'min-w-max whitespace-pre']"
+            data-testid="file-view-text"
+          />
+          <pre
+            v-else
+            :tw-class="['m-0 p-3 font-mono text-xs leading-relaxed text-gray-700 dark:text-gray-300', fileExplorerTextWrap
+              ? 'whitespace-pre-wrap wrap-anywhere'
+              : 'min-w-max whitespace-pre']"
+            data-testid="file-view-text"
+          >{{ textPreview }}</pre>
+        </div>
+      </template>
+      <div v-else tw-class="flex flex-1 flex-col items-center justify-center gap-2 p-4 text-center text-sm text-gray-500">
+        <FileTextIcon aria-hidden="true" tw-class="h-7 w-7 text-gray-400" />
+        {{ lazyStrings.fileExplorer__no_file_preview() }}
       </div>
-    </template>
-    <div v-else tw-class="flex flex-1 flex-col items-center justify-center gap-2 p-4 text-center text-sm text-gray-500">
-      <FileTextIcon aria-hidden="true" tw-class="h-7 w-7 text-gray-400" />
-      {{ lazyStrings.fileExplorer__no_file_preview() }}
     </div>
 
     <FileExplorerTranscriptionDialog

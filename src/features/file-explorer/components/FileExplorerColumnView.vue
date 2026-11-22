@@ -40,7 +40,7 @@ defineExpose({
     >
       <FileExplorerColumnPane
         v-for="(pane, i) in ctx.columnPanes"
-        :key="i"
+        :key="pane.path"
         :pane="pane"
         :pane-index="i"
       />

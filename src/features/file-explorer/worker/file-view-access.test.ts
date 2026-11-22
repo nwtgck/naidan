@@ -10,7 +10,7 @@ import { exposeWorkerRemote, releaseWorkerRemote, wrapWorkerRemote } from '@/uti
 import { readFileEditStamp, withFileViewLock, withFileViewLocks } from './file-view-access';
 import { createFileExplorerWorker } from './impl';
 import { createFileExplorerStreamClient } from './stream-client';
-import type { FileExplorerRootDescriptor, IFileExplorerWorker } from './types';
+import { FILE_VIEW_PROBE_BYTES, type FileExplorerRootDescriptor, type IFileExplorerWorker } from './types';
 
 function createJobChannel() {
   const channel = new MessageChannel();
@@ -123,6 +123,62 @@ describe('File Explorer bounded reads and writes', () => {
     });
     expect(file).toMatchObject({ kind: 'file', blob: snapshot, partial: false });
     expect(readWhole).not.toHaveBeenCalled();
+  });
+
+  it('probes actual file formats and reads byte windows without materializing a full snapshot', async () => {
+    const directory = new MockFileSystemDirectoryHandle({ name: 'work' });
+    const image = await directory.getFileHandle('object.bin', { create: true });
+    const png = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=', 'base64'));
+    image.content = new Uint8Array(8192);
+    image.content.set(png);
+    image.content.set([0xab, 0xcd], 4096);
+    const snapshot = await image.getFile();
+    const slice = vi.spyOn(snapshot, 'slice');
+    const fullRead = vi.spyOn(snapshot, 'arrayBuffer');
+    vi.spyOn(image, 'getFile').mockResolvedValue(snapshot);
+    const archive = await directory.getFileHandle('report.png', { create: true });
+    const container = new JSZip();
+    container.file('word/document.xml', '<document/>');
+    archive.content = Uint8Array.from(await container.generateAsync({ type: 'uint8array' }));
+    const model = await directory.getFileHandle('weights', { create: true });
+    model.content = new Uint8Array(24);
+    model.content.set([0x47, 0x47, 0x55, 0x46, 3]);
+    const falseModel = await directory.getFileHandle('note.gguf', { create: true });
+    falseModel.content = new TextEncoder().encode('plain text\n');
+    await using session = await prepareSession({
+      root: { kind: 'native-directory', rootName: 'work', handle: directory as unknown as FileSystemDirectoryHandle, readOnly: true },
+    });
+
+    async function inspect({ path }: { path: string }) {
+      using job = createJobChannel();
+      return session.worker.readFileForView({ request: { sessionId: session.sessionId, path, mode: 'inspect' }, port: job.port });
+    }
+
+    await expect(inspect({ path: '/object.bin' })).resolves.toMatchObject({
+      kind: 'file',
+      format: { kind: 'image', mimeType: 'image/png' },
+      partial: true,
+      rangeReadable: true,
+    });
+    await expect(inspect({ path: '/report.png' })).resolves.toMatchObject({ kind: 'file', format: { kind: 'archive' } });
+    await expect(inspect({ path: '/weights' })).resolves.toMatchObject({ kind: 'file', format: { kind: 'model', extension: 'gguf' } });
+    await expect(inspect({ path: '/note.gguf' })).resolves.toMatchObject({ kind: 'file', format: { kind: 'text' } });
+    const contents = await session.worker.readDirectory({ request: { sessionId: session.sessionId, path: '/report.png/word' } });
+    expect(contents.readOnly).toBe(true);
+    expect(contents.entries.map(entry => entry.name)).toEqual(['document.xml']);
+
+    using job = createJobChannel();
+    const range = await session.worker.readFileForView({
+      request: { sessionId: session.sessionId, path: '/object.bin', mode: 'range', offset: 4096, maxBytes: 2 },
+      port: job.port,
+    });
+    expect(range).toMatchObject({ kind: 'file', partial: true });
+    if (range.kind !== 'file') {
+      throw new Error('Expected a native byte range');
+    }
+    expect(new Uint8Array(await range.blob.arrayBuffer())).toEqual(new Uint8Array([0xab, 0xcd]));
+    expect(slice.mock.calls).toEqual([[0, FILE_VIEW_PROBE_BYTES, snapshot.type], [4096, 4098]]);
+    expect(fullRead).not.toHaveBeenCalled();
   });
 
   it('reads the overview, inspects, pages and rewrites GGUF over the shared Worker transport', async () => {

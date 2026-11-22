@@ -942,10 +942,59 @@ Ada,98
     await vi.waitFor(() => expect(panel.find('[data-testid="binary-hex-dump"]').exists()).toBe(true));
     expect(panel.get('[data-testid="binary-hex-dump"]').text()).toMatch(/0000\s+00 41 42 ff\s+\.AB\./);
     expect(panel.text()).toContain('Showing the first 4 bytes');
-    expect(read).toHaveBeenCalledWith(expect.objectContaining({ path: '/sample.bin', mode: 'prefix', maxBytes: 1024 }));
+    expect(read).toHaveBeenCalledWith(expect.objectContaining({ path: '/sample.bin', mode: 'inspect' }));
     expect(fullPreview).not.toHaveBeenCalled();
     await panel.get('[data-testid="binary-toggle-text"]').trigger('click');
     expect(panel.get('[data-testid="binary-source-text"]').text()).toContain('AB');
+  });
+
+  it('opens detected archives from the preview and reveals their entries in Tree and contents', async () => {
+    root.addFile('document.bin', 4);
+    root.addDir('contents').addFile('document.xml');
+    const client = await createMockWorkerClient();
+    const readDirectory = client.readDirectory;
+    client.readDirectory = async ({ path }) => {
+      if (path !== '/document.bin') {
+        return readDirectory({ path });
+      }
+      const { entries, pathSegments } = await readDirectory({ path: '/contents' });
+      return {
+        directoryPath: path,
+        directoryName: 'document.bin',
+        pathSegments: [pathSegments[0]!, { name: 'document.bin', path, kind: 'archive' }],
+        entries: entries.map(entry => ({ ...entry, path: `${path}/${entry.name}`, readOnly: true, canMutate: false })),
+        readOnly: true,
+      };
+    };
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+    const blob = new Blob([bytes]);
+    Object.defineProperty(blob, 'arrayBuffer', { value: async () => bytes.buffer });
+    client.fileAccess = {
+      read: vi.fn().mockResolvedValue({ kind: 'file', name: 'document.bin', blob, partial: false, format: { kind: 'archive', extension: 'docx' } }),
+      openSnapshot: vi.fn(),
+      inspectModelOverview: vi.fn(),
+      inspectModel: vi.fn(),
+      readModelMetadataValue: vi.fn(),
+      prepareGgufMetadataRewrite: vi.fn(),
+      save: vi.fn(),
+    };
+    vi.mocked(createFileExplorerWorkerClient).mockResolvedValueOnce(client);
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+
+    await wrapper.get('[data-testid="entry-item-document.bin"]').trigger('click');
+    const browse = '[data-testid="file-explorer-preview-open-archive"]';
+    await vi.waitFor(() => expect(wrapper.find(browse).exists()).toBe(true));
+    await wrapper.get('[data-testid="file-view-open-preview"]').trigger('click');
+    const browseInTree = '[data-testid="file-view-open-archive"]';
+    await vi.waitFor(() => expect(wrapper.find(browseInTree).exists()).toBe(true));
+    await wrapper.get(browseInTree).trigger('click');
+    await vi.waitFor(() => expect(wrapper.get('[data-path="/document.bin/document.xml"]').isVisible()).toBe(true));
+    await wrapper.get('[data-testid="file-explorer-file-view-back"]').trigger('click');
+    await vi.waitFor(() => expect(wrapper.find(browse).exists()).toBe(true));
+    await wrapper.get(browse).trigger('click');
+    await vi.waitFor(() => expect(wrapper.get('[data-testid="entry-item-document.xml"]').isVisible()).toBe(true));
+    expect(wrapper.find('[data-testid="file-explorer-archive-location"]').exists()).toBe(true);
   });
 
   it('recognizes an empty model in a location that only supports prefix reads', async () => {
@@ -960,7 +1009,8 @@ Ada,98
     await flushPromises();
     await wrapper.get('[data-testid="entry-item-empty.gguf"]').trigger('click');
     await vi.waitFor(() => expect(wrapper.find('[data-testid="preview-empty-file"]').exists()).toBe(true));
-    expect(read).toHaveBeenCalledWith(expect.objectContaining({ path: '/empty.gguf', mode: 'prefix', maxBytes: 1 }));
+    expect(read).toHaveBeenCalledWith(expect.objectContaining({ path: '/empty.gguf', mode: 'inspect' }));
+    expect(openSnapshot).not.toHaveBeenCalled();
     expect(inspectModel).not.toHaveBeenCalled();
   });
 
@@ -1764,6 +1814,35 @@ Ada,98
 
     expect(wrapper.text()).toContain('col-file.txt');
     expect(wrapper.text()).toContain('col-dir');
+  });
+
+  it('keeps the previous column until the next shard is ready and reads the new shard once', async () => {
+    const binaries = root.addDir('binary-objects');
+    binaries.addDir('a1').addFile('old.bin');
+    binaries.addDir('b2').addFile('new.bin');
+    const client = await createMockWorkerClient();
+    const readDirectory = client.readDirectory;
+    const nextShard = Promise.withResolvers<void>();
+    const read = vi.spyOn(client, 'readDirectory').mockImplementation(async ({ path }) => {
+      if (path === '/binary-objects/b2') {
+        await nextShard.promise;
+      }
+      return readDirectory({ path });
+    });
+    vi.mocked(createFileExplorerWorkerClient).mockResolvedValueOnce(client);
+    const wrapper = tracked(mountExplorer(root, { initialViewMode: 'column', initialPath: ['binary-objects', 'a1'] }));
+    await flushPromises();
+
+    await wrapper.get('[data-testid="entry-item-b2"]').trigger('click');
+    expect(wrapper.get('[data-testid="entry-item-old.bin"]').isVisible()).toBe(true);
+    expect(wrapper.get('[data-testid="entry-item-a1"]').classes()).toContain('bg-blue-500');
+
+    nextShard.resolve();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="entry-item-old.bin"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="entry-item-new.bin"]').isVisible()).toBe(true);
+    expect(wrapper.get('[data-testid="entry-item-b2"]').classes()).toContain('bg-blue-500');
+    expect(read.mock.calls.filter(([{ path }]) => path === '/binary-objects/b2')).toHaveLength(1);
   });
 
   it('reveals the selected file column when switching back to column view', async () => {

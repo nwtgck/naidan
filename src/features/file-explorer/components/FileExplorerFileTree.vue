@@ -4,6 +4,7 @@ import { computed, nextTick, onScopeDispose, ref, shallowReactive, useTemplateRe
 import { lazyStrings } from '@/strings';
 import type { FileExplorerEntry, FileExplorerTreeMenuEvent } from '@/features/file-explorer/logic/types';
 import { sortEntries } from '@/features/file-explorer/logic/utils';
+import { isFileExplorerNotDirectoryError } from '@/features/file-explorer/logic/errors';
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
 import FileExplorerEntryIcon from './FileExplorerEntryIcon.vue';
 
@@ -41,6 +42,8 @@ const tree = useTemplateRef<HTMLElement>('tree');
 const branches = shallowReactive(new Map<string, BranchState>());
 const branchRequests = new Map<string, { revision: number }>();
 const expanded = shallowReactive(new Set(['/']));
+const archivePaths = shallowReactive(new Set<string>());
+const nonArchiveRevisions = shallowReactive(new Map<string, number>());
 const focusedPath = ref<string>();
 const pendingReveal = ref<{ path: string, opener: Element | null }>();
 const pathToReveal = computed(() => props.activePath ?? `${props.directoryPath ?? ''}/`);
@@ -67,6 +70,8 @@ watch(() => props.readDirectory, () => {
   branches.clear();
   branchRequests.clear();
   expanded.clear();
+  archivePaths.clear();
+  nonArchiveRevisions.clear();
   focusedPath.value = undefined;
   pendingReveal.value = undefined;
   revealAncestors({ path: pathToReveal.value });
@@ -81,7 +86,8 @@ function appendChildren({ path, level, result }: { path: string, level: number, 
   for (const [index, entry] of branch.entries.entries()) {
     // A virtual filesystem may return the resolved target path for a symlink's children.
     const childPath = path === '/' ? `/${entry.name}` : `${path}/${entry.name}`;
-    const expandable = entry.canNavigate || entry.extension === '.zip';
+    const expandable = entry.canNavigate || archivePaths.has(childPath)
+      || (entry.extension === '.zip' && nonArchiveRevisions.get(childPath) !== (props.directoryRevision ?? 0));
     result.push({
       path: childPath,
       parentPath: path,
@@ -146,6 +152,20 @@ async function loadBranch({ path, revision }: { path: string, revision: number }
       entries: sortEntries({ entries: response.entries, config: { field: 'name', direction: 'ascending' } }),
     };
   } catch (error) {
+    if (isFileExplorerNotDirectoryError({ error }) && branchRequests.get(path) === request && isBranchOpen({ path })) {
+      const entry = rows.value.find(row => row.path === path)?.entry;
+      if (entry && entry.kind === 'file') {
+        branchRequests.delete(path);
+        expanded.delete(path);
+        branches.delete(path);
+        archivePaths.delete(path);
+        nonArchiveRevisions.set(path, revision);
+        if (focusedPath.value === path) {
+          emit('open', { entry });
+        }
+        return;
+      }
+    }
     branch = { status: 'error', revision, message: error instanceof Error ? error.message : String(error) };
   }
   if (branchRequests.get(path) !== request) {
@@ -185,7 +205,10 @@ async function moveFocus({ path }: { path: string }): Promise<void> {
   Array.from(items ?? []).find(item => item.dataset.path === path)?.focus();
 }
 
-function revealDirectory({ path }: { path: string }): void {
+function revealDirectory({ path, archive = false }: { path: string, archive?: boolean }): void {
+  if (archive) {
+    archivePaths.add(path);
+  }
   pendingReveal.value = { path, opener: document.activeElement };
   revealAncestors({ path: `${path}/` });
 }
@@ -233,16 +256,30 @@ function handleClick({ row, event }: { row: TreeRow, event: MouseEvent }): void 
   if (event.detail >= 2) {
     return;
   }
-  if (row.expandable) {
+  const clickedDisclosure = event.target instanceof Element && event.target.closest('[data-tree-disclosure]') !== null;
+  if (row.expandable && (clickedDisclosure || !openFile({ row }))) {
     toggleBranch({ path: row.path });
-  } else {
+  } else if (!row.expandable) {
     openFile({ row });
   }
 }
 
-function openFile({ row }: { row: TreeRow }): void {
-  if (!row.expandable && row.entry?.kind === 'file') {
-    emit('open', { entry: row.entry });
+function openFile({ row }: { row: TreeRow }): boolean {
+  const entry = row.entry;
+  const kind = entry?.kind;
+  switch (kind) {
+  case 'file':
+    if (entry !== undefined) {
+      emit('open', { entry });
+      return true;
+    }
+    return false;
+  case 'directory': case undefined:
+    return false;
+  default: {
+    const exhaustive: never = kind;
+    throw new Error(`Unhandled tree entry: ${String(exhaustive)}`);
+  }
   }
 }
 
@@ -284,12 +321,10 @@ function handleContextMenu({ row, event }: { row: TreeRow, event: MouseEvent }):
     directoryPath,
     directoryReadOnly: directory !== undefined && 'readOnly' in directory ? directory.readOnly : entry.readOnly,
     open: () => {
-      if (row.expandable) {
+      if (!openFile({ row }) && row.expandable) {
         if (!expanded.has(row.path) || row.branch?.status === 'error') {
           toggleBranch({ path: row.path });
         }
-      } else {
-        openFile({ row });
       }
     },
   });
@@ -332,10 +367,8 @@ function handleKeydown({ row, event }: { row: TreeRow, event: KeyboardEvent }): 
     }
     break;
   case 'Enter':
-    if (row.expandable) {
+    if (!openFile({ row }) && row.expandable) {
       toggleBranch({ path: row.path });
-    } else {
-      openFile({ row });
     }
     break;
   default:
@@ -408,7 +441,7 @@ defineExpose({
       @contextmenu="handleContextMenu({ row, event: $event })"
       @keydown="handleKeydown({ row, event: $event })"
     >
-      <span tw-class="grid h-3.5 w-3.5 shrink-0 place-items-center text-gray-500 dark:text-gray-400">
+      <span data-tree-disclosure tw-class="grid h-3.5 w-3.5 shrink-0 place-items-center text-gray-500 dark:text-gray-400">
         <Loader2Icon v-if="row.branch?.status === 'loading'" aria-hidden="true" tw-class="h-3 w-3 animate-spin" />
         <ChevronDownIcon v-else-if="row.expandable && expanded.has(row.path)" aria-hidden="true" tw-class="h-3 w-3" />
         <ChevronRightIcon v-else-if="row.expandable" aria-hidden="true" tw-class="h-3 w-3" />

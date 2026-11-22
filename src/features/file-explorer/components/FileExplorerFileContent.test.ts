@@ -9,19 +9,24 @@ import { TEST_ONLY as editorPreferences } from '@/features/file-explorer/composa
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { FileExplorerEntry } from '@/features/file-explorer/logic/types';
 import { getFileExtension, getMimeCategory } from '@/features/file-explorer/logic/utils';
-import type { FileExplorerFileAccess, FileExplorerFileForView } from '@/features/file-explorer/worker/types';
+import type { FileExplorerFileAccess, FileExplorerFileForView, FileViewFormat } from '@/features/file-explorer/worker/types';
 import FileExplorerBinaryPreview from './FileExplorerBinaryPreview.vue';
 import FileExplorerDelimitedView from './FileExplorerDelimitedView.vue';
 import FileExplorerFileContent from './FileExplorerFileContent.vue';
 import FileExplorerImageView from './FileExplorerImageView.vue';
 import FileExplorerModelView from './FileExplorerModelView.vue';
 
-const { showPrompt } = vi.hoisted(() => ({
+const { showPrompt, highlight } = vi.hoisted(() => ({
   showPrompt: vi.fn<ReturnType<typeof usePrompt>['showPrompt']>(),
+  highlight: vi.fn(),
 }));
 
 vi.mock('@/composables/usePrompt', () => ({
   usePrompt: () => ({ showPrompt }),
+}));
+
+vi.mock('@/features/highlight/worker/client-shared', () => ({
+  acquireSharedHighlightWorkerClientLease: async () => ({ client: { highlight }, release: async () => undefined }),
 }));
 
 const access = {
@@ -52,8 +57,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mountFile({ path, blob, revision, locked, canWriteToRoot, forceText, listedSize }: {
+function mountFile({ path, blob, revision, locked, canWriteToRoot, forceText, listedSize, format }: {
   path: string, blob: Blob, revision: string | undefined, locked: boolean, canWriteToRoot: boolean, forceText?: boolean, listedSize?: number,
+  format?: FileViewFormat,
 }) {
   const name = path.slice(path.lastIndexOf('/') + 1);
   const extension = getFileExtension({ name });
@@ -70,7 +76,20 @@ function mountFile({ path, blob, revision, locked, canWriteToRoot, forceText, li
     canMutate: true,
   };
   const source: FileExplorerFileForView = { kind: 'file', name, blob, size: blob.size, partial: false, revision };
-  access.read.mockResolvedValue(source);
+  access.read.mockImplementation(async request => {
+    switch (request.mode) {
+    case 'inspect': return { ...source, format, rangeReadable: true };
+    case 'range': {
+      const end = request.offset + request.maxBytes;
+      return { ...source, blob: blob.slice(request.offset, end), partial: end < blob.size };
+    }
+    case 'prefix': case 'bounded': return source;
+    default: {
+      const exhaustive: never = request;
+      throw new Error(`Unexpected file read: ${String(exhaustive)}`);
+    }
+    }
+  });
   access.openSnapshot.mockResolvedValueOnce(source);
   const wrapper = mount(FileExplorerFileContent, {
     props: { entry, client: { fileAccess: access }, locked, canWriteToRoot, focused: false, forceText },
@@ -324,6 +343,53 @@ it('keeps the HEX preview when reading binary data for editing fails', async () 
   expect(wrapper.find('[role="alert"]').exists()).toBe(false);
 });
 
+it('shows detected media and switches to bytes with continuation and offset controls', async () => {
+  const bytes = new Uint8Array(4608);
+  bytes.set([0x89, 0x50, 0x4e, 0x47]);
+  bytes[1024] = 0xab;
+  bytes[4096] = 0xcd;
+  using file = mountFile({
+    path: '/photo.gguf',
+    blob: new Blob([bytes]),
+    revision: 'first',
+    locked: true,
+    canWriteToRoot: false,
+    format: { kind: 'image', extension: 'png', mimeType: 'image/png' },
+  });
+  const { wrapper } = file;
+  await vi.waitFor(() => expect(wrapper.getComponent(FileExplorerImageView).props('mimeType')).toBe('image/png'));
+  expect(access.inspectModel).not.toHaveBeenCalled();
+  const toggle = wrapper.get('[data-testid="file-view-bytes-toggle"]');
+  await toggle.trigger('click');
+  const hex = '[data-testid="binary-hex-dump"]';
+  await vi.waitFor(() => expect(wrapper.get(hex).text()).toContain('89 50 4e 47'));
+  expect(wrapper.text()).toContain('Showing the first 1,024 bytes');
+  await wrapper.get('[data-testid="binary-show-more"]').trigger('click');
+  await vi.waitFor(() => expect(wrapper.get(hex).text()).toContain('0400  ab'));
+  expect(wrapper.get(hex).text()).toContain('89 50 4e 47');
+  await wrapper.get('[data-testid="binary-offset"]').setValue('0x1000');
+  await wrapper.get('form').trigger('submit');
+  await vi.waitFor(() => expect(wrapper.get(hex).text()).toContain('1000  cd'));
+  expect(wrapper.find('[data-testid="binary-show-more"]').exists()).toBe(false);
+  await toggle.trigger('click');
+  expect(wrapper.getComponent(FileExplorerImageView).isVisible()).toBe(true);
+});
+
+it('reuses the highlight worker for JSON previews and keeps large text readable', async () => {
+  const json = '{"size": 1}';
+  highlight.mockResolvedValue({ html: '{<span class="hljs-attr">"size"</span>: 1}' });
+  using config = mountFile({ path: '/config.json', blob: new Blob([json]), revision: undefined, locked: true, canWriteToRoot: false });
+  const preview = '[data-testid="file-view-text"]';
+  await vi.waitFor(() => expect(config.wrapper.find(`${preview} .hljs-attr`).exists()).toBe(true));
+  expect(highlight).toHaveBeenCalledWith({ request: { code: json, language: 'json', mode: 'named-language' } });
+  expect(config.wrapper.get(preview).text()).toBe(json);
+
+  const text = 'b'.repeat(64 * 1024 + 1);
+  using large = mountFile({ path: '/large.txt', blob: new Blob([text]), revision: undefined, locked: true, canWriteToRoot: false });
+  await vi.waitFor(() => expect(large.wrapper.get(preview).text()).toBe(text));
+  expect(highlight).toHaveBeenCalledOnce();
+});
+
 it('can cancel a write before the Worker reports any progress', async () => {
   using file = mountFile({ path: '/document.txt', blob: new Blob(['text']), revision: 'old', locked: false, canWriteToRoot: true });
   const { wrapper } = file;
@@ -356,7 +422,7 @@ it('keeps image edits for retry and requires the destination extension to match 
   expect(image.props('mimeType')).toBe('image/jpeg');
   expect(wrapper.find('[data-testid="file-view-empty-file"]').exists()).toBe(false);
   expect(wrapper.find('[data-testid="file-view-edit-binary-as-text"]').exists()).toBe(false);
-  expect(access.read).toHaveBeenCalledOnce();
+  expect(access.read.mock.calls.map(([request]) => request.mode)).toEqual(['inspect', 'bounded']);
   expect(wrapper.findComponent(EditorV4).exists()).toBe(false);
   const edited = new Blob(['edited'], { type: 'image/webp' });
   showPrompt.mockResolvedValueOnce('/copy.jpg');

@@ -1,12 +1,9 @@
 import { ref } from 'vue';
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
-import { acquireSharedHighlightWorkerClientLease } from '@/features/highlight/worker/client-shared';
-import type { SharedHighlightWorkerClientLease } from '@/features/highlight/worker/client-shared';
 import type { FileExplorerEntry, PreviewState } from '@/features/file-explorer/logic/types';
-import { EXTENSION_LANGUAGE_MAP } from '@/features/file-explorer/logic/constants';
-import { BINARY_PREVIEW_BYTES, DELIMITED_PREVIEW_BYTES, getDelimitedFormat, getFileViewKind } from '@/features/file-explorer/logic/file-view';
-import { sanitizeHighlightHtml } from '@/logic/security/allowedHtml';
-import type { AllowedHtml } from '@/logic/security/allowedHtml';
+import { TEXT_PREVIEW_SIZE_LIMIT } from '@/features/file-explorer/logic/constants';
+import { DELIMITED_PREVIEW_BYTES, getFileViewKind, inspectFileView } from '@/features/file-explorer/logic/file-view';
+import { createFileExplorerCodeHighlighter } from './createFileExplorerCodeHighlighter';
 
 export function useFileExplorerPreview({
   client,
@@ -29,63 +26,12 @@ export function useFileExplorerPreview({
   let latestHighlightRequestId = 0;
   let previewAbort: AbortController | undefined;
   let activeLoad: { entry: FileExplorerEntry, promise: Promise<void> } | undefined;
-  let highlightWorkerClientLeasePromise: Promise<SharedHighlightWorkerClientLease> | undefined;
+  const codeHighlighter = createFileExplorerCodeHighlighter();
   let disposed = false;
 
   function revokeObjectUrl(): void {
     if (previewState.value.objectUrl) {
       URL.revokeObjectURL(previewState.value.objectUrl);
-    }
-  }
-
-  async function getHighlightWorkerClientLease(): Promise<SharedHighlightWorkerClientLease | undefined> {
-    if (disposed) {
-      return undefined;
-    }
-
-    const leasePromise = highlightWorkerClientLeasePromise
-      ?? acquireSharedHighlightWorkerClientLease();
-    highlightWorkerClientLeasePromise = leasePromise;
-
-    try {
-      const lease = await leasePromise;
-      if (!disposed) {
-        return lease;
-      }
-
-      return undefined;
-    } catch {
-      if (highlightWorkerClientLeasePromise === leasePromise) {
-        highlightWorkerClientLeasePromise = undefined;
-      }
-      return undefined;
-    }
-  }
-
-  async function highlightText({
-    entry,
-    displayText,
-  }: {
-    entry: FileExplorerEntry,
-    displayText: string,
-  }): Promise<AllowedHtml | undefined> {
-    const lease = await getHighlightWorkerClientLease();
-    if (!lease) {
-      return undefined;
-    }
-
-    try {
-      const language = EXTENSION_LANGUAGE_MAP[entry.extension];
-      const response = await lease.client.highlight({
-        request: {
-          code: displayText,
-          language,
-          mode: language ? 'named-language' : 'auto-detect',
-        },
-      });
-      return sanitizeHighlightHtml({ html: response.html });
-    } catch {
-      return undefined;
     }
   }
 
@@ -121,13 +67,33 @@ export function useFileExplorerPreview({
       partial: false,
       modelFile: undefined,
       binaryPreview: undefined,
+      kind: undefined,
+      format: undefined,
       loadingState: 'loading',
     };
 
     try {
-      const kind = getFileViewKind({ entry });
+      const sample = entry.kind === 'file' && client.fileAccess !== undefined
+        ? await inspectFileView({ access: client.fileAccess, path: entry.path, signal: abort.signal })
+        : undefined;
+      if (!isCurrentPreviewRequest({ requestId })) {
+        return;
+      }
+      const format = sample?.format;
+      const kind = getFileViewKind({ entry, format });
+      if (sample !== undefined) {
+        const empty = sample.binary.bytes.length === 0 && !sample.binary.partial;
+        previewState.value = { ...previewState.value, kind, format, binaryPreview: sample.binary };
+        if (empty || kind === 'binary' || kind === 'archive') {
+          previewState.value = { ...previewState.value, loadingState: 'loaded' };
+          return;
+        }
+      }
       if (entry.kind === 'file' && kind === 'model' && client.fileAccess !== undefined) {
-        const snapshot = await client.fileAccess.openSnapshot({ path: entry.path, signal: abort.signal });
+        let snapshot = await client.fileAccess.openSnapshot({ path: entry.path, signal: abort.signal });
+        if (snapshot.kind === 'unsupported' && sample !== undefined && isCurrentPreviewRequest({ requestId })) {
+          snapshot = await client.fileAccess.read({ path: entry.path, mode: 'bounded', maxBytes: TEXT_PREVIEW_SIZE_LIMIT, signal: abort.signal });
+        }
         if (!isCurrentPreviewRequest({ requestId })) {
           return;
         }
@@ -138,17 +104,25 @@ export function useFileExplorerPreview({
             : { ...previewState.value, modelFile: snapshot.blob, loadingState: 'loaded' };
           return;
         case 'unsupported': {
-          const sample = await client.fileAccess.read({ path: entry.path, mode: 'prefix', maxBytes: 1, signal: abort.signal });
+          if (sample !== undefined) {
+            previewState.value = { ...previewState.value, kind: 'binary', loadingState: 'loaded' };
+            return;
+          }
+          const prefix = await client.fileAccess.read({ path: entry.path, mode: 'prefix', maxBytes: 1, signal: abort.signal });
           if (!isCurrentPreviewRequest({ requestId })) {
             return;
           }
-          if ('blob' in sample && sample.blob.size === 0 && !sample.partial) {
+          if ('blob' in prefix && prefix.blob.size === 0 && !prefix.partial) {
             previewState.value = { ...previewState.value, rawTextContent: '', loadingState: 'loaded' };
             return;
           }
           break;
         }
         case 'too-large':
+          if (sample !== undefined) {
+            previewState.value = { ...previewState.value, kind: 'binary', loadingState: 'loaded' };
+            return;
+          }
           break;
         default: {
           const exhaustive: never = snapshot;
@@ -156,27 +130,12 @@ export function useFileExplorerPreview({
         }
         }
       }
-      if (entry.kind === 'file' && kind === 'binary' && client.fileAccess !== undefined) {
-        const prefix = await client.fileAccess.read({ path: entry.path, mode: 'prefix', maxBytes: BINARY_PREVIEW_BYTES, signal: abort.signal });
-        if (!isCurrentPreviewRequest({ requestId })) {
+      if (mode === 'bounded' && kind === 'delimited' && client.fileAccess !== undefined) {
+        if (sample !== undefined && !sample.binary.partial) {
+          const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(sample.binary.bytes);
+          previewState.value = { ...previewState.value, rawTextContent: text, textContent: text, loadingState: 'loaded' };
           return;
         }
-        switch (prefix.kind) {
-        case 'file': {
-          const bytes = new Uint8Array(await prefix.blob.arrayBuffer());
-          if (isCurrentPreviewRequest({ requestId })) {
-            previewState.value = { ...previewState.value, binaryPreview: { bytes, partial: prefix.partial }, loadingState: 'loaded' };
-          }
-          return;
-        }
-        case 'unsupported': case 'too-large': break;
-        default: {
-          const exhaustive: never = prefix;
-          throw new Error(`Unhandled binary file preview: ${String(exhaustive)}`);
-        }
-        }
-      }
-      if (mode === 'bounded' && getDelimitedFormat({ extension: entry.extension }) !== undefined && client.fileAccess !== undefined) {
         const prefix = await client.fileAccess.read({
           path: entry.path,
           mode: 'prefix',
@@ -212,7 +171,20 @@ export function useFileExplorerPreview({
         }
         }
       }
-      const response = await client.readPreview({ path: entry.path, mode });
+      const interpretedFormat = (() => {
+        const detected = format?.kind;
+        switch (detected) {
+        case 'text': case 'image': case 'audio': case 'video':
+          return { kind: detected, mimeType: format?.mimeType };
+        case 'model': case 'archive': case 'binary': case undefined:
+          return undefined;
+        default: {
+          const exhaustive: never = detected;
+          throw new Error(`Unhandled file content: ${String(exhaustive)}`);
+        }
+        }
+      })();
+      const response = await client.readPreview({ path: entry.path, mode, ...(interpretedFormat && { format: interpretedFormat }) });
       if (!isCurrentPreviewRequest({ requestId })) {
         return;
       }
@@ -234,9 +206,9 @@ export function useFileExplorerPreview({
           };
           return;
         }
-        const highlightedHtml = kind === 'patch' || kind === 'markdown' || response.displayText.length === 0 ? undefined : await highlightText({
-          entry,
-          displayText: response.displayText,
+        const highlightedHtml = kind === 'patch' || kind === 'markdown' || response.displayText.length === 0 ? undefined : await codeHighlighter.highlight({
+          extension: entry.extension,
+          text: response.displayText,
         });
         if (!isCurrentPreviewRequest({ requestId })) {
           return;
@@ -252,7 +224,7 @@ export function useFileExplorerPreview({
         };
         return;
       }
-      case 'media':
+      case 'media': {
         if (response.oversized) {
           previewState.value = {
             ...previewState.value,
@@ -265,16 +237,19 @@ export function useFileExplorerPreview({
           previewState.value = { ...previewState.value, rawTextContent: '', loadingState: 'loaded' };
           return;
         }
+        const { blob, mimeType } = response;
         previewState.value = {
           ...previewState.value,
-          objectUrl: URL.createObjectURL(response.blob),
+          objectUrl: URL.createObjectURL(mimeType && mimeType !== blob.type ? blob.slice(0, blob.size, mimeType) : blob),
           loadingState: 'loaded',
           oversized: false,
         };
         return;
+      }
       case 'binary':
         previewState.value = {
           ...previewState.value,
+          kind: 'binary',
           loadingState: 'loaded',
           oversized: response.oversized,
         };
@@ -362,7 +337,7 @@ export function useFileExplorerPreview({
     const requestId = ++latestHighlightRequestId;
     (async () => {
       try {
-        const highlightedHtml = await highlightText({ entry, displayText: nextText });
+        const highlightedHtml = await codeHighlighter.highlight({ extension: entry.extension, text: nextText });
         if (requestId !== latestHighlightRequestId) {
           return;
         }
@@ -433,20 +408,7 @@ export function useFileExplorerPreview({
       previewAbort?.abort();
       revokeObjectUrl();
 
-      const leasePromise = highlightWorkerClientLeasePromise;
-      highlightWorkerClientLeasePromise = undefined;
-      if (!leasePromise) {
-        return;
-      }
-
-      (async () => {
-        try {
-          const lease = await leasePromise;
-          await lease.release();
-        } catch (error) {
-          console.error('Failed to release the file preview highlight worker:', error);
-        }
-      })();
+      codeHighlighter.dispose();
     },
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {

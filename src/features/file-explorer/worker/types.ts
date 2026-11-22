@@ -121,6 +121,10 @@ export const fileExplorerReadPreviewRequestSchema = z.object({
   sessionId: z.string().min(1),
   path: fileExplorerPathSchema,
   mode: z.union([z.literal('bounded'), z.literal('force')]),
+  format: z.object({
+    kind: z.enum(['text', 'image', 'audio', 'video']),
+    mimeType: z.string().max(128).optional(),
+  }).optional(),
 });
 
 export const fileExplorerPreviewDirectorySchema = z.object({
@@ -178,10 +182,24 @@ const fileViewReadRequestBaseSchema = z.object({
   sessionId: z.string().min(1),
   path: fileExplorerPathSchema,
 });
+export const FILE_VIEW_PROBE_BYTES = 4100;
+export const FILE_VIEW_MAX_DISPLAY_BYTES = 16 * 1024;
+const fileViewFormatSchema = z.object({
+  kind: z.enum(['text', 'binary', 'image', 'audio', 'video', 'archive', 'model']),
+  extension: z.string().max(64).optional(),
+  mimeType: z.string().max(128).optional(),
+});
+export type FileViewFormat = z.infer<typeof fileViewFormatSchema>;
 export const fileExplorerReadFileForViewRequestSchema = z.discriminatedUnion('mode', [
   fileViewReadRequestBaseSchema.extend({
     mode: z.enum(['prefix', 'bounded']),
     maxBytes: fileViewSizeSchema.max(64 * 1024 * 1024),
+  }),
+  fileViewReadRequestBaseSchema.extend({ mode: z.literal('inspect') }),
+  fileViewReadRequestBaseSchema.extend({
+    mode: z.literal('range'),
+    offset: fileViewSizeSchema,
+    maxBytes: fileViewSizeSchema.min(1).max(FILE_VIEW_MAX_DISPLAY_BYTES),
   }),
   fileViewReadRequestBaseSchema.extend({ mode: z.literal('snapshot') }),
 ]);
@@ -193,6 +211,8 @@ export const fileExplorerFileForViewSchema = z.object({
   lastModified: z.number().optional(),
   partial: z.boolean(),
   revision: fileViewRevisionSchema.optional(),
+  format: fileViewFormatSchema.optional(),
+  rangeReadable: z.boolean().optional(),
 });
 export const fileExplorerReadFileForViewResponseSchema = z.discriminatedUnion('kind', [
   fileExplorerFileForViewSchema,
@@ -624,14 +644,18 @@ export interface FileExplorerModelAccess {
 }
 
 export interface FileExplorerFileAccess extends FileExplorerModelAccess {
-  read({ path, mode, maxBytes, signal }: { path: string, mode: 'prefix' | 'bounded', maxBytes: number, signal?: AbortSignal }): Promise<FileExplorerReadFileForViewResponse>,
+  read({ path, mode, signal }: { path: string, signal?: AbortSignal } & (
+    { mode: 'prefix' | 'bounded', maxBytes: number }
+    | { mode: 'inspect' }
+    | { mode: 'range', offset: number, maxBytes: number }
+  )): Promise<FileExplorerReadFileForViewResponse>,
   openSnapshot({ path, signal }: { path: string, signal?: AbortSignal }): Promise<FileExplorerReadFileForViewResponse>,
   save({ target, blob, signal, onProgress }: { target: FileExplorerSaveFileTarget, blob: Blob, signal?: AbortSignal, onProgress?: ({ writtenBytes, totalBytes }: { writtenBytes: number, totalBytes: number }) => void }): Promise<FileExplorerSaveFileForViewResponse>,
 }
 
 export interface FileExplorerWorkerClient {
   readDirectory({ path }: { path: string }): Promise<FileExplorerReadDirectoryResponse>,
-  readPreview({ path, mode }: { path: string, mode: 'bounded' | 'force' }): Promise<FileExplorerReadPreviewResponse>,
+  readPreview({ path, mode, format }: { path: string, mode: 'bounded' | 'force', format?: FileExplorerReadPreviewRequest['format'] }): Promise<FileExplorerReadPreviewResponse>,
   readFile({ path }: { path: string }): Promise<FileExplorerReadFileResponse>,
   fileAccess?: FileExplorerFileAccess,
   prepareFileDownload({ path }: { path: string }): Promise<FileExplorerPrepareFileDownloadResponse>,

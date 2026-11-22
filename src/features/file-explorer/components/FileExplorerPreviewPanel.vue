@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
-import { inject, computed, defineAsyncComponent, shallowRef, useId, useTemplateRef } from 'vue';
-import { BracesIcon, DownloadIcon, FileTextIcon, Loader2Icon, AlertCircleIcon, FileCodeIcon, PencilIcon, XIcon } from 'lucide-vue-next';
+import { inject, computed, defineAsyncComponent, shallowRef, useId, useTemplateRef, watch } from 'vue';
+import { BinaryIcon, BracesIcon, DownloadIcon, FileArchiveIcon, FileTextIcon, Loader2Icon, AlertCircleIcon, FileCodeIcon, PencilIcon, XIcon } from 'lucide-vue-next';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import FileExplorerEntryIcon from './FileExplorerEntryIcon.vue';
 import FileExplorerTextWrapButton from './FileExplorerTextWrapButton.vue';
@@ -31,7 +31,7 @@ const MARKDOWN_PREVIEW_MAX_CODE_UNITS = 32 * 1024;
 const s = computed(() => ctx.previewState);
 const entry = computed(() => s.value.entry);
 const delimitedFormat = computed(() => getDelimitedFormat({ extension: entry.value?.extension ?? '' }));
-const kind = computed(() => entry.value === undefined ? undefined : getFileViewKind({ entry: entry.value }));
+const kind = computed(() => s.value.kind ?? (entry.value === undefined ? undefined : getFileViewKind({ entry: entry.value })));
 const emptyPreview = computed(() => s.value.loadingState === 'loaded'
   && ((s.value.rawTextContent === '' && !s.value.partial)
     || (s.value.binaryPreview?.bytes.length === 0 && !s.value.binaryPreview.partial)));
@@ -48,7 +48,7 @@ const showEditSource = computed(() => {
   case 'text': case 'markdown': case 'delimited': case 'patch': return true;
   case 'binary': return s.value.binaryPreview !== undefined;
   case 'image': case 'model': case 'audio': case 'video': return emptyPreview.value;
-  case undefined: return false;
+  case 'archive': case undefined: return false;
   default: {
     const exhaustive: never = kind.value;
     throw new Error(`Unhandled editable preview kind: ${String(exhaustive)}`);
@@ -56,6 +56,10 @@ const showEditSource = computed(() => {
   }
 });
 const markdownSource = shallowRef(false);
+const showBytes = shallowRef(false);
+watch(() => entry.value?.path, () => {
+  showBytes.value = false;
+});
 const markdownPreview = computed(() => {
   const source = s.value.rawTextContent;
   if (kind.value !== 'markdown' || markdownSource.value || source === undefined) {
@@ -125,6 +129,18 @@ defineExpose({
       </div>
       <div tw-class="ml-1 flex shrink-0 items-center gap-1">
         <button
+          v-if="kind !== 'binary' && s.binaryPreview && s.binaryPreview.bytes.length > 0 && s.loadingState !== 'loading'"
+          type="button"
+          :title="lazyStrings.fileExplorer__view_bytes()"
+          :aria-label="lazyStrings.fileExplorer__view_bytes()"
+          :aria-pressed="showBytes"
+          data-testid="file-explorer-preview-bytes-toggle"
+          :tw-class="['rounded-lg p-1 transition-colors', showBytes ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700']"
+          @click="showBytes = !showBytes"
+        >
+          <BinaryIcon aria-hidden="true" tw-class="w-3.5 h-3.5" />
+        </button>
+        <button
           v-if="fileView && entry?.kind === 'file' && showEditSource"
           type="button"
           :title="editAsText ? lazyStrings.fileExplorer__edit_as_text() : lazyStrings.fileExplorer__edit_source()"
@@ -160,8 +176,15 @@ defineExpose({
 
     <!-- Content -->
     <div :id="panelBodyId" tw-class="flex-1 overflow-hidden flex flex-col">
+      <FileExplorerBinaryPreview
+        v-if="entry && showBytes && s.binaryPreview && s.loadingState !== 'loading'"
+        :key="entry.path"
+        :preview="s.binaryPreview"
+        :path="entry.path"
+        :access="fileView?.access"
+      />
       <!-- Loading -->
-      <div v-if="s.loadingState === 'loading'" tw-class="flex items-center justify-center flex-1">
+      <div v-else-if="s.loadingState === 'loading'" tw-class="flex items-center justify-center flex-1">
         <Loader2Icon tw-class="w-5 h-5 text-gray-400 animate-spin" />
       </div>
 
@@ -199,11 +222,11 @@ defineExpose({
         </button>
       </div>
 
-      <div v-else-if="emptyPreview || s.binaryPreview" tw-class="flex min-h-0 flex-1 flex-col">
+      <div v-else-if="emptyPreview || (kind === 'binary' && s.binaryPreview)" tw-class="flex min-h-0 flex-1 flex-col">
         <p v-if="emptyPreview" data-testid="preview-empty-file" tw-class="flex flex-1 items-center justify-center p-4 text-center text-xs text-gray-500 dark:text-gray-400">
           {{ lazyStrings.fileExplorer__file_is_empty() }}
         </p>
-        <FileExplorerBinaryPreview v-else-if="s.binaryPreview" :key="entry.path" :preview="s.binaryPreview" />
+        <FileExplorerBinaryPreview v-else-if="s.binaryPreview" :key="entry.path" :preview="s.binaryPreview" :path="entry.path" :access="fileView?.access" />
         <button
           type="button"
           data-testid="file-explorer-preview-download"
@@ -215,8 +238,16 @@ defineExpose({
         </button>
       </div>
 
+      <div v-else-if="kind === 'archive'" tw-class="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-gray-500 dark:text-gray-400">
+        <FileArchiveIcon aria-hidden="true" tw-class="h-7 w-7" />
+        <span tw-class="text-xs font-medium uppercase">{{ s.format?.extension }}</span>
+        <button type="button" data-testid="file-explorer-preview-open-archive" tw-class="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300" @click="ctx.openEntry({ entry })">
+          {{ lazyStrings.fileExplorer__browse_archive_contents() }}
+        </button>
+      </div>
+
       <FileExplorerDelimitedView
-        v-else-if="delimitedFormat && s.loadingState === 'loaded' && s.rawTextContent !== undefined"
+        v-else-if="kind === 'delimited' && delimitedFormat && s.loadingState === 'loaded' && s.rawTextContent !== undefined"
         :text="s.rawTextContent"
         :format="delimitedFormat"
         mode="preview"
@@ -233,7 +264,7 @@ defineExpose({
       />
 
       <!-- Text preview -->
-      <div v-else-if="entry.mimeCategory === 'text' && s.loadingState === 'loaded'" tw-class="flex flex-col flex-1 overflow-hidden">
+      <div v-else-if="s.textContent !== undefined && s.loadingState === 'loaded'" tw-class="flex flex-col flex-1 overflow-hidden">
         <div tw-class="flex items-center justify-between px-3 py-1.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 shrink-0">
           <span tw-class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{{ entry.extension || 'text' }}</span>
           <div tw-class="flex items-center gap-1">
@@ -304,16 +335,16 @@ defineExpose({
 
       <!-- Image preview -->
       <FileExplorerImageView
-        v-else-if="entry.mimeCategory === 'image' && s.objectUrl"
+        v-else-if="kind === 'image' && s.objectUrl"
         :url="s.objectUrl"
         :file-name="entry.name"
-        :mime-type="getFileViewMediaType({ kind: 'image', blobType: '', extension: entry.extension })"
+        :mime-type="getFileViewMediaType({ kind: 'image', blobType: s.format?.mimeType ?? '', extension: entry.extension })"
         :can-save="false"
         compact
       />
 
       <!-- Video preview -->
-      <div v-else-if="entry.mimeCategory === 'video' && s.objectUrl" tw-class="flex-1 flex items-center justify-center p-3">
+      <div v-else-if="kind === 'video' && s.objectUrl" tw-class="flex-1 flex items-center justify-center p-3">
         <video
           :src="s.objectUrl"
           controls
@@ -323,12 +354,12 @@ defineExpose({
       </div>
 
       <!-- Audio preview -->
-      <div v-else-if="entry.mimeCategory === 'audio' && s.objectUrl" tw-class="flex-1 flex items-center justify-center p-4">
+      <div v-else-if="kind === 'audio' && s.objectUrl" tw-class="flex-1 flex items-center justify-center p-4">
         <audio :src="s.objectUrl" controls preload="metadata" tw-class="w-full" />
       </div>
 
       <!-- Binary file -->
-      <div v-else-if="entry.mimeCategory === 'binary' && s.loadingState === 'loaded'" tw-class="flex flex-col items-center justify-center flex-1 p-4 text-center gap-3">
+      <div v-else-if="kind === 'binary' && s.loadingState === 'loaded'" tw-class="flex flex-col items-center justify-center flex-1 p-4 text-center gap-3">
         <FileExplorerEntryIcon :kind="entry.kind" :extension="entry.extension" :mime-category="entry.mimeCategory" size="lg" />
         <div tw-class="space-y-1">
           <p tw-class="text-xs font-bold text-gray-600 dark:text-gray-400">{{ lazyStrings.fileExplorer__binary_file() }}</p>
@@ -349,6 +380,9 @@ defineExpose({
         v-if="entry && entry.kind === 'file' && s.loadingState === 'loaded' && !s.oversized"
         tw-class="px-3 py-2 border-t border-gray-100 dark:border-gray-800 shrink-0 space-y-0.5"
       >
+        <p v-if="s.format?.extension && kind !== 'archive'" tw-class="text-[10px] text-gray-400">
+          <span tw-class="font-bold">{{ lazyStrings.fileExplorer__type() }}</span> {{ s.format.extension.toUpperCase() }}
+        </p>
         <p tw-class="text-[10px] text-gray-400">
           <span tw-class="font-bold">{{ lazyStrings.fileExplorer__size_label() }}</span> {{ formatSize({ bytes: entry.size }) }}
         </p>

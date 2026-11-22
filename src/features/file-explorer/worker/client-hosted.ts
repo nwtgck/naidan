@@ -114,9 +114,9 @@ export async function createFileExplorerWorkerClient({
         await remote.readDirectory({ request: { sessionId, path } }),
       );
     },
-    async readPreview({ path, mode }) {
+    async readPreview({ path, mode, format }) {
       return fileExplorerReadPreviewResponseSchema.parse(
-        await remote.readPreview({ request: { sessionId, path, mode } }),
+        await remote.readPreview({ request: { sessionId, path, mode, ...(format && { format }) } }),
       );
     },
     async readFile({ path }) {

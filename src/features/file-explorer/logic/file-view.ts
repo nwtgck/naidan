@@ -1,8 +1,9 @@
-import type { FileExplorerEntry } from './types';
+import type { FileExplorerBinaryPreview, FileExplorerEntry } from './types';
+import type { FileExplorerFileAccess, FileViewFormat } from '@/features/file-explorer/worker/types';
 import { getFileExtension } from './utils';
 
 export type DelimitedFormat = 'csv' | 'tsv';
-export type FileViewKind = 'text' | 'markdown' | 'delimited' | 'patch' | 'model' | 'audio' | 'video' | 'image' | 'binary';
+export type FileViewKind = 'text' | 'markdown' | 'delimited' | 'patch' | 'model' | 'audio' | 'video' | 'image' | 'binary' | 'archive';
 
 export const DELIMITED_PREVIEW_BYTES = 64 * 1024;
 export const BINARY_PREVIEW_BYTES = 1024;
@@ -48,7 +49,13 @@ export function getDelimitedFormat({ extension }: { extension: string }): Delimi
   }
 }
 
-export function getFileViewKind({ entry }: { entry: FileExplorerEntry }): FileViewKind {
+export function getFileViewKind({ entry, format }: { entry: FileExplorerEntry, format?: FileViewFormat | undefined }): FileViewKind {
+  if (format !== undefined && format.kind !== 'text') {
+    return format.kind;
+  }
+  if (format?.kind === 'text' && entry.mimeCategory !== 'text') {
+    return 'text';
+  }
   switch (entry.extension) {
   case '.md': case '.markdown': return 'markdown';
   case '.csv': case '.tsv': return 'delimited';
@@ -56,6 +63,27 @@ export function getFileViewKind({ entry }: { entry: FileExplorerEntry }): FileVi
   case '.gguf': case '.safetensors': return 'model';
   default: return entry.mimeCategory;
   }
+}
+
+export async function inspectFileView({ access, path, signal }: {
+  access: FileExplorerFileAccess, path: string, signal: AbortSignal,
+}): Promise<{ format: FileViewFormat | undefined, binary: FileExplorerBinaryPreview } | undefined> {
+  const sample = await access.read({ path, mode: 'inspect', signal });
+  if (sample?.kind !== 'file' || signal.aborted) {
+    return undefined;
+  }
+  const bytes = new Uint8Array(await sample.blob.arrayBuffer());
+  signal.throwIfAborted();
+  return {
+    format: sample.format,
+    binary: {
+      bytes: bytes.subarray(0, BINARY_PREVIEW_BYTES),
+      partial: sample.partial || bytes.length > BINARY_PREVIEW_BYTES,
+      size: sample.size,
+      lastModified: sample.lastModified,
+      rangeReadable: sample.rangeReadable,
+    },
+  };
 }
 
 export function getFileViewParentPath({ path }: { path: string }): string {

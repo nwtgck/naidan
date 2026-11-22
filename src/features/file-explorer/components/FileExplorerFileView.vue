@@ -29,8 +29,8 @@ const treePanel = useTemplateRef<HTMLElement>('treePanel');
 const fileTree = useTemplateRef<InstanceType<typeof FileExplorerFileTree>>('fileTree');
 const treeSize = useFileExplorerPaneWidth({ panel: treePanel, preference: 'treeWidthPx' });
 
-function revealDirectory({ path }: { path: string }): void {
-  fileTree.value?.revealDirectory({ path });
+function revealDirectory({ path, archive = false }: { path: string, archive?: boolean }): void {
+  fileTree.value?.revealDirectory({ path, archive });
 }
 
 defineExpose({ revealDirectory, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

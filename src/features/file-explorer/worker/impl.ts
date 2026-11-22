@@ -33,6 +33,7 @@ import {
   type ParsedZipUpload,
 } from './zip-upload';
 import { ZipArchiveView } from './zip-archive-view';
+import { inspectFileFormat } from './file-format';
 import {
   findExistingFileHandle,
   matchesFileEditStamp,
@@ -96,6 +97,7 @@ import {
   type FileExplorerPathSegment,
   type FileExplorerReadFileForViewRequest,
   type FileExplorerReadFileForViewResponse,
+  FILE_VIEW_PROBE_BYTES,
   type FileExplorerRootDescriptor,
   type FileExplorerSaveFileForViewResponse,
   type FileExplorerSaveFileTarget,
@@ -1104,7 +1106,7 @@ async function registerFileEditRevision({ session, path, handle, stamp, signal }
 
 async function resolveFileForView({ session, request, signal }: {
   session: FileExplorerSession,
-  request: FileExplorerReadFileForViewRequest,
+  request: Exclude<FileExplorerReadFileForViewRequest, { mode: 'inspect' }>,
   signal: AbortSignal,
 }): Promise<FileExplorerReadFileForViewResponse> {
   const path = validateFileViewPath({ path: request.path });
@@ -1114,7 +1116,7 @@ async function resolveFileForView({ session, request, signal }: {
   switch (file.kind) {
   case 'native-file': {
     const { handle } = file;
-    const editable = request.mode !== 'prefix'
+    const editable = (request.mode === 'bounded' || request.mode === 'snapshot')
       && !file.readOnly
       && !isProtectedFileEditTarget({ session, path })
       && !await isReadOnlyFileViewPath({ session, path });
@@ -1122,6 +1124,26 @@ async function resolveFileForView({ session, request, signal }: {
       const snapshot = await handle.getFile();
       const { size, lastModified } = snapshot;
       signal.throwIfAborted();
+      switch (request.mode) {
+      case 'range': {
+        const offset = Math.min(size, request.offset);
+        const length = Math.min(size - offset, request.maxBytes);
+        return {
+          kind: 'file',
+          name,
+          blob: snapshot.slice(offset, offset + length),
+          size,
+          lastModified,
+          partial: offset + length < size,
+          rangeReadable: true,
+        };
+      }
+      case 'bounded': case 'prefix': case 'snapshot': break;
+      default: {
+        const exhaustive: never = request;
+        throw new Error(`Unexpected file read: ${String(exhaustive)}`);
+      }
+      }
       if (request.mode === 'bounded' && size > request.maxBytes) {
         return { kind: 'too-large', name, size };
       }
@@ -1136,7 +1158,7 @@ async function resolveFileForView({ session, request, signal }: {
         })
         : undefined;
       const blob = partial ? snapshot.slice(0, request.maxBytes, snapshot.type) : snapshot;
-      return { kind: 'file', name, blob, size, lastModified, partial, revision };
+      return { kind: 'file', name, blob, size, lastModified, partial, revision, rangeReadable: true };
     }
     // The read must take its editable snapshot under the same lock as the
     // commit. A late hash of the original file cannot replace the new revision.
@@ -1144,7 +1166,7 @@ async function resolveFileForView({ session, request, signal }: {
   }
   case 'virtual-file': {
     switch (request.mode) {
-    case 'snapshot':
+    case 'snapshot': case 'range':
       return { kind: 'unsupported', name };
     case 'bounded':
     case 'prefix':
@@ -1165,7 +1187,7 @@ async function resolveFileForView({ session, request, signal }: {
   }
   case 'zip-file': {
     switch (request.mode) {
-    case 'snapshot':
+    case 'snapshot': case 'range':
       return { kind: 'unsupported', name };
     case 'bounded':
     case 'prefix':
@@ -2463,7 +2485,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       }
 
       const extension = getFileExtension({ name: resolvedFile.name });
-      const mimeCategory = getMimeCategory({ extension });
+      const mimeCategory = validated.format?.kind ?? getMimeCategory({ extension });
       // Unsupported binary previews need no payload, especially for huge VFS files.
       let previewLimit: number;
       switch (mimeCategory) {
@@ -2589,7 +2611,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
           kind: 'media',
           mediaKind: mimeCategory,
           blob: mediaBlob,
-          mimeType: mediaBlob.type,
+          mimeType: validated.format?.mimeType ?? mediaBlob.type,
           oversized: false,
         });
       }
@@ -2619,8 +2641,32 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         sessionId: validated.sessionId,
         port,
         async run({ signal }) {
-          const result = await resolveFileForView({ session, request: validated, signal });
-          return fileExplorerReadFileForViewResponseSchema.parse(result);
+          switch (validated.mode) {
+          case 'inspect': {
+            const request = { ...validated, mode: 'prefix' as const, maxBytes: FILE_VIEW_PROBE_BYTES };
+            const result = await resolveFileForView({ session, request, signal });
+            switch (result.kind) {
+            case 'file': {
+              const bytes = new Uint8Array(await result.blob.arrayBuffer());
+              signal.throwIfAborted();
+              const format = await inspectFileFormat({ bytes, size: result.size, partial: result.partial });
+              signal.throwIfAborted();
+              return fileExplorerReadFileForViewResponseSchema.parse({ ...result, format });
+            }
+            case 'unsupported': case 'too-large': return fileExplorerReadFileForViewResponseSchema.parse(result);
+            default: {
+              const exhaustive: never = result;
+              throw new Error(`Unexpected file read: ${String(exhaustive)}`);
+            }
+            }
+          }
+          case 'bounded': case 'prefix': case 'snapshot': case 'range':
+            return fileExplorerReadFileForViewResponseSchema.parse(await resolveFileForView({ session, request: validated, signal }));
+          default: {
+            const exhaustive: never = validated;
+            throw new Error(`Unexpected file read: ${String(exhaustive)}`);
+          }
+          }
         },
       });
     },

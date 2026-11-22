@@ -3,7 +3,9 @@ import type {
   FileExplorerZipUploadPlacement,
   FileExplorerZipUploadPreviewEntry,
   FileExplorerZipUploadPreviewSummary,
+  FileViewFormat,
 } from '@/features/file-explorer/worker/types';
+import type { FileViewKind } from './file-view';
 import type { AllowedHtml } from '@/logic/security/allowedHtml';
 
 export type EntryKind = 'file' | 'directory';
@@ -181,6 +183,9 @@ export interface ClipboardState {
 export interface FileExplorerBinaryPreview {
   bytes: Uint8Array<ArrayBuffer>,
   partial: boolean,
+  size?: number | undefined,
+  lastModified?: number | undefined,
+  rangeReadable?: boolean | undefined,
 }
 
 export interface PreviewState {
@@ -197,6 +202,8 @@ export interface PreviewState {
   partial?: boolean,
   modelFile?: Blob | undefined,
   binaryPreview?: FileExplorerBinaryPreview | undefined,
+  kind?: FileViewKind | undefined,
+  format?: FileViewFormat | undefined,
 }
 
 export type DragState =
