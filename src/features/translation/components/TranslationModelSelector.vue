@@ -8,6 +8,7 @@ import type { RepositoryModelSelection } from '@/features/llama-cpp-browser/mode
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { translationModelSuggestions } from '@/features/translation/model-catalog';
 import { lazyStrings } from '@/strings';
+import { useRepositoryDownloadHint } from '@/composables/useRepositoryDownloadHint';
 
 const RepositoryPicker = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserRepositoryPicker.vue'));
 const FileImport = defineAsyncComponent(() => import('@/components/ModelSelectorFileImport.vue'));
@@ -30,6 +31,7 @@ const models = shallowRef<readonly LocalModel[]>([]);
 const added = shallowRef<readonly LocalModel[]>([]);
 const loading = ref(false);
 const inventoryFailed = ref(false);
+const hideFirstUseDownloadHint = useRepositoryDownloadHint({ selection: computed(() => props.pendingModel), usage: 'translation' });
 let scan: AbortController | undefined;
 
 const items = computed<ModelSelectorItem[]>(() => models.value.map(({ modelId }) => ({ id: modelId, label: modelId, description: undefined, availability: 'local' })));
@@ -126,7 +128,7 @@ defineExpose({ openPicker, closePicker, ...((__BUILD_MODE_IS_TEST__ && { TEST_ON
     trigger-size="compact"
     :model-value="pendingModel?.modelId ?? modelId"
     :selection-availability="pendingModel ? 'download_required' : undefined"
-    :hide-first-use-download-hint="acquiring"
+    :hide-first-use-download-hint="acquiring || hideFirstUseDownloadHint"
     :first-use-download-destination="pendingDestination"
     :models="items"
     :models-label="lazyStrings.ModelSelector__models_on_this_device()"

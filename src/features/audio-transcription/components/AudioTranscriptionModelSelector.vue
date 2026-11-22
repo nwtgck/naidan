@@ -92,7 +92,6 @@ const downloads = computed(() => {
 const showFirstUseDownloadHint = computed(() => {
   const model = selected.value;
   return model?.availability === 'download_required'
-    && props.models.downloadStates.value.get(model.id)?.status !== 'complete'
     && !downloads.value.get(model.id)?.active;
 });
 const isRefreshing = computed(() => props.models.refreshing.value);
