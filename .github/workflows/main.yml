@@ -758,7 +758,7 @@ jobs:
       - name: Pull the server build image
         run: docker pull node:22-bookworm
       - name: Set up Go
-        uses: actions/setup-go@v7.0.0
+        uses: actions/setup-go@v7.1.0
         with:
           go-version-file: naidan-server/go.mod
           cache: false
@@ -871,7 +871,7 @@ jobs:
       - name: Pull the server test image
         run: docker pull node:22-bookworm
       - name: Set up Go
-        uses: actions/setup-go@v7.0.0
+        uses: actions/setup-go@v7.1.0
         with:
           go-version-file: naidan-server/go.mod
           cache: false
