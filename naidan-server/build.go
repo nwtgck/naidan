@@ -1,12 +1,15 @@
+//go:build ignore
+
 package main
 
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"naidan-server/internal/packbuild"
 )
 
 type PackageJSON struct {
@@ -22,16 +25,20 @@ func main() {
 	}
 
 	src := filepath.Join("..", "dist", "hosted")
-	dst := "public"
+	dst := filepath.Join("packed", "assets.pack")
 
-	fmt.Printf("Cleaning up old assets in %s...\n", dst)
-	os.RemoveAll(dst)
-
-	fmt.Printf("Copying assets from %s to %s...\n", src, dst)
-	if err := copyDir(src, dst); err != nil {
-		fmt.Fprintf(os.Stderr, "Error copying assets: %v\n", err)
+	fmt.Printf("Packing assets from %s into %s...\n", src, dst)
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating asset directory: %v\n", err)
 		os.Exit(1)
 	}
+	stats, err := packbuild.Build(src, dst)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error packing assets: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Packed %d files (%d ZIPs): %d source bytes -> %d pack bytes (%d unique blocks)\n",
+		stats.Files, stats.ZIPFiles, stats.SourceBytes, stats.PackBytes, stats.UniqueBlocks)
 
 	if skipBuild {
 		fmt.Println("Asset preparation successful (build skipped)")
@@ -42,8 +49,8 @@ func main() {
 	fmt.Printf("Detected version: %s\n", version)
 
 	fmt.Println("Running go build...")
-	ldflags := fmt.Sprintf("-X main.version=%s", version)
-	cmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", "naidan-server", "main.go")
+	ldflags := fmt.Sprintf("-s -w -X main.version=%s", version)
+	cmd := exec.Command("go", "build", "-trimpath", "-ldflags", ldflags, "-o", "naidan-server", "main.go")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -64,49 +71,4 @@ func getVersion() string {
 		return "unknown"
 	}
 	return pkg.Version
-}
-
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-
-		target := filepath.Join(dst, rel)
-
-		if info.IsDir() {
-			return os.MkdirAll(target, info.Mode())
-		}
-
-		return copyFile(path, target)
-	})
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-
-	si, err := os.Stat(src)
-	if err != nil {
-		return err
-	}
-	return os.Chmod(dst, si.Mode())
 }
