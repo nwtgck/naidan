@@ -62,8 +62,9 @@ Download the Artifact ZIP from the same Actions run and hash it before
 extracting it. For example, run `sha256sum standalone-universal-package.zip`
 and compare the result with `workflow_artifacts.standalone-universal-package`
 in the verified YAML. The same check applies to `standalone-all-locale-packages`,
-`naidan-hosted`, `naidan-server-binary` and `full-dist-build`. Each hash covers
-the complete downloaded archive, including any debug files it contains.
+`naidan-hosted`, `naidan-server-binary-<attempt>`, `full-dist-build`, and the tagged
+`naidan-server-packages-<attempt>` artifact. Each hash covers the complete
+downloaded archive, including any debug files it contains.
 
 The source fingerprint is independent of Git's commit object hash. The commit
 is still a useful locator; compare the content fingerprint against a trusted
@@ -120,17 +121,22 @@ where Bash's automatic `errexit` behavior alone is insufficient.
    installation, then confirm that installation left the tracked source intact.
    Keep Git metadata and the source tooling read-only in the install and build
    containers.
-2. Record this run's source and the hashes of all Web ZIPs and hosted files.
-   The candidate job downloads the build from the same run and verifies that
-   receipt and those bytes. The Go server embeds the verified hosted files.
-3. For a branch push, stage the Web ZIPs and the Linux server binary already
-   produced by CI. For a tag push, build the full GoReleaser matrix offline
-   with `--skip=publish`, then stage the Web ZIPs, server archives, Linux
-   packages and `checksums.txt`. The tag sets the tagged build's version.
-   Branch builds use the version in `package.json`.
-4. Generate the YAML from the staged files inside the offline container.
-   The candidate job obtains an attestation for the exact YAML digest and
-   saves the staged assets, YAML and Sigstore bundle in one Actions Artifact.
+2. The Web build records this run's source and the hashes of all Web ZIPs and
+   hosted files. Cloudflare jobs can start once the Web and Docs builds finish.
+   Go race tests run offline in their own job without Web build inputs.
+3. The server build downloads the Web artifact by ID, verifies its receipt and
+   file hashes, and embeds the verified hosted files offline. Branch builds use
+   the version in `package.json`. Tag builds use GoReleaser with `--skip=publish`
+   and the tag version, and reuse its Linux amd64 executable for the CI binary
+   artifact. The server artifact names use the server job's run attempt, which
+   allows retries to upload new artifacts. The tag build transfers the server
+   archives, Linux packages, checksums, and GoReleaser artifact inventory to
+   the candidate job.
+4. The candidate job waits for the server build and tests. It downloads the Web
+   and applicable server artifacts by ID and checks their download digests. It
+   verifies the Web receipt and generates the YAML from the staged assets inside
+   the offline container. It then attests the exact YAML digest and saves the
+   staged assets, YAML and Sigstore bundle in one Actions Artifact.
 5. For a stable tag, the serialized release job downloads that exact
    candidate by Artifact ID. It checks for existing integrity evidence and
    unrelated Release Assets before uploading the staged files and their YAML.

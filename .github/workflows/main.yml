@@ -202,13 +202,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     outputs:
+      artifact-id: ${{ steps.full_dist_build.outputs.artifact-id }}
       artifact-digests: >-
         {
           "full-dist-build": "${{ steps.full_dist_build.outputs.artifact-digest }}",
           "standalone-universal-package": "${{ steps.standalone_universal.outputs.artifact-digest }}",
           "standalone-all-locale-packages": "${{ steps.standalone_locales.outputs.artifact-digest }}",
-          "naidan-hosted": "${{ steps.hosted.outputs.artifact-digest }}",
-          "naidan-server-binary": "${{ steps.server_binary.outputs.artifact-digest }}"
+          "naidan-hosted": "${{ steps.hosted.outputs.artifact-digest }}"
         }
     steps:
       - name: Checkout
@@ -251,7 +251,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=6144
         run: |
           # The build may generate TypeScript/router files in the checkout.
-          # Keep Go build scripts read-only for the separate server build.
+          # Keep committed release inputs and tools read-only.
           docker run --rm \
             --network none \
             --cap-drop=ALL \
@@ -266,47 +266,6 @@ jobs:
             -w /work \
             -e HOME=/tmp -e CI=true -e NODE_OPTIONS \
             node:22-bookworm npm run build:all
-
-      - name: Set up Go
-        uses: actions/setup-go@v7.0.0
-        with:
-          go-version-file: naidan-server/go.mod
-          cache: false
-
-      - name: Download Go modules
-        working-directory: naidan-server
-        env:
-          GOMODCACHE: ${{ runner.temp }}/naidan-go-mod
-          GOTOOLCHAIN: local
-        run: |
-          git --no-replace-objects cat-file -e "$GITHUB_SHA:naidan-server/go.sum"
-          go mod download
-          git --no-replace-objects diff --exit-code --no-ext-diff "$GITHUB_SHA" -- go.mod go.sum
-
-      - name: Verify naidan-server build
-        run: |
-          # Validate the hosted build before packing it into the executable.
-          # The packer also rejects source symlinks and non-regular files.
-          test -d dist/hosted
-          test ! -L dist
-          test ! -L dist/hosted
-          UNSAFE_ASSET="$(find dist/hosted ! -type f ! -type d -print -quit)"
-          if [ -n "$UNSAFE_ASSET" ]; then
-            echo "::error::Unsafe hosted build asset: $UNSAFE_ASSET"
-            exit 1
-          fi
-          mkdir "$RUNNER_TEMP/naidan-go"
-          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
-            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev \
-            --mount "type=bind,source=$PWD,target=/work,readonly" \
-            --mount "type=bind,source=$PWD/naidan-server,target=/work/naidan-server" \
-            --mount "type=bind,source=$(go env GOROOT),target=/goroot,readonly" \
-            --mount "type=bind,source=$RUNNER_TEMP/naidan-go-mod,target=/gomod,readonly" \
-            --mount "type=bind,source=$RUNNER_TEMP/naidan-go,target=/scratch" \
-            -w /work/naidan-server -e HOME=/tmp -e GOROOT=/goroot -e GOTOOLCHAIN=local \
-            -e GOMODCACHE=/gomod -e GOPROXY=off \
-            -e GOCACHE=/scratch/cache -e GOTMPDIR=/scratch \
-            node:22-bookworm bash -euc 'export PATH="/goroot/bin:$PATH"; go run build.go'
 
       - name: Verify individual artifact inputs
         run: |
@@ -383,16 +342,6 @@ jobs:
           path: |
             dist/naidan-hosted.zip
             dist/debug-tailwind-hosted/
-          if-no-files-found: error
-
-      - name: Upload naidan-server binary artifact
-        id: server_binary
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: naidan-server-binary
-          path: |
-            naidan-server/naidan-server
-            naidan-server/THIRD-PARTY-NOTICES.txt
           if-no-files-found: error
 
   build_docs:
@@ -788,6 +737,167 @@ jobs:
               target_url: "${{ steps.cloudflare_pages_deploy_curated.outputs.deployment-url }}",
             });
 
+  build_naidan_server:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      binary-artifact-id: ${{ steps.server_binary.outputs.artifact-id }}
+      binary-artifact-digest: ${{ steps.server_binary.outputs.artifact-digest }}
+      binary-artifact-name: naidan-server-binary-${{ github.run_attempt }}
+      packages-artifact-id: ${{ steps.server_packages.outputs.artifact-id }}
+      packages-artifact-digest: ${{ steps.server_packages.outputs.artifact-digest }}
+      packages-artifact-name: naidan-server-packages-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Pull the server build image
+        run: docker pull node:22-bookworm
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: naidan-server/go.mod
+          cache: false
+      - name: Download Go modules
+        working-directory: naidan-server
+        env:
+          GOMODCACHE: ${{ runner.temp }}/naidan-go-mod
+          GOTOOLCHAIN: local
+        run: |
+          git --no-replace-objects cat-file -e "$GITHUB_SHA:naidan-server/go.sum"
+          go mod download
+          git --no-replace-objects diff --exit-code --no-ext-diff "$GITHUB_SHA" -- go.mod go.sum
+      - name: Acquire GoReleaser
+        if: github.ref_type == 'tag'
+        uses: goreleaser/goreleaser-action@v7.3.0
+        with:
+          distribution: goreleaser
+          version: v2.7.0
+          install-only: true
+      - name: Download the web build
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          digest-mismatch: error
+          path: dist
+      - name: Verify the web build from this run
+        run: |
+          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" \
+            --mount "type=bind,source=$PWD,target=/work,readonly" -w /work \
+            -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT \
+            node:22-bookworm node scripts/release-integrity.mjs verify-build dist/naidan-build-receipt.json
+      - name: Prepare Go build scratch space
+        run: mkdir "$RUNNER_TEMP/naidan-go"
+      - name: Build the branch server binary
+        if: github.ref_type == 'branch'
+        run: |
+          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev \
+            --mount "type=bind,source=$PWD,target=/work,readonly" \
+            --mount "type=bind,source=$PWD/naidan-server,target=/work/naidan-server" \
+            --mount "type=bind,source=$(go env GOROOT),target=/goroot,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/naidan-go-mod,target=/gomod,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/naidan-go,target=/scratch" \
+            -w /work/naidan-server -e HOME=/tmp -e GOROOT=/goroot -e GOTOOLCHAIN=local \
+            -e GOMODCACHE=/gomod -e GOPROXY=off \
+            -e GOCACHE=/scratch/cache -e GOTMPDIR=/scratch \
+            node:22-bookworm bash -euc 'export PATH="/goroot/bin:$PATH"; go run build.go'
+      - name: Package server targets for this tag
+        if: github.ref_type == 'tag'
+        run: |
+          # GoReleaser writes its output under dist and runs a temporary Go binary.
+          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev \
+            --mount "type=bind,source=$PWD,target=/work,readonly" \
+            --mount "type=bind,source=$PWD/naidan-server,target=/work/naidan-server" \
+            --mount "type=bind,source=$PWD/dist,target=/work/dist" \
+            --mount "type=bind,source=$PWD/dist/hosted,target=/work/dist/hosted,readonly" \
+            --mount "type=bind,source=$(go env GOROOT),target=/goroot,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/naidan-go-mod,target=/gomod,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/naidan-go,target=/scratch" \
+            --mount "type=bind,source=$(command -v goreleaser),target=/usr/local/bin/goreleaser,readonly" \
+            -w /work -e HOME=/tmp -e GOROOT=/goroot -e GOTOOLCHAIN=local \
+            -e GOMODCACHE=/gomod -e GOPROXY=off \
+            -e GOCACHE=/scratch/cache -e GOTMPDIR=/scratch \
+            node:22-bookworm bash -euc 'export PATH="/goroot/bin:$PATH"; goreleaser release --skip=publish --clean'
+      - name: Reuse the tagged Linux binary for the CI artifact
+        if: github.ref_type == 'tag'
+        run: |
+          binary="$(jq -er '
+            [ .[] | select(.type == "Binary" and .goos == "linux" and .goarch == "amd64"
+              and (.goamd64 // "v1") == "v1" and .name == "naidan-server") | .path ]
+            | if length == 1 then .[0] else error("Expected one Linux amd64 server binary") end
+          ' dist/goreleaser-dist/artifacts.json)"
+          cp -- "$binary" naidan-server/naidan-server
+      - name: Upload tagged server packages
+        if: github.ref_type == 'tag'
+        id: server_packages
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: naidan-server-packages-${{ github.run_attempt }}
+          path: |
+            dist/goreleaser-dist/artifacts.json
+            dist/goreleaser-dist/checksums.txt
+            dist/goreleaser-dist/naidan-server-*.tar.gz
+            dist/goreleaser-dist/naidan-server-*.zip
+            dist/goreleaser-dist/naidan-server-*.deb
+            dist/goreleaser-dist/naidan-server-*.rpm
+          if-no-files-found: error
+          compression-level: 0
+      - name: Upload naidan-server binary artifact
+        id: server_binary
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: naidan-server-binary-${{ github.run_attempt }}
+          path: |
+            naidan-server/naidan-server
+            naidan-server/THIRD-PARTY-NOTICES.txt
+          if-no-files-found: error
+
+  test_naidan_server:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Pull the server test image
+        run: docker pull node:22-bookworm
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: naidan-server/go.mod
+          cache: false
+      - name: Download Go modules
+        working-directory: naidan-server
+        env:
+          GOMODCACHE: ${{ runner.temp }}/naidan-go-mod
+          GOTOOLCHAIN: local
+        run: |
+          git --no-replace-objects cat-file -e "$GITHUB_SHA:naidan-server/go.sum"
+          go mod download
+          git --no-replace-objects diff --exit-code --no-ext-diff "$GITHUB_SHA" -- go.mod go.sum
+      - name: Test the server offline with the race detector
+        run: |
+          mkdir "$RUNNER_TEMP/naidan-go"
+          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev \
+            --mount "type=bind,source=$PWD/naidan-server,target=/server,readonly" \
+            --mount "type=bind,source=$(go env GOROOT),target=/goroot,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/naidan-go-mod,target=/gomod,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/naidan-go,target=/scratch" \
+            -w /server -e HOME=/tmp -e GOROOT=/goroot -e GOTOOLCHAIN=local \
+            -e GOMODCACHE=/gomod -e GOPROXY=off -e CGO_ENABLED=1 \
+            -e GOCACHE=/scratch/cache -e GOTMPDIR=/scratch \
+            node:22-bookworm /goroot/bin/go test -race ./internal/packedfs ./internal/packbuild
+
   test_release_tooling:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -821,7 +931,7 @@ jobs:
             node:22-bookworm node --test scripts/tests/*.test.mjs
 
   prepare_release:
-    needs: [build, test_release_tooling]
+    needs: [build, build_naidan_server, test_naidan_server, test_release_tooling]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -838,14 +948,23 @@ jobs:
       - name: Download the web build
         uses: actions/download-artifact@v8.0.2
         with:
-          name: full-dist-build
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          digest-mismatch: error
           path: dist
       - name: Download the CI server binary
         if: github.ref_type == 'branch'
         uses: actions/download-artifact@v8.0.2
         with:
-          name: naidan-server-binary
+          artifact-ids: ${{ needs.build_naidan_server.outputs.binary-artifact-id }}
+          digest-mismatch: error
           path: dist/ci-server
+      - name: Download tagged server packages
+        if: github.ref_type == 'tag'
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.build_naidan_server.outputs.packages-artifact-id }}
+          digest-mismatch: error
+          path: dist/goreleaser-dist
       - name: Pull the release tooling image
         run: docker pull node:22-bookworm
       - name: Verify the web build from this run
@@ -855,51 +974,24 @@ jobs:
             --mount "type=bind,source=$PWD,target=/work,readonly" -w /work \
             -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT \
             node:22-bookworm node scripts/release-integrity.mjs verify-build dist/naidan-build-receipt.json
-      - name: Acquire Go
-        if: github.ref_type == 'tag'
-        uses: actions/setup-go@v7.0.0
-        with:
-          go-version-file: naidan-server/go.mod
-          cache: false
-      - name: Download Go modules
-        if: github.ref_type == 'tag'
-        working-directory: naidan-server
-        env:
-          GOMODCACHE: ${{ runner.temp }}/naidan-go-mod
-          GOTOOLCHAIN: local
-        run: |
-          git --no-replace-objects cat-file -e "$GITHUB_SHA:naidan-server/go.sum"
-          go mod download
-          git --no-replace-objects diff --exit-code --no-ext-diff "$GITHUB_SHA" -- go.mod go.sum
-      - name: Acquire GoReleaser
-        if: github.ref_type == 'tag'
-        uses: goreleaser/goreleaser-action@v7.3.0
-        with:
-          distribution: goreleaser
-          version: v2.7.0
-          install-only: true
-      - name: Package server targets for this tag
-        if: github.ref_type == 'tag'
-        run: |
-          # GoReleaser's before hook executes a temporary Go binary.
-          docker run --rm --pull=never --network none --read-only --cap-drop=ALL \
-            --security-opt=no-new-privileges:true --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev \
-            --mount "type=bind,source=$PWD,target=/work,readonly" \
-            --mount "type=bind,source=$PWD/naidan-server,target=/work/naidan-server" \
-            --mount "type=bind,source=$PWD/dist,target=/work/dist" \
-            --mount "type=bind,source=$(go env GOROOT),target=/goroot,readonly" \
-            --mount "type=bind,source=$RUNNER_TEMP/naidan-go-mod,target=/gomod,readonly" \
-            --mount "type=bind,source=$(command -v goreleaser),target=/usr/local/bin/goreleaser,readonly" \
-            -w /work -e HOME=/tmp -e GOROOT=/goroot -e GOTOOLCHAIN=local \
-            -e GOMODCACHE=/gomod -e GOPROXY=off \
-            -e GOCACHE=/work/dist/go-cache -e GOTMPDIR=/work/dist \
-            node:22-bookworm bash -euc 'export PATH="/goroot/bin:$PATH"; goreleaser release --skip=publish --clean'
-
       - name: Assemble the release candidate and freeze its YAML
         id: prepare
         env:
-          NAIDAN_WORKFLOW_ARTIFACTS: ${{ needs.build.outputs.artifact-digests }}
+          WEB_ARTIFACT_DIGESTS: ${{ needs.build.outputs.artifact-digests }}
+          SERVER_BINARY_DIGEST: ${{ needs.build_naidan_server.outputs.binary-artifact-digest }}
+          SERVER_BINARY_NAME: ${{ needs.build_naidan_server.outputs.binary-artifact-name }}
+          SERVER_PACKAGES_DIGEST: ${{ needs.build_naidan_server.outputs.packages-artifact-digest }}
+          SERVER_PACKAGES_NAME: ${{ needs.build_naidan_server.outputs.packages-artifact-name }}
         run: |
+          NAIDAN_WORKFLOW_ARTIFACTS="$(
+            jq -c --arg ref_type "$GITHUB_REF_TYPE" \
+              --arg binary_name "$SERVER_BINARY_NAME" --arg binary "$SERVER_BINARY_DIGEST" \
+              --arg packages_name "$SERVER_PACKAGES_NAME" --arg packages "$SERVER_PACKAGES_DIGEST" '
+              . + {($binary_name): $binary}
+                + (if $ref_type == "tag" then {($packages_name): $packages} else {} end)
+            ' <<< "$WEB_ARTIFACT_DIGESTS"
+          )"
+          export NAIDAN_WORKFLOW_ARTIFACTS
           mkdir "$RUNNER_TEMP/distribution"
           sha256="$(
             docker run --rm --pull=never --network none --read-only --cap-drop=ALL \

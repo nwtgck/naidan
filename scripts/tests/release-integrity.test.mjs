@@ -24,7 +24,7 @@ const workflowArtifacts = {
   'standalone-universal-package': '2'.repeat(64),
   'standalone-all-locale-packages': '3'.repeat(64),
   'naidan-hosted': '4'.repeat(64),
-  'naidan-server-binary': '5'.repeat(64),
+  'naidan-server-binary-2': '5'.repeat(64),
 };
 const source = () => ({repository: 'https://github.com/nwtgck/naidan', commit: 'a'.repeat(40),
   run_id: '1234', build_attempt: '1', tree_fingerprint: {algorithm: 'sha256', scheme: fingerprintScheme, value: 'b'.repeat(64)}});
