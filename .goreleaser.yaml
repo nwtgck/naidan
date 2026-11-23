@@ -16,8 +16,10 @@ builds:
       - CGO_ENABLED=0
     dir: ./naidan-server
     main: ./main.go
+    flags:
+      - -trimpath
     ldflags:
-      - -X main.version={{.Version}}
+      - -s -w -X main.version={{.Version}}
     goos:
       - linux
       - windows
@@ -40,6 +42,13 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - src: naidan-server/THIRD-PARTY-NOTICES.txt
+        dst: .
+        strip_parent: true
 
 nfpms:
   - file_name_template: "{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
@@ -49,6 +58,9 @@ nfpms:
       - deb
       - rpm
     license: MIT
+    contents:
+      - src: naidan-server/THIRD-PARTY-NOTICES.txt
+        dst: /usr/share/doc/naidan-server/THIRD-PARTY-NOTICES.txt
 
 checksum:
   name_template: 'checksums.txt'

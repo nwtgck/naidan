@@ -319,14 +319,21 @@ it('shares the signed candidate across branch builds and both Release destinatio
   assert.match(candidate, /id-token: write/);
   assert.match(candidate, /attestations: write/);
   for (const step of candidate.split(/^      - name:/m)) {
-    if (/uses: .*setup-go@|uses: .*goreleaser-action@|goreleaser release/.test(step)) {
+    if (/uses: .*setup-go@|uses: .*goreleaser-action@|go mod download|goreleaser release/.test(step)) {
       assert.match(step, /if: github\.ref_type == 'tag'/);
     }
     if (/id: (prepare|attest|distribution)\b/.test(step)) {
       assert.doesNotMatch(step, /\n        if:/);
     }
   }
-  assert.match(candidate, /--network none[\s\S]*goreleaser release --skip=publish --clean/);
+  const serverModules = candidate.split('name: Download Go modules')[1].split('name: Acquire GoReleaser')[0];
+  const serverPackage = candidate.split('name: Package server targets for this tag')[1].split('name: Assemble the release candidate')[0];
+  assert.match(serverModules, /working-directory: naidan-server[\s\S]*GOMODCACHE: \$\{\{ runner\.temp \}\}\/naidan-go-mod[\s\S]*go mod download/);
+  assert.match(serverModules, /cat-file -e "\$GITHUB_SHA:naidan-server\/go\.sum"\n +go mod download\n +git --no-replace-objects diff --exit-code --no-ext-diff "\$GITHUB_SHA" -- go\.mod go\.sum/);
+  assert.ok(candidate.indexOf('go mod download') < candidate.indexOf('name: Package server targets for this tag'));
+  assert.match(serverPackage, /--network none[\s\S]*goreleaser release --skip=publish --clean/);
+  assert.match(serverPackage, /source=\$RUNNER_TEMP\/naidan-go-mod,target=\/gomod,readonly/);
+  assert.match(serverPackage, /-e GOMODCACHE=\/gomod -e GOPROXY=off/);
   assert.match(candidate, /GOTMPDIR=\/work\/dist/);
   assert.match(candidate, /subject-digest: sha256:\$\{\{ steps\.prepare\.outputs\.sha256 \}\}/);
   assert.match(candidate, /attestation-url: \$\{\{ steps\.attest\.outputs\.attestation-url \}\}/);
@@ -348,6 +355,14 @@ it('shares the signed candidate across branch builds and both Release destinatio
   assert.match(prerelease, /commits\/refs%2Ftags%2F\$TAG"\)" = "\$GITHUB_SHA"/);
   assert.match(prerelease, /distribution\/naidan-release-integrity\.yaml/);
   assert.doesNotMatch(publications, /attestations: write|goreleaser|actions\/attest/);
+});
+
+it('includes the published changelog in server archives without collecting unreleased drafts', async () => {
+  const config = await readFile(new URL('.goreleaser.yaml', root), 'utf8');
+  const archiveFiles = config.match(/^archives:\n[\s\S]*?^    files:\n((?:^ {6,}.+\n)+)/m)?.[1];
+  assert.ok(archiveFiles);
+  const sources = [...archiveFiles.matchAll(/^ {6}- (?:src: )?(.+)$/gm)].map(match => match[1]);
+  assert.deepEqual(sources.sort(), ['CHANGELOG.md', 'LICENSE', 'README.md', 'naidan-server/THIRD-PARTY-NOTICES.txt']);
 });
 
 it('publishes prerelease notes with the build attestation when no changelog is present', async t => {
@@ -433,7 +448,13 @@ it('protects host publication tooling and Git state across dependency installati
   assert.ok(build.indexOf('rev-parse HEAD)" = "$GITHUB_SHA"') < build.indexOf('name: Run build'));
   assert.ok(build.includes('diff --quiet --no-ext-diff "$GITHUB_SHA" --'));
   assert.ok(build.indexOf('seal-build') < build.indexOf('name: Upload full dist build artifact'));
+  const serverModules = build.split('name: Download Go modules')[1].split('name: Verify naidan-server build')[0];
   const server = build.split('name: Verify naidan-server build')[1].split('name: Verify individual artifact inputs')[0];
+  assert.match(serverModules, /working-directory: naidan-server[\s\S]*GOMODCACHE: \$\{\{ runner\.temp \}\}\/naidan-go-mod[\s\S]*go mod download/);
+  assert.match(serverModules, /cat-file -e "\$GITHUB_SHA:naidan-server\/go\.sum"\n +go mod download\n +git --no-replace-objects diff --exit-code --no-ext-diff "\$GITHUB_SHA" -- go\.mod go\.sum/);
+  assert.ok(build.indexOf('go mod download') < build.indexOf('name: Verify naidan-server build'));
   assert.match(server, /--pull=never --network none[\s\S]*go run build\.go/);
+  assert.match(server, /source=\$RUNNER_TEMP\/naidan-go-mod,target=\/gomod,readonly/);
+  assert.match(server, /-e GOMODCACHE=\/gomod -e GOPROXY=off/);
   assert.match(server, /GOTMPDIR=\/scratch/);
 });

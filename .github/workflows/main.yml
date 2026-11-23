@@ -273,10 +273,20 @@ jobs:
           go-version-file: naidan-server/go.mod
           cache: false
 
+      - name: Download Go modules
+        working-directory: naidan-server
+        env:
+          GOMODCACHE: ${{ runner.temp }}/naidan-go-mod
+          GOTOOLCHAIN: local
+        run: |
+          git --no-replace-objects cat-file -e "$GITHUB_SHA:naidan-server/go.sum"
+          go mod download
+          git --no-replace-objects diff --exit-code --no-ext-diff "$GITHUB_SHA" -- go.mod go.sum
+
       - name: Verify naidan-server build
         run: |
-          # build.go copies hosted assets as files and follows source symlinks.
-          # Reject non-regular entries before copying the hosted build.
+          # Validate the hosted build before packing it into the executable.
+          # The packer also rejects source symlinks and non-regular files.
           test -d dist/hosted
           test ! -L dist
           test ! -L dist/hosted
@@ -291,8 +301,10 @@ jobs:
             --mount "type=bind,source=$PWD,target=/work,readonly" \
             --mount "type=bind,source=$PWD/naidan-server,target=/work/naidan-server" \
             --mount "type=bind,source=$(go env GOROOT),target=/goroot,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/naidan-go-mod,target=/gomod,readonly" \
             --mount "type=bind,source=$RUNNER_TEMP/naidan-go,target=/scratch" \
             -w /work/naidan-server -e HOME=/tmp -e GOROOT=/goroot -e GOTOOLCHAIN=local \
+            -e GOMODCACHE=/gomod -e GOPROXY=off \
             -e GOCACHE=/scratch/cache -e GOTMPDIR=/scratch \
             node:22-bookworm bash -euc 'export PATH="/goroot/bin:$PATH"; go run build.go'
 
@@ -378,7 +390,9 @@ jobs:
         uses: actions/upload-artifact@v7.0.2
         with:
           name: naidan-server-binary
-          path: naidan-server/naidan-server
+          path: |
+            naidan-server/naidan-server
+            naidan-server/THIRD-PARTY-NOTICES.txt
           if-no-files-found: error
 
   build_docs:
@@ -847,6 +861,16 @@ jobs:
         with:
           go-version-file: naidan-server/go.mod
           cache: false
+      - name: Download Go modules
+        if: github.ref_type == 'tag'
+        working-directory: naidan-server
+        env:
+          GOMODCACHE: ${{ runner.temp }}/naidan-go-mod
+          GOTOOLCHAIN: local
+        run: |
+          git --no-replace-objects cat-file -e "$GITHUB_SHA:naidan-server/go.sum"
+          go mod download
+          git --no-replace-objects diff --exit-code --no-ext-diff "$GITHUB_SHA" -- go.mod go.sum
       - name: Acquire GoReleaser
         if: github.ref_type == 'tag'
         uses: goreleaser/goreleaser-action@v7.3.0
@@ -864,8 +888,10 @@ jobs:
             --mount "type=bind,source=$PWD/naidan-server,target=/work/naidan-server" \
             --mount "type=bind,source=$PWD/dist,target=/work/dist" \
             --mount "type=bind,source=$(go env GOROOT),target=/goroot,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/naidan-go-mod,target=/gomod,readonly" \
             --mount "type=bind,source=$(command -v goreleaser),target=/usr/local/bin/goreleaser,readonly" \
             -w /work -e HOME=/tmp -e GOROOT=/goroot -e GOTOOLCHAIN=local \
+            -e GOMODCACHE=/gomod -e GOPROXY=off \
             -e GOCACHE=/work/dist/go-cache -e GOTMPDIR=/work/dist \
             node:22-bookworm bash -euc 'export PATH="/goroot/bin:$PATH"; goreleaser release --skip=publish --clean'
 

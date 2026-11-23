@@ -48,6 +48,7 @@ After successful attestation verification:
    download, compare the selected files' entries.
    To run the verified Linux server binary from a branch Artifact, restore its
    executable bit from the extracted candidate root with `chmod +x assets/naidan-server`.
+   Keep `assets/naidan-server-THIRD-PARTY-NOTICES.txt` with the binary when redistributing it.
 3. To check the source, recursively check out `source.commit` and run the
    `source.tree_fingerprint.reproduce` block from that checkout's root.
    Compare its output with `source.tree_fingerprint.value`.
