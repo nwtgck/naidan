@@ -88,6 +88,34 @@ describe('wesh readlink', () => {
     expect(result.exitCode).toBe(1);
   });
 
+  it('reads the link in the real parent after a symlink component', async () => {
+    const tree = await rootHandle.getDirectoryHandle('tree', { create: true });
+    await tree.getDirectoryHandle('inner', { create: true });
+    await wesh.vfs.symlink({ path: '/up', targetPath: 'tree/inner' });
+    await wesh.vfs.symlink({ path: '/tree/chosen', targetPath: 'inside' });
+    await wesh.vfs.symlink({ path: '/chosen', targetPath: 'outside' });
+
+    const read = await execute({ script: 'readlink up/../chosen' });
+    expect(read.result.exitCode).toBe(0);
+    expect(read.stdout.text).toBe('inside\n');
+    expect(read.stderr.text).toBe('');
+  });
+
+  it('requires a directory at a trailing slash in an existing symlink target', async () => {
+    await writeFile({ path: 'regular', data: 'file' });
+    await wesh.vfs.symlink({ path: '/slash', targetPath: 'regular/' });
+
+    const existing = await execute({ script: 'readlink -e slash' });
+    const missingLeaf = await execute({ script: 'readlink -f slash' });
+    const missing = await execute({ script: 'readlink -m slash' });
+    expect(existing.result.exitCode).toBe(1);
+    expect(existing.stdout.text).toBe('');
+    expect(missingLeaf.result.exitCode).toBe(1);
+    expect(missingLeaf.stdout.text).toBe('');
+    expect(missing.result.exitCode).toBe(0);
+    expect(missing.stdout.text).toBe('/regular\n');
+  });
+
   it('accepts GNU quiet and silent option aliases without suppressing successful output', async () => {
     await wesh.vfs.symlink({ path: '/alias.txt', targetPath: '/target.txt' });
 
@@ -334,6 +362,20 @@ dir/file.txt
     expect(fileSuffix.stdout.text).toBe('/plain/leaf\n');
     expect(fileSuffix.stderr.text).toBe('');
     expect(fileSuffix.result.exitCode).toBe(0);
+  });
+
+  it('allows a missing leaf with a trailing slash in missing-leaf mode', async () => {
+    await wesh.vfs.symlink({ path: '/dangling', targetPath: 'absent' });
+
+    const missing = await execute({ script: 'readlink -f absent/ dangling/' });
+    const existing = await execute({ script: 'readlink -e absent/ dangling/' });
+    expect(missing.result.exitCode).toBe(0);
+    expect(missing.stdout.text).toBe(`\
+/absent
+/absent
+`);
+    expect(existing.result.exitCode).toBe(1);
+    expect(existing.stdout.text).toBe('');
   });
 
   it('stops argv processing when --help is reached before a later invalid option', async () => {

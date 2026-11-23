@@ -1,17 +1,8 @@
 const closedRaceResult = Symbol('closedRaceResult');
 
 export class WeshHandleCloseSignal {
-  private readonly closePromise: Promise<void>;
-  private readonly closeRacePromise: Promise<typeof closedRaceResult>;
-  private resolveClosePromise: (() => void) | undefined;
+  private waiters: Set<() => void> | undefined;
   private isClosed = false;
-
-  constructor() {
-    this.closePromise = new Promise<void>(resolve => {
-      this.resolveClosePromise = resolve;
-    });
-    this.closeRacePromise = this.closePromise.then(() => closedRaceResult);
-  }
 
   get closed(): boolean {
     return this.isClosed;
@@ -22,8 +13,19 @@ export class WeshHandleCloseSignal {
       return;
     }
     this.isClosed = true;
-    this.resolveClosePromise?.();
-    this.resolveClosePromise = undefined;
+    const waiters = this.waiters;
+    this.waiters = undefined;
+    if (waiters === undefined || waiters.size === 0) {
+      return;
+    }
+    // Deliver close after the I/O reactions queued in this turn, as with
+    // the previous race against a Promise derived from the close request.
+    queueMicrotask(() => queueMicrotask(() => {
+      for (const notify of waiters) {
+        notify();
+      }
+      waiters.clear();
+    }));
   }
 
   async raceWithClose<T>({ operation, buildClosedResult }: {
@@ -31,13 +33,27 @@ export class WeshHandleCloseSignal {
     buildClosedResult: () => T,
   }): Promise<T> {
     if (this.isClosed) {
+      void operation.catch(() => {});
       return buildClosedResult();
     }
 
-    const result = await Promise.race([
-      operation as Promise<T | typeof closedRaceResult>,
-      this.closeRacePromise as Promise<T | typeof closedRaceResult>,
-    ]);
+    // Racing every operation against one pending Promise retains all of its
+    // reactions until close. Release each notification when its I/O settles.
+    const waiters = this.waiters ??= new Set();
+    const result = await new Promise<T | typeof closedRaceResult>((resolve, reject) => {
+      const notify = () => resolve(closedRaceResult);
+      waiters.add(notify);
+      void operation.then(
+        value => {
+          waiters.delete(notify);
+          resolve(value);
+        },
+        error => {
+          waiters.delete(notify);
+          reject(error);
+        },
+      );
+    });
     if (result === closedRaceResult) {
       return buildClosedResult();
     }

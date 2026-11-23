@@ -11,7 +11,7 @@ import { resolveContentConfigForContext } from "@/features/wesh/commands/git/con
 import { collectStatus } from "@/features/wesh/commands/git/status";
 import { printLongStatus } from "@/features/wesh/commands/git/status-output";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { analyzeArgvLongForm, analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvLongForm, analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv';
 
 type StashPushShortSemantic = 'include-untracked' | 'message';
 type StashApplySemantic = 'loud' | 'quiet' | 'restore-index' | 'skip-index';
@@ -198,7 +198,12 @@ export async function runStash({ context, args }: {
     }
     const index = parseStashIndex({ expression: operands[0] });
     const dropped = await dropStash({ files: context.files, repository, index });
-    await context.text().print({ text: `Dropped stash@{${index}} (${dropped.objectId})\n` });
+    if (dropped === undefined) {
+      await context.text().error({ text: 'No stash entries found.\n' });
+      return { exitCode: 1 };
+    }
+    const ref = operands[0] === undefined ? 'refs/stash' : 'stash';
+    await context.text().print({ text: `Dropped ${ref}@{${index}} (${dropped.objectId})\n` });
     return { exitCode: 0 };
   }
   case 'clear':
@@ -334,11 +339,16 @@ export async function runStash({ context, args }: {
       await context.text().error({ text: `Too many revisions specified: ${operands.map(operand => `'${operand}'`).join(' ')}\n` });
       return { exitCode: 1 };
     }
-    const stashIndex = parseStashIndex({ expression: operands[0] });
-    const applied = await applyStash({
+    const selection = await resolveStash({ files: context.files, repository, expression: operands[0] });
+    if (selection === undefined) {
+      await context.text().error({ text: 'No stash entries found.\n' });
+      return { exitCode: 1 };
+    }
+    const { stash, snapshot } = selection;
+    await applyStash({
       files: context.files,
       repository,
-      expression: operands[0],
+      objectId: stash.objectId,
       restoreIndex,
       contentConfig: await resolveContentConfigForContext({ context, repository }),
     });
@@ -348,12 +358,17 @@ export async function runStash({ context, args }: {
     switch (subcommand) {
     case 'apply':
       break;
-    case 'pop':
-      await dropStash({ files: context.files, repository, index: stashIndex });
+    case 'pop': {
+      const dropped = await dropStash({ files: context.files, repository, index: stash.index, expected: snapshot });
+      if (dropped === undefined) {
+        await context.text().error({ text: 'error: stash changed after apply, skipped drop\n' });
+        return { exitCode: 1 };
+      }
       if (!quiet) {
-        await context.text().print({ text: `Dropped refs/stash@{${stashIndex}} (${applied.objectId})\n` });
+        await context.text().print({ text: `Dropped refs/stash@{${stash.index}} (${stash.objectId})\n` });
       }
       break;
+    }
     default: {
       const _ex: never = subcommand;
       throw new Error(`Unhandled stash apply command: ${_ex}`);
@@ -427,7 +442,12 @@ export async function runStash({ context, args }: {
       }
       expression = arg;
     }
-    const stash = await resolveStash({ files: context.files, repository, expression });
+    const selection = await resolveStash({ files: context.files, repository, expression });
+    if (selection === undefined) {
+      await context.text().error({ text: 'No stash entries found.\n' });
+      return { exitCode: 1 };
+    }
+    const { stash } = selection;
     const commit = await readCommit({ files: context.files, repository, objectId: stash.objectId });
     const baseObjectId = commit.parentObjectIds[0];
     if (baseObjectId === undefined) {

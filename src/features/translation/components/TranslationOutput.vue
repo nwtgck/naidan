@@ -9,6 +9,7 @@ const props = defineProps<{
   state: 'pending' | 'streaming' | 'settled' | 'failed',
   label: string | undefined,
   placeholder: string | undefined,
+  compact?: boolean,
 }>();
 const panel = ref<HTMLElement>();
 const back = ref<HTMLElement>();
@@ -21,6 +22,8 @@ const retainedHeight = ref<number>();
 const reduceMotion = ref(false);
 const showPreviousForAccessibility = computed(() => !props.text && props.previousText);
 let frame: number | undefined;
+let view: Window | undefined;
+let fonts: FontFaceSet | undefined;
 let observer: ResizeObserver | undefined;
 let media: MediaQueryList | undefined;
 let mounted = false, disposed = false;
@@ -33,13 +36,13 @@ const overlapMs = 65, fadeMs = 130;
 
 function schedule(): void {
   if (mounted && !disposed && frame === undefined) {
-    frame = requestAnimationFrame(now => paint({ now }));
+    frame = view?.requestAnimationFrame(now => paint({ now }));
   }
 }
 
 function resetLayers(): void {
   if (frame !== undefined) {
-    cancelAnimationFrame(frame);
+    view?.cancelAnimationFrame(frame);
   }
   frame = undefined;
   due.clear();
@@ -64,8 +67,8 @@ function resetLayers(): void {
   void nextTick().then(schedule);
 }
 
-function rectangles({ element, origin }: { element: HTMLElement, origin: DOMRect }): TextRectangle[] {
-  const range = document.createRange();
+function rectangles({ element, origin }: { element: Element, origin: DOMRect }): TextRectangle[] {
+  const range = element.ownerDocument.createRange();
   range.selectNodeContents(element);
   // Some DOM-only test environments do not implement layout measurement.
   if (typeof range.getClientRects !== 'function') {
@@ -108,7 +111,7 @@ function paint({ now }: { now: number }): void {
     while (geometry.length < glyphs.value.length) {
       const index = geometry.length;
       const element = back.value.children[index];
-      if (!(element instanceof HTMLElement)) {
+      if (element === undefined) {
         break;
       }
       const boxes = rectangles({ element, origin });
@@ -179,7 +182,10 @@ watch([() => props.text, () => props.state], () => {
 }, { flush: 'post' });
 onMounted(() => {
   mounted = true;
-  media = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  const owner = panel.value?.ownerDocument;
+  view = owner?.defaultView ?? window;
+  fonts = owner?.fonts;
+  media = view.matchMedia?.('(prefers-reduced-motion: reduce)');
   motionChanged();
   media?.addEventListener('change', motionChanged);
   if (typeof ResizeObserver !== 'undefined') {
@@ -189,17 +195,17 @@ onMounted(() => {
     }
   }
   // Font loading can change glyph widths without changing the panel's width.
-  document.fonts?.addEventListener('loadingdone', resized);
+  fonts?.addEventListener('loadingdone', resized);
   schedule();
 });
 onScopeDispose(() => {
   disposed = true;
   if (frame !== undefined) {
-    cancelAnimationFrame(frame);
+    view?.cancelAnimationFrame(frame);
   }
   observer?.disconnect();
   media?.removeEventListener('change', motionChanged);
-  document.fonts?.removeEventListener('loadingdone', resized);
+  fonts?.removeEventListener('loadingdone', resized);
   due.clear();
 });
 
@@ -210,7 +216,7 @@ function focus(): void {
 defineExpose({ focus, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <pre ref="panel" tabindex="0" :aria-label="label" class="translation-output" tw-class="h-full overflow-y-auto p-4 font-sans text-sm leading-7 outline-none"><span class="translation-output-layers" :style="{ minHeight: retainedHeight === undefined ? undefined : `${retainedHeight}px` }"><span v-if="backVisible" :key="layerRevision" v-memo="[glyphs]" ref="back" dir="auto" aria-hidden="true" data-testid="translation-previous-text" class="translation-output-back"><span v-for="(glyph, index) in glyphs" :key="index" class="translation-old-glyph">{{ glyph }}</span></span><span ref="front" dir="auto" class="translation-output-front" data-testid="translation-current-text">{{ text }}</span></span><span v-if="!text && !previousText" tw-class="text-gray-400 dark:text-gray-500">{{ placeholder }}</span><span v-if="showPreviousForAccessibility" tw-class="sr-only">{{ previousText }}</span></pre>
+  <pre ref="panel" tabindex="0" :aria-label="label" class="translation-output" :tw-class="['h-full overflow-y-auto font-sans text-sm outline-none', compact ? 'p-3 leading-relaxed' : 'p-4 leading-7']"><span class="translation-output-layers" :style="{ minHeight: retainedHeight === undefined ? undefined : `${retainedHeight}px` }"><span v-if="backVisible" :key="layerRevision" v-memo="[glyphs]" ref="back" dir="auto" aria-hidden="true" data-testid="translation-previous-text" class="translation-output-back"><span v-for="(glyph, index) in glyphs" :key="index" class="translation-old-glyph">{{ glyph }}</span></span><span ref="front" dir="auto" class="translation-output-front" data-testid="translation-current-text">{{ text }}</span></span><span v-if="!text && !previousText" tw-class="text-gray-400 dark:text-gray-500">{{ placeholder }}</span><span v-if="showPreviousForAccessibility" tw-class="sr-only">{{ previousText }}</span></pre>
 </template>
 <style scoped>
 .translation-output {

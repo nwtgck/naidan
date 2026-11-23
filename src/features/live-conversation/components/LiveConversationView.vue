@@ -10,6 +10,7 @@ import { listModelInventory } from '@/features/llama-cpp-browser/composables/mod
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
 import { getDownloadQueue } from '@/features/llama-cpp-browser/hugging-face/download-queue';
+import { useRepositoryDownloadHint } from '@/composables/useRepositoryDownloadHint';
 import { preferredProjector } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { acquireRepositoryModel } from '@/features/llama-cpp-browser/model-launch/acquire-repository-model';
 import type { RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
@@ -249,6 +250,7 @@ const pendingDefaultModel = computed<RepositoryModelSelection | undefined>(() =>
   };
 });
 const selectedModelId = computed(() => pendingDefaultModel.value?.modelId ?? (modelId.value || undefined));
+const hideFirstUseDownloadHint = useRepositoryDownloadHint({ selection: pendingDefaultModel, usage: 'live-conversation' });
 const idleForTurn = computed(() => state.value.phase === 'ready' && !state.value.playing && !changingConversation.value && !talkPending.value && !manualReplay.value && !recordingActive.value && !recognitionRunning.value && !filePending.value);
 const vision = computed(() => llamaMode.value && state.value.info?.vision !== 'unavailable');
 const selectedFolder = computed(() => volumes.value.find(volume => idToRaw({ id: volume.id }) === volumeId.value));
@@ -1963,7 +1965,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 :input-id="`${id}-model`"
                 :model-value="selectedModelId"
                 :selection-availability="pendingDefaultModel ? 'download_required' : undefined"
-                :hide-first-use-download-hint="acquiringDefaultModel"
+                :hide-first-use-download-hint="acquiringDefaultModel || hideFirstUseDownloadHint"
                 :first-use-download-destination="pendingDefaultModel ? downloadDestination.label({ destination: pendingDefaultModel.destination }) : undefined"
                 :models="modelOptions"
                 :models-label="lazyStrings.ModelSelector__models_on_this_device()"

@@ -7,7 +7,7 @@ import { ensureStrings, lazyStrings } from '@/strings';
 import AudioTranscriptionModelSelector from '@/features/audio-transcription/components/AudioTranscriptionModelSelector.vue';
 import { useAudioTranscriptionModels } from '@/features/audio-transcription/composables/useAudioTranscriptionModels';
 import { useAudioTranscriptionWorkflow } from '@/features/audio-transcription/composables/useAudioTranscriptionWorkflow';
-import { useAudioTranscriptionFloatingWindow } from '@/features/audio-transcription/composables/useAudioTranscriptionFloatingWindow';
+import { useDocumentFloatingWindow } from '@/composables/useDocumentFloatingWindow';
 import AudioTranscriptionPreparation from '@/features/audio-transcription/components/AudioTranscriptionPreparation.vue';
 import AudioTranscriptionEditor from '@/features/audio-transcription/components/AudioTranscriptionEditor.vue';
 import AudioTranscriptionClipboardNotice from '@/features/audio-transcription/components/AudioTranscriptionClipboardNotice.vue';
@@ -67,9 +67,11 @@ const recognitionLanguage = computed(() => {
   }
   }
 });
-const floatingWindow = useAudioTranscriptionFloatingWindow({
-  microphone: computed(() => props.source === 'microphone'),
+const floatingWindow = useDocumentFloatingWindow({
+  enabled: computed(() => props.source === 'microphone'),
   title: () => lazyStrings.launcher__audio_transcription() ?? document.title,
+  width: 400,
+  height: 280,
 });
 const floatingDocument = floatingWindow.document;
 const workflow = useAudioTranscriptionWorkflow({ source: computed(() => props.source), text, autoCopy, models: modelSelection, language: recognitionLanguage, microphoneSegmentMaxSeconds: preferences.microphoneSegmentMaxSeconds, getClipboardWindow: floatingWindow.clipboardWindow });

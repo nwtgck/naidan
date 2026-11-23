@@ -207,7 +207,7 @@ echo shebang
 
     expect(removed.stdout.text).toBe('');
     expect(removed.stderr.text).toContain('wesh: Command not found: hi');
-    expect(removed.result.exitCode).toBe(1);
+    expect(removed.result.exitCode).toBe(127);
 
     expect(cleared.stdout.text).toBe('');
     expect(cleared.stderr.text).toBe('');
@@ -238,10 +238,10 @@ echo shebang
 
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain('wesh: Command not found: loop');
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(127);
 
     expect(mutual.stdout.text).toBe('');
     expect(mutual.stderr.text).toContain('wesh: Command not found: a');
-    expect(mutual.result.exitCode).toBe(1);
+    expect(mutual.result.exitCode).toBe(127);
   });
 });

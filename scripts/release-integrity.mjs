@@ -188,6 +188,7 @@ export async function stageReleaseAssets({root, receipt, version, sourceRef, out
   }
   if (sourceRef.startsWith('refs/heads/')) {
     await stage({file: path.join(root, 'dist/ci-server/naidan-server'), name: 'naidan-server'});
+    await stage({file: path.join(root, 'dist/ci-server/THIRD-PARTY-NOTICES.txt'), name: 'naidan-server-THIRD-PARTY-NOTICES.txt'});
     return assets.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   }
   await directory({file: path.join(root, 'dist/goreleaser-dist')});

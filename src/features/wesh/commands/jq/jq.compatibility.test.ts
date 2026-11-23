@@ -101,6 +101,23 @@ describe('wesh jq compatibility', () => {
     expect(rawZero.result.exitCode).toBe(0);
   });
 
+  it('joins raw strings without requiring the raw-output option', async () => {
+    const cases = [
+      { script: `jq -j '.[]'`, expected: 'éb3' },
+      { script: `jq --join-output '.[]' | cat`, expected: 'éb3' },
+      { script: `jq -ja '.[]'`, expected: '"\\u00e9""b"3' },
+      { script: `jq -j --raw-output0 '.[]'`, expected: 'é\0b\u00003\0' },
+    ];
+
+    for (const { script, expected } of cases) {
+      const execution = await execute({ script, stdinText: '["é","b",3]' });
+
+      expect(execution.stdout.text, script).toBe(expected);
+      expect(execution.stderr.text, script).toBe('');
+      expect(execution.result.exitCode, script).toBe(0);
+    }
+  });
+
   it('rejects equals-attached long-option values', async () => {
     const cases = [
       `jq --indent=7 '.'`,
@@ -281,6 +298,63 @@ describe('wesh jq compatibility', () => {
     expect(execution.result.exitCode).toBe(0);
     expect(execution.stdout.text).toBe('"value"\n');
     expect(execution.stderr.text).toBe('');
+  });
+
+  it.each([
+    { script: "jq -nc --arg flag --help '$flag'", output: '"--help"\n' },
+    { script: "jq --indent --arg -n '[1, 2]'", output: '[1,2]\n' },
+    { script: "jq -nc --args --jsonargs '$ARGS.positional' 42", output: '[42]\n' },
+    { script: "jq -nc --jsonargs --args '$ARGS.positional' 42", output: '["42"]\n' },
+    { script: "jq -nc --args '$ARGS.positional' -- --jsonargs -h", output: '["--jsonargs","-h"]\n' },
+    { script: "jq -nc --args '$ARGS.positional' -42 -17", output: '["-42","-17"]\n' },
+    { script: "jq -nc --jsonargs '$ARGS.positional' -42 -17", output: '[-42,-17]\n' },
+    {
+      script: "jq --tab --indent 3 -n '[1]'",
+      output: `\
+[
+   1
+]
+`,
+    },
+    {
+      script: "jq --indent 3 --tab -n '[1]'",
+      output: `\
+[
+\t1
+]
+`,
+    },
+  ])('keeps jq option values and positional modes in order for $script', async ({ script, output }) => {
+    const execution = await execute({ script });
+
+    expect(execution.result.exitCode).toBe(0);
+    expect(execution.stderr.text).toBe('');
+    expect(execution.stdout.text).toBe(output);
+  });
+
+  it.each([
+    { script: 'jq --indent', diagnostic: 'jq: --indent requires a value for N' },
+    { script: 'jq -n --arg x', diagnostic: 'jq: --arg requires NAME and VALUE arguments' },
+    { script: "jq -n -Z '.'", diagnostic: "jq: invalid option -- 'Z'" },
+  ])('preserves option diagnostics for $script', async ({ script, diagnostic }) => {
+    const execution = await execute({ script });
+
+    expect(execution.result.exitCode).toBe(2);
+    expect(execution.stderr.text.split('\n')[0]).toBe(diagnostic);
+    expect(execution.stdout.text).toBe('');
+  });
+
+  it('shows the space-separated syntax for value options in help', async () => {
+    const execution = await execute({ script: 'jq --help' });
+
+    expect(execution.result.exitCode).toBe(0);
+    expect(execution.stderr.text).toBe('');
+    expect(execution.stdout.text).toContain('--indent N');
+    expect(execution.stdout.text).toContain('-f FILE, --from-file FILE');
+    expect(execution.stdout.text).toContain('--arg NAME VALUE');
+    expect(execution.stdout.text).toContain('--argjson NAME JSON');
+    expect(execution.stdout.text).toContain('--rawfile NAME FILE');
+    expect(execution.stdout.text).toContain('--slurpfile NAME FILE');
   });
 
   it('supports null, raw, and slurped input', async () => {

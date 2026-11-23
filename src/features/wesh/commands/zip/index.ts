@@ -1,6 +1,16 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import {
+  analyzeArgvShortForm,
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolveInternalTemporaryDirectory } from '@/features/wesh/commands/_shared/temporary-directory';
 import { isPathNotFoundError, isPathTypeMismatchError } from '@/features/wesh/commands/_shared/path-errors';
 import { decodeWeshZipEntryName } from '@/features/wesh/commands/_shared/zip-entry-name';
@@ -28,41 +38,136 @@ import type {
 } from '@/features/wesh/types';
 import { openFileReadStream, openHandleReadStream } from '@/features/wesh/utils/fs';
 
-const zipArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'r', long: 'recurse-paths', effects: [{ key: 'recursive', value: true }], help: { summary: 'travel the directory structure recursively', category: 'common' } },
-    { kind: 'flag', short: 'u', long: 'update', effects: [{ key: 'selectionMode', value: 'update' }], help: { summary: 'update existing entries and add new files when newer', category: 'common' } },
-    { kind: 'flag', short: 'f', long: 'freshen', effects: [{ key: 'selectionMode', value: 'freshen' }], help: { summary: 'freshen existing entries only when source files are newer', category: 'common' } },
-    { kind: 'flag', short: 'd', long: 'delete', effects: [{ key: 'deleteMode', value: true }], help: { summary: 'remove matching entries from an existing archive', category: 'common' } },
-    { kind: 'flag', short: 'm', long: 'move', effects: [{ key: 'moveMode', value: true }], help: { summary: 'move files into the archive by deleting sources after success', category: 'common' } },
-    { kind: 'flag', short: 'j', long: 'junk-paths', effects: [{ key: 'junkPaths', value: true }], help: { summary: 'store just the name of a saved file, without path information', category: 'common' } },
-    { kind: 'flag', short: 'q', long: 'quiet', effects: [{ key: 'quiet', value: true }], help: { summary: 'quiet operation', category: 'common' } },
-    { kind: 'flag', short: '0', long: undefined, effects: [{ key: 'compressionMode', value: 'store' }], help: { summary: 'store only', category: 'common' } },
-    { kind: 'flag', short: '1', long: undefined, effects: [{ key: 'compressionLevel', value: 1 }], help: { summary: 'compress faster', category: 'advanced' } },
-    { kind: 'flag', short: '2', long: undefined, effects: [{ key: 'compressionLevel', value: 2 }], help: { summary: 'compress faster', category: 'advanced' } },
-    { kind: 'flag', short: '3', long: undefined, effects: [{ key: 'compressionLevel', value: 3 }], help: { summary: 'compress faster', category: 'advanced' } },
-    { kind: 'flag', short: '4', long: undefined, effects: [{ key: 'compressionLevel', value: 4 }], help: { summary: 'compress faster', category: 'advanced' } },
-    { kind: 'flag', short: '5', long: undefined, effects: [{ key: 'compressionLevel', value: 5 }], help: { summary: 'compress faster', category: 'advanced' } },
-    { kind: 'flag', short: '6', long: undefined, effects: [{ key: 'compressionLevel', value: 6 }], help: { summary: 'compress faster', category: 'advanced' } },
-    { kind: 'flag', short: '7', long: undefined, effects: [{ key: 'compressionLevel', value: 7 }], help: { summary: 'compress better', category: 'advanced' } },
-    { kind: 'flag', short: '8', long: undefined, effects: [{ key: 'compressionLevel', value: 8 }], help: { summary: 'compress better', category: 'advanced' } },
-    { kind: 'flag', short: '9', long: undefined, effects: [{ key: 'compressionLevel', value: 9 }], help: { summary: 'compress better', category: 'advanced' } },
-    {
-      kind: 'value',
-      short: 'x',
-      long: undefined,
-      key: 'excludePattern',
-      valueName: 'PATTERN',
-      allowAttachedValue: false,
-      parseValue: undefined,
-      help: { summary: 'exclude the following names', valueName: 'PATTERN', category: 'common' },
-    },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const zipOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'recursive', value: true }] },
+    forms: [
+      { kind: 'short', name: 'r', value: { kind: 'none' } },
+      { kind: 'long', name: 'recurse-paths', value: { kind: 'none' } },
+    ],
+    help: { summary: 'travel the directory structure recursively', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'selectionMode', value: 'update' }] },
+    forms: [
+      { kind: 'short', name: 'u', value: { kind: 'none' } },
+      { kind: 'long', name: 'update', value: { kind: 'none' } },
+    ],
+    help: { summary: 'update existing entries and add new files when newer', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'selectionMode', value: 'freshen' }] },
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'none' } },
+      { kind: 'long', name: 'freshen', value: { kind: 'none' } },
+    ],
+    help: { summary: 'freshen existing entries only when source files are newer', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'deleteMode', value: true }] },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'none' } },
+      { kind: 'long', name: 'delete', value: { kind: 'none' } },
+    ],
+    help: { summary: 'remove matching entries from an existing archive', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'moveMode', value: true }] },
+    forms: [
+      { kind: 'short', name: 'm', value: { kind: 'none' } },
+      { kind: 'long', name: 'move', value: { kind: 'none' } },
+    ],
+    help: { summary: 'move files into the archive by deleting sources after success', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'junkPaths', value: true }] },
+    forms: [
+      { kind: 'short', name: 'j', value: { kind: 'none' } },
+      { kind: 'long', name: 'junk-paths', value: { kind: 'none' } },
+    ],
+    help: { summary: 'store just the name of a saved file, without path information', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'quiet', value: true }] },
+    forms: [
+      { kind: 'short', name: 'q', value: { kind: 'none' } },
+      { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+    ],
+    help: { summary: 'quiet operation', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'compressionMode', value: 'store' }] },
+    forms: [{ kind: 'short', name: '0', value: { kind: 'none' } }],
+    help: { summary: 'store only', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'compressionLevel', value: 1 }] },
+    forms: [{ kind: 'short', name: '1', value: { kind: 'none' } }],
+    help: { summary: 'compress faster', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'compressionLevel', value: 2 }] },
+    forms: [{ kind: 'short', name: '2', value: { kind: 'none' } }],
+    help: { summary: 'compress faster', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'compressionLevel', value: 3 }] },
+    forms: [{ kind: 'short', name: '3', value: { kind: 'none' } }],
+    help: { summary: 'compress faster', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'compressionLevel', value: 4 }] },
+    forms: [{ kind: 'short', name: '4', value: { kind: 'none' } }],
+    help: { summary: 'compress faster', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'compressionLevel', value: 5 }] },
+    forms: [{ kind: 'short', name: '5', value: { kind: 'none' } }],
+    help: { summary: 'compress faster', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'compressionLevel', value: 6 }] },
+    forms: [{ kind: 'short', name: '6', value: { kind: 'none' } }],
+    help: { summary: 'compress faster', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'compressionLevel', value: 7 }] },
+    forms: [{ kind: 'short', name: '7', value: { kind: 'none' } }],
+    help: { summary: 'compress better', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'compressionLevel', value: 8 }] },
+    forms: [{ kind: 'short', name: '8', value: { kind: 'none' } }],
+    help: { summary: 'compress better', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'compressionLevel', value: 9 }] },
+    forms: [{ kind: 'short', name: '9', value: { kind: 'none' } }],
+    help: { summary: 'compress better', category: 'advanced' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'excludePattern', parse: undefined },
+    forms: [{ kind: 'short', name: 'x', value: { kind: 'required-attached-or-following', missingValueName: 'PATTERN' } }],
+    help: { summary: 'exclude the following names', valueName: 'PATTERN', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    help: { summary: 'display this help and exit', category: 'common' },
+  },
+] as const;
+const zipArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: zipOptions.map(({ semantic, forms }) => ({ semantic, forms })),
+  nonExecutableLongOptions: [],
+});
+const zipArgvHelp = defineArgvHelpPresentation({
+  catalog: zipArgvCatalog,
+  rows: zipOptions.map(({ forms, help }) => ({ forms, ...help })),
+});
+const zipArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 interface PendingZipEntry {
@@ -166,26 +271,6 @@ function addDefaultZipExtension({ path }: { path: string }): string {
   return `${path}.zip`;
 }
 
-const ZIP_SHORT_FLAG_OPTIONS_BEFORE_EXCLUDE = new Set([
-  'r',
-  'u',
-  'f',
-  'd',
-  'm',
-  'j',
-  'q',
-  '0',
-  '1',
-  '2',
-  '3',
-  '4',
-  '5',
-  '6',
-  '7',
-  '8',
-  '9',
-]);
-
 function isZipSymlinkCycleError({
   error,
 }: {
@@ -217,19 +302,20 @@ function splitZipExcludeStarter({
     return undefined;
   }
 
-  const body = token.slice(1);
-  const excludeIndex = body.indexOf('x');
-  if (excludeIndex < 0) {
+  const excludeOffset = token.indexOf('x', 1);
+  if (excludeOffset < 0) {
     return undefined;
   }
-  const prefix = body.slice(0, excludeIndex);
-  if ([...prefix].some(character => !ZIP_SHORT_FLAG_OPTIONS_BEFORE_EXCLUDE.has(character))) {
-    return undefined;
+  for (let bodyOffset = 1; bodyOffset < excludeOffset; bodyOffset += 1) {
+    const analysis = analyzeArgvShortForm({ token, bodyOffset, prefix: '-', catalog: zipArgvCatalog });
+    if (analysis.kind === 'unknown' || analysis.value.kind !== 'none') {
+      return undefined;
+    }
   }
 
-  const attached = body.slice(excludeIndex + 1);
+  const attached = token.slice(excludeOffset + 1);
   return {
-    optionPrefix: prefix.length === 0 ? undefined : `-${prefix}`,
+    optionPrefix: excludeOffset === 1 ? undefined : token.slice(0, excludeOffset),
     attachedPattern: attached.length === 0 ? undefined : attached,
   };
 }
@@ -871,12 +957,14 @@ export const zipCommandImplementation: WeshCommandImplementation = {
       return { exitCode: 16 };
     }
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: splitArgs.mainArgs,
-        spec: zipArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: zipArgvCatalog,
+        policy: zipArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: zipArgvSpec,
+      catalog: zipArgvCatalog,
+      policy: zipArgvPolicy,
     });
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
@@ -884,12 +972,16 @@ export const zipCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'zip',
         message: `zip: ${diagnostic.message}`,
-        argvSpec: zipArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: zipArgvHelp }),
       });
       return { exitCode: 2 };
     }
     if (parsed.optionValues.help === true) {
-      await writeCommandHelp({ context, command: 'zip', argvSpec: zipArgvSpec });
+      await writeCommandHelp({
+        context,
+        command: 'zip',
+        optionLines: formatArgvOptionHelp({ presentation: zipArgvHelp }),
+      });
       return { exitCode: 0 };
     }
 

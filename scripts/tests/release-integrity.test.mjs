@@ -24,7 +24,7 @@ const workflowArtifacts = {
   'standalone-universal-package': '2'.repeat(64),
   'standalone-all-locale-packages': '3'.repeat(64),
   'naidan-hosted': '4'.repeat(64),
-  'naidan-server-binary': '5'.repeat(64),
+  'naidan-server-binary-2': '5'.repeat(64),
 };
 const source = () => ({repository: 'https://github.com/nwtgck/naidan', commit: 'a'.repeat(40),
   run_id: '1234', build_attempt: '1', tree_fingerprint: {algorithm: 'sha256', scheme: fingerprintScheme, value: 'b'.repeat(64)}});
@@ -211,6 +211,7 @@ async function candidateFixture({t, sourceRef}) {
   if (sourceRef.startsWith('refs/heads/')) {
     await mkdir(path.join(root, 'dist/ci-server'));
     await writeFile(path.join(root, 'dist/ci-server/naidan-server'), 'existing CI server executable');
+    await writeFile(path.join(root, 'dist/ci-server/THIRD-PARTY-NOTICES.txt'), 'server dependency licenses');
   } else {
     await prepare({version});
   }
@@ -258,6 +259,9 @@ it('seals branch, stable tag and prerelease candidates through the same entry po
     if (sourceRef.startsWith('refs/heads/')) {
       assert.match(yaml, /release_tag: null/);
       assert.match(yaml, /name: "naidan-server"/);
+      assert.match(yaml, /name: "naidan-server-THIRD-PARTY-NOTICES.txt"/);
+      assert.deepEqual(await readFile(path.join(assetDirectory, 'naidan-server-THIRD-PARTY-NOTICES.txt')),
+        await readFile(path.join(root, 'dist/ci-server/THIRD-PARTY-NOTICES.txt')));
       assert.doesNotMatch(yaml, /name: "checksums.txt"/);
     } else {
       assert.ok(yaml.includes(`release_tag: "v${version}"`));

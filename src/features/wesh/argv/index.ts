@@ -1,23 +1,25 @@
-export { parseFindLikeArgv } from './grammar-parser';
-export { formatArgvOptionHelp, formatArgvUsageSummary } from './help';
-export { ArgvScanner } from './scanner';
-export { parseStandardArgv } from './standard-parser';
+export {
+  defineArgvCatalog,
+  defineCatalogArgvHelpPresentation as defineArgvHelpPresentation,
+} from './catalog';
 export type {
-  ArgvDiagnostic,
-  ArgvFlagOptionSpec,
-  ArgvOptionOccurrence,
-  ArgvOptionEffect,
-  ArgvOptionSpec,
-  ArgvSpecialParseResult,
-  ArgvSpecialTokenParser,
-  ArgvValue,
-  ArgvValueOptionSpec,
-  ParsedFindLikeArgv,
+  ArgvCatalog,
+  ArgvOptionDefinition,
+} from './catalog';
+export { analyzeArgvLongForm, analyzeArgvShortForm } from './analyze';
+export { parseStandardArgv } from './parser';
+export type {
   ParsedStandardArgv,
-  ParsedSubcommandArgv,
-  StandardArgvParserSpec,
-  SubcommandArgvParserSpec,
-} from './types';
+  StandardArgvOccurrence,
+  StandardArgvRawValue,
+} from './result';
+export type { StandardArgvAction, StandardArgvPolicy } from './model';
+export { formatArgvOptionHelp, formatArgvUsageSummary } from './help';
+export {
+  HELP_EARLY_EXIT_OPTIONS,
+  HELP_VERSION_EARLY_EXIT_OPTIONS,
+  stopArgvAtFirstEarlyExit,
+} from './early-exit';
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

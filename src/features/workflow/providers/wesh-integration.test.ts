@@ -21,22 +21,17 @@ beforeEach(() => {
     // The actual worker implementation runs in-process; only its transport is
     // replaced. Parsing, builtins, filesystems and mount enforcement are real.
     const client: WeshWorkerClient = {
-      startExecution: ({ request, onEvent }) => worker.startExecution(request, async event => {
-        await onEvent?.({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) });
+      startExecution: ({ request, onEvent }) => ({
+        completion: worker.execute(request, async event => {
+          await onEvent?.({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) });
+        }).then(({ exitCode }) => ({ status: 'exited', exitCode })),
+        cancel() {
+          void worker.interrupt();
+        },
       }),
-      awaitExecution: input => worker.awaitExecution(input),
-      interruptExecution: input => worker.interruptExecution(input),
-      async cancelExecution(input) {
-        await worker.interruptExecution(input);
-        await worker.awaitExecution(input);
-        return true;
-      },
-      disposeExecution: input => worker.disposeExecution(input),
-      execute: ({ request }) => worker.execute({ request }),
       getShellState: () => worker.getShellState(),
       listCommands: () => worker.listCommands(),
       listDirectory: input => worker.listDirectory(input),
-      interrupt: () => worker.interrupt(),
       dispose: () => worker.dispose(),
     };
     return client;

@@ -1,7 +1,7 @@
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { joinPath, discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
 import { readReflog } from "@/features/wesh/commands/git/reflog";
-import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv';
 import { parseGitMaxCount } from "@/features/wesh/commands/git/max-count";
 import { resolveRevision } from "@/features/wesh/commands/git/revision";
 import { readHead, readRef } from "@/features/wesh/commands/git/refs";

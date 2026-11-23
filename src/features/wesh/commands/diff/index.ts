@@ -1,12 +1,20 @@
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import {
+  analyzeArgvLongForm,
+  analyzeArgvShortForm,
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_VERSION_EARLY_EXIT_OPTIONS,
   parseStandardArgv,
-  type ArgvOptionOccurrence,
-  type ArgvSpecialTokenParser,
-  type StandardArgvParserSpec,
+  stopArgvAtFirstEarlyExit,
+  type StandardArgvAction,
+  type StandardArgvOccurrence,
+  type StandardArgvPolicy,
+  type StandardArgvRawValue,
 } from '@/features/wesh/argv';
-import { STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { readAllFileBytes } from '@/features/wesh/utils/fs';
@@ -29,136 +37,391 @@ const DEFAULT_TAB_SIZE = 8;
 const MAX_OPTION_NUMBER = 1_000_000;
 const DEFAULT_C_FUNCTION_PATTERN = /^[A-Za-z_$].*\([^;]*\)[^{;]*(?:\{|$)/u;
 
-function parseNonnegativeInteger({ value }: { value: string }): { ok: true, value: number } | { ok: false, message: string } {
+function parseNonnegativeInteger({ rawValue: value }: { rawValue: string }): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
   const numericText = stripLeadingCLocaleWhitespace({ value });
   if (!/^\+?\d+$/u.test(numericText)) {
-    return { ok: false, message: `invalid numeric value '${value}'` };
+    return { kind: 'invalid', message: `invalid numeric value '${value}'` };
   }
   const parsed = Number(numericText);
   if (!Number.isSafeInteger(parsed) || parsed > MAX_OPTION_NUMBER) {
-    return { ok: false, message: `numeric value is too large: '${value}'` };
+    return { kind: 'invalid', message: `numeric value is too large: '${value}'` };
   }
-  return { ok: true, value: parsed };
+  return { kind: 'parsed', value: parsed };
 }
 
-function createOptionalContextParser({
-  longName,
-  outputKind,
-}: {
-  longName: 'context' | 'unified',
-  outputKind: 'context' | 'unified',
-}): ArgvSpecialTokenParser {
-  return ({ token }) => {
-    if (token === `--${longName}`) {
-      return {
-        kind: 'matched',
-        consumeCount: 1,
-        effects: [
-          { key: 'outputKind', value: outputKind },
-          { key: 'contextLines', value: DEFAULT_CONTEXT_LINES },
-        ],
-        occurrences: [{
-          kind: 'special',
-          option: token,
-          effects: [
-            { key: 'outputKind', value: outputKind },
-            { key: 'contextLines', value: DEFAULT_CONTEXT_LINES },
-          ],
-        }],
-      };
-    }
-    const prefix = `--${longName}=`;
-    if (!token.startsWith(prefix)) {
-      return undefined;
-    }
-    const rawValue = token.slice(prefix.length);
-    const parsed = parseNonnegativeInteger({ value: rawValue });
-    if (!parsed.ok) {
-      return {
-        kind: 'matched',
-        consumeCount: 1,
-        effects: [{ key: 'invalidContextLength', value: rawValue }],
-        occurrences: [{
-          kind: 'special',
-          option: token,
-          effects: [{ key: 'invalidContextLength', value: rawValue }],
-        }],
-      };
-    }
-    return {
-      kind: 'matched',
-      consumeCount: 1,
-      effects: [
-        { key: 'outputKind', value: outputKind },
-        { key: 'contextLines', value: parsed.value },
-      ],
-      occurrences: [{
-        kind: 'special',
-        option: token,
-        effects: [
-          { key: 'outputKind', value: outputKind },
-          { key: 'contextLines', value: parsed.value },
-        ],
-      }],
-    };
-  };
-}
+// Flag arguments are rejected by the precheck up to the first raw `--`.
+// A required option can claim that token as its value and leave later flags to the scanner.
+const diffOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'outputKind', value: 'normal' }] },
+    forms: [{ kind: 'long', name: 'normal', value: { kind: 'optional-inline' } }],
+    summary: 'output a normal diff (the default)',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'outputKind', value: 'brief' }] },
+    forms: [
+      { kind: 'short', name: 'q', value: { kind: 'none' } },
+      { kind: 'long', name: 'brief', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'report only when files differ',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'reportIdenticalFiles', value: true }] },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'none' } },
+      { kind: 'long', name: 'report-identical-files', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'report when two files are the same',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'outputKind', value: 'context' }, { key: 'contextLines', value: DEFAULT_CONTEXT_LINES }] },
+    forms: [{ kind: 'short', name: 'c', value: { kind: 'none' } }],
+    summary: 'output 3 lines of copied context',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'contextLines', parse: parseNonnegativeInteger },
+    forms: [{ kind: 'short', name: 'C', value: { kind: 'required-attached-or-following', missingValueName: 'NUM' } }],
+    summary: 'output NUM lines of copied context',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'outputKind', value: 'unified' }, { key: 'contextLines', value: DEFAULT_CONTEXT_LINES }] },
+    forms: [{ kind: 'short', name: 'u', value: { kind: 'none' } }],
+    summary: 'output 3 lines of unified context',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'unifiedLines', parse: parseNonnegativeInteger },
+    forms: [{ kind: 'short', name: 'U', value: { kind: 'required-attached-or-following', missingValueName: 'NUM' } }],
+    summary: 'output NUM lines of unified context',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'outputKind', value: 'ed' }] },
+    forms: [
+      { kind: 'short', name: 'e', value: { kind: 'none' } },
+      { kind: 'long', name: 'ed', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'output an ed script',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'outputKind', value: 'rcs' }] },
+    forms: [
+      { kind: 'short', name: 'n', value: { kind: 'none' } },
+      { kind: 'long', name: 'rcs', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'output an RCS format diff',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'outputKind', value: 'side-by-side' }] },
+    forms: [
+      { kind: 'short', name: 'y', value: { kind: 'none' } },
+      { kind: 'long', name: 'side-by-side', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'output in two columns',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'width', parse: parseNonnegativeInteger },
+    forms: [
+      { kind: 'short', name: 'W', value: { kind: 'required-attached-or-following', missingValueName: 'NUM' } },
+      { kind: 'long', name: 'width', value: { kind: 'required', missingValueName: 'NUM' } },
+    ],
+    summary: 'output at most NUM print columns',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'commonLineMode', value: 'left-only' }] },
+    forms: [{ kind: 'long', name: 'left-column', value: { kind: 'optional-inline' } }],
+    summary: 'output only the left column of common lines',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'commonLineMode', value: 'suppress' }] },
+    forms: [{ kind: 'long', name: 'suppress-common-lines', value: { kind: 'optional-inline' } }],
+    summary: 'do not output common lines in side-by-side mode',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showCFunction', value: true }] },
+    forms: [
+      { kind: 'short', name: 'p', value: { kind: 'none' } },
+      { kind: 'long', name: 'show-c-function', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'show which C function each change is in',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'functionLinePattern', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'F', value: { kind: 'required-attached-or-following', missingValueName: 'RE' } },
+      { kind: 'long', name: 'show-function-line', value: { kind: 'required', missingValueName: 'RE' } },
+    ],
+    summary: 'show the most recent line matching RE',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'label', parse: undefined },
+    forms: [{ kind: 'long', name: 'label', value: { kind: 'required', missingValueName: 'LABEL' } }],
+    summary: 'use LABEL instead of file name and timestamp',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'expandTabs', value: true }] },
+    forms: [
+      { kind: 'short', name: 't', value: { kind: 'none' } },
+      { kind: 'long', name: 'expand-tabs', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'expand tabs to spaces in output',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'initialTab', value: true }] },
+    forms: [
+      { kind: 'short', name: 'T', value: { kind: 'none' } },
+      { kind: 'long', name: 'initial-tab', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'prepend a tab to align output',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'tabSize', parse: parseNonnegativeInteger },
+    forms: [{ kind: 'long', name: 'tabsize', value: { kind: 'required', missingValueName: 'NUM' } }],
+    summary: 'tab stops every NUM columns',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'suppressBlankEmpty', value: true }] },
+    forms: [{ kind: 'long', name: 'suppress-blank-empty', value: { kind: 'optional-inline' } }],
+    summary: 'suppress a prefix before empty output lines',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'recursive', value: true }] },
+    forms: [
+      { kind: 'short', name: 'r', value: { kind: 'none' } },
+      { kind: 'long', name: 'recursive', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'recursively compare subdirectories',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'noDereference', value: true }] },
+    forms: [{ kind: 'long', name: 'no-dereference', value: { kind: 'optional-inline' } }],
+    summary: 'do not follow symbolic links',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'missingFileMode', value: 'both-empty' }] },
+    forms: [
+      { kind: 'short', name: 'N', value: { kind: 'none' } },
+      { kind: 'long', name: 'new-file', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'treat absent files as empty',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'missingFileMode', value: 'left-empty' }] },
+    forms: [{ kind: 'long', name: 'unidirectional-new-file', value: { kind: 'optional-inline' } }],
+    summary: 'treat absent first files as empty',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'fileNameCaseMode', value: 'insensitive' }] },
+    forms: [{ kind: 'long', name: 'ignore-file-name-case', value: { kind: 'optional-inline' } }],
+    summary: 'ignore case when comparing file names',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'fileNameCaseMode', value: 'sensitive' }] },
+    forms: [{ kind: 'long', name: 'no-ignore-file-name-case', value: { kind: 'optional-inline' } }],
+    summary: 'consider case when comparing file names',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'exclude', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'x', value: { kind: 'required-attached-or-following', missingValueName: 'PAT' } },
+      { kind: 'long', name: 'exclude', value: { kind: 'required', missingValueName: 'PAT' } },
+    ],
+    summary: 'exclude files matching PAT',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'excludeFrom', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'X', value: { kind: 'required-attached-or-following', missingValueName: 'FILE' } },
+      { kind: 'long', name: 'exclude-from', value: { kind: 'required', missingValueName: 'FILE' } },
+    ],
+    summary: 'exclude patterns listed in FILE',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'startingFile', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'S', value: { kind: 'required-attached-or-following', missingValueName: 'FILE' } },
+      { kind: 'long', name: 'starting-file', value: { kind: 'required', missingValueName: 'FILE' } },
+    ],
+    summary: 'start with FILE when comparing directories',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'fromFile', parse: undefined },
+    forms: [{ kind: 'long', name: 'from-file', value: { kind: 'required', missingValueName: 'FILE' } }],
+    summary: 'compare FILE to every operand',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'toFile', parse: undefined },
+    forms: [{ kind: 'long', name: 'to-file', value: { kind: 'required', missingValueName: 'FILE' } }],
+    summary: 'compare every operand to FILE',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'ignoreCase', value: true }] },
+    forms: [
+      { kind: 'short', name: 'i', value: { kind: 'none' } },
+      { kind: 'long', name: 'ignore-case', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'ignore case differences in file contents',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'ignoreTabExpansion', value: true }] },
+    forms: [
+      { kind: 'short', name: 'E', value: { kind: 'none' } },
+      { kind: 'long', name: 'ignore-tab-expansion', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'ignore changes due to tab expansion',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'ignoreTrailingSpace', value: true }] },
+    forms: [
+      { kind: 'short', name: 'Z', value: { kind: 'none' } },
+      { kind: 'long', name: 'ignore-trailing-space', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'ignore white space at line end',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'ignoreSpaceChange', value: true }] },
+    forms: [
+      { kind: 'short', name: 'b', value: { kind: 'none' } },
+      { kind: 'long', name: 'ignore-space-change', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'ignore changes in the amount of white space',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'ignoreAllSpace', value: true }] },
+    forms: [
+      { kind: 'short', name: 'w', value: { kind: 'none' } },
+      { kind: 'long', name: 'ignore-all-space', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'ignore all white space',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'ignoreBlankLineChanges', value: true }] },
+    forms: [
+      { kind: 'short', name: 'B', value: { kind: 'none' } },
+      { kind: 'long', name: 'ignore-blank-lines', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'ignore changes where lines are all blank',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'ignoreMatchingLines', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'I', value: { kind: 'required-attached-or-following', missingValueName: 'RE' } },
+      { kind: 'long', name: 'ignore-matching-lines', value: { kind: 'required', missingValueName: 'RE' } },
+    ],
+    summary: 'ignore changes where all lines match RE',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'binaryMode', value: 'text' }] },
+    forms: [
+      { kind: 'short', name: 'a', value: { kind: 'none' } },
+      { kind: 'long', name: 'text', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'treat all files as text',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'stripTrailingCarriageReturn', value: true }] },
+    forms: [{ kind: 'long', name: 'strip-trailing-cr', value: { kind: 'optional-inline' } }],
+    summary: 'strip trailing carriage return on input',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'ifdefName', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'D', value: { kind: 'required-attached-or-following', missingValueName: 'NAME' } },
+      { kind: 'long', name: 'ifdef', value: { kind: 'required', missingValueName: 'NAME' } },
+    ],
+    summary: 'output merged file with ifdef differences',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'minimal', value: true }] },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'none' } },
+      { kind: 'long', name: 'minimal', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'try hard to find a smaller set of changes',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'speedLargeFiles', value: true }] },
+    forms: [{ kind: 'long', name: 'speed-large-files', value: { kind: 'optional-inline' } }],
+    summary: 'optimize for large files with scattered changes',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'optional-inline' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'version', value: true }] },
+    forms: [
+      { kind: 'short', name: 'v', value: { kind: 'none' } },
+      { kind: 'long', name: 'version', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'output version information and exit',
+    category: 'common',
+  },
+] as const;
 
-const diffArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'normal', effects: [{ key: 'outputKind', value: 'normal' }], help: { summary: 'output a normal diff (the default)', category: 'common' } },
-    { kind: 'flag', short: 'q', long: 'brief', effects: [{ key: 'outputKind', value: 'brief' }], help: { summary: 'report only when files differ', category: 'common' } },
-    { kind: 'flag', short: 's', long: 'report-identical-files', effects: [{ key: 'reportIdenticalFiles', value: true }], help: { summary: 'report when two files are the same', category: 'common' } },
-    { kind: 'flag', short: 'c', long: undefined, effects: [{ key: 'outputKind', value: 'context' }, { key: 'contextLines', value: DEFAULT_CONTEXT_LINES }], help: { summary: 'output 3 lines of copied context', category: 'common' } },
-    { kind: 'value', short: 'C', long: undefined, key: 'contextLines', valueName: 'NUM', allowAttachedValue: true, parseValue: parseNonnegativeInteger, help: { summary: 'output NUM lines of copied context', valueName: 'NUM', category: 'common' } },
-    { kind: 'flag', short: 'u', long: undefined, effects: [{ key: 'outputKind', value: 'unified' }, { key: 'contextLines', value: DEFAULT_CONTEXT_LINES }], help: { summary: 'output 3 lines of unified context', category: 'common' } },
-    { kind: 'value', short: 'U', long: undefined, key: 'unifiedLines', valueName: 'NUM', allowAttachedValue: true, parseValue: parseNonnegativeInteger, help: { summary: 'output NUM lines of unified context', valueName: 'NUM', category: 'common' } },
-    { kind: 'flag', short: 'e', long: 'ed', effects: [{ key: 'outputKind', value: 'ed' }], help: { summary: 'output an ed script', category: 'advanced' } },
-    { kind: 'flag', short: 'n', long: 'rcs', effects: [{ key: 'outputKind', value: 'rcs' }], help: { summary: 'output an RCS format diff', category: 'advanced' } },
-    { kind: 'flag', short: 'y', long: 'side-by-side', effects: [{ key: 'outputKind', value: 'side-by-side' }], help: { summary: 'output in two columns', category: 'common' } },
-    { kind: 'value', short: 'W', long: 'width', key: 'width', valueName: 'NUM', allowAttachedValue: true, parseValue: parseNonnegativeInteger, help: { summary: 'output at most NUM print columns', valueName: 'NUM', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'left-column', effects: [{ key: 'commonLineMode', value: 'left-only' }], help: { summary: 'output only the left column of common lines', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'suppress-common-lines', effects: [{ key: 'commonLineMode', value: 'suppress' }], help: { summary: 'do not output common lines in side-by-side mode', category: 'advanced' } },
-    { kind: 'flag', short: 'p', long: 'show-c-function', effects: [{ key: 'showCFunction', value: true }], help: { summary: 'show which C function each change is in', category: 'advanced' } },
-    { kind: 'value', short: 'F', long: 'show-function-line', key: 'functionLinePattern', valueName: 'RE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'show the most recent line matching RE', valueName: 'RE', category: 'advanced' } },
-    { kind: 'value', short: undefined, long: 'label', key: 'label', valueName: 'LABEL', allowAttachedValue: false, parseValue: undefined, help: { summary: 'use LABEL instead of file name and timestamp', valueName: 'LABEL', category: 'advanced' } },
-    { kind: 'flag', short: 't', long: 'expand-tabs', effects: [{ key: 'expandTabs', value: true }], help: { summary: 'expand tabs to spaces in output', category: 'advanced' } },
-    { kind: 'flag', short: 'T', long: 'initial-tab', effects: [{ key: 'initialTab', value: true }], help: { summary: 'prepend a tab to align output', category: 'advanced' } },
-    { kind: 'value', short: undefined, long: 'tabsize', key: 'tabSize', valueName: 'NUM', allowAttachedValue: false, parseValue: parseNonnegativeInteger, help: { summary: 'tab stops every NUM columns', valueName: 'NUM', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'suppress-blank-empty', effects: [{ key: 'suppressBlankEmpty', value: true }], help: { summary: 'suppress a prefix before empty output lines', category: 'advanced' } },
-    { kind: 'flag', short: 'r', long: 'recursive', effects: [{ key: 'recursive', value: true }], help: { summary: 'recursively compare subdirectories', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'no-dereference', effects: [{ key: 'noDereference', value: true }], help: { summary: 'do not follow symbolic links', category: 'advanced' } },
-    { kind: 'flag', short: 'N', long: 'new-file', effects: [{ key: 'missingFileMode', value: 'both-empty' }], help: { summary: 'treat absent files as empty', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'unidirectional-new-file', effects: [{ key: 'missingFileMode', value: 'left-empty' }], help: { summary: 'treat absent first files as empty', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'ignore-file-name-case', effects: [{ key: 'fileNameCaseMode', value: 'insensitive' }], help: { summary: 'ignore case when comparing file names', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'no-ignore-file-name-case', effects: [{ key: 'fileNameCaseMode', value: 'sensitive' }], help: { summary: 'consider case when comparing file names', category: 'advanced' } },
-    { kind: 'value', short: 'x', long: 'exclude', key: 'exclude', valueName: 'PAT', allowAttachedValue: true, parseValue: undefined, help: { summary: 'exclude files matching PAT', valueName: 'PAT', category: 'advanced' } },
-    { kind: 'value', short: 'X', long: 'exclude-from', key: 'excludeFrom', valueName: 'FILE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'exclude patterns listed in FILE', valueName: 'FILE', category: 'advanced' } },
-    { kind: 'value', short: 'S', long: 'starting-file', key: 'startingFile', valueName: 'FILE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'start with FILE when comparing directories', valueName: 'FILE', category: 'advanced' } },
-    { kind: 'value', short: undefined, long: 'from-file', key: 'fromFile', valueName: 'FILE', allowAttachedValue: false, parseValue: undefined, help: { summary: 'compare FILE to every operand', valueName: 'FILE', category: 'advanced' } },
-    { kind: 'value', short: undefined, long: 'to-file', key: 'toFile', valueName: 'FILE', allowAttachedValue: false, parseValue: undefined, help: { summary: 'compare every operand to FILE', valueName: 'FILE', category: 'advanced' } },
-    { kind: 'flag', short: 'i', long: 'ignore-case', effects: [{ key: 'ignoreCase', value: true }], help: { summary: 'ignore case differences in file contents', category: 'common' } },
-    { kind: 'flag', short: 'E', long: 'ignore-tab-expansion', effects: [{ key: 'ignoreTabExpansion', value: true }], help: { summary: 'ignore changes due to tab expansion', category: 'advanced' } },
-    { kind: 'flag', short: 'Z', long: 'ignore-trailing-space', effects: [{ key: 'ignoreTrailingSpace', value: true }], help: { summary: 'ignore white space at line end', category: 'common' } },
-    { kind: 'flag', short: 'b', long: 'ignore-space-change', effects: [{ key: 'ignoreSpaceChange', value: true }], help: { summary: 'ignore changes in the amount of white space', category: 'common' } },
-    { kind: 'flag', short: 'w', long: 'ignore-all-space', effects: [{ key: 'ignoreAllSpace', value: true }], help: { summary: 'ignore all white space', category: 'common' } },
-    { kind: 'flag', short: 'B', long: 'ignore-blank-lines', effects: [{ key: 'ignoreBlankLineChanges', value: true }], help: { summary: 'ignore changes where lines are all blank', category: 'advanced' } },
-    { kind: 'value', short: 'I', long: 'ignore-matching-lines', key: 'ignoreMatchingLines', valueName: 'RE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'ignore changes where all lines match RE', valueName: 'RE', category: 'advanced' } },
-    { kind: 'flag', short: 'a', long: 'text', effects: [{ key: 'binaryMode', value: 'text' }], help: { summary: 'treat all files as text', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'strip-trailing-cr', effects: [{ key: 'stripTrailingCarriageReturn', value: true }], help: { summary: 'strip trailing carriage return on input', category: 'advanced' } },
-    { kind: 'value', short: 'D', long: 'ifdef', key: 'ifdefName', valueName: 'NAME', allowAttachedValue: true, parseValue: undefined, help: { summary: 'output merged file with ifdef differences', valueName: 'NAME', category: 'advanced' } },
-    { kind: 'flag', short: 'd', long: 'minimal', effects: [{ key: 'minimal', value: true }], help: { summary: 'try hard to find a smaller set of changes', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'speed-large-files', effects: [{ key: 'speedLargeFiles', value: true }], help: { summary: 'optimize for large files with scattered changes', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'flag', short: 'v', long: 'version', effects: [{ key: 'version', value: true }], help: { summary: 'output version information and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [
-    createOptionalContextParser({ longName: 'context', outputKind: 'context' }),
-    createOptionalContextParser({ longName: 'unified', outputKind: 'unified' }),
-  ],
+type DiffArgvAction = StandardArgvAction<'context' | 'unified'>;
+type DiffArgvOccurrence = StandardArgvOccurrence<DiffArgvAction>;
+const diffArgvDefinitions = [
+  ...diffOptions,
+  {
+    semantic: { kind: 'deferred', tag: 'context' },
+    forms: [{ kind: 'long', name: 'context', value: { kind: 'optional-inline' } }],
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'unified' },
+    forms: [{ kind: 'long', name: 'unified', value: { kind: 'optional-inline' } }],
+  },
+] as const;
+const diffArgvCatalog = defineArgvCatalog<DiffArgvAction>({ definitions: diffArgvDefinitions, nonExecutableLongOptions: [] });
+const diffArgvHelp = defineArgvHelpPresentation({ catalog: diffArgvCatalog, rows: diffOptions });
+const diffArgvUsageSummary = formatArgvUsageSummary({ presentation: diffArgvHelp });
+const diffArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'all',
 };
 
 function normalizeOptionalShortContextCounts({
@@ -166,11 +429,6 @@ function normalizeOptionalShortContextCounts({
 }: {
   args: readonly string[],
 }): string[] {
-  const shortFlags = new Set(
-    diffArgvSpec.options
-      .filter((option) => option.kind === 'flag' && option.short !== undefined)
-      .map((option) => option.short!),
-  );
   const normalized: string[] = [];
   let optionsEnded = false;
 
@@ -201,7 +459,10 @@ function normalizeOptionalShortContextCounts({
       normalized.push(token);
       continue;
     }
-    if (![...prefix].every((short) => shortFlags.has(short))) {
+    if (![...prefix].every((short) => {
+      const result = analyzeArgvShortForm({ token: `-${short}`, prefix: '-', bodyOffset: 1, catalog: diffArgvCatalog });
+      return result.kind === 'matched' && result.value.kind === 'none';
+    })) {
       normalized.push(token);
       continue;
     }
@@ -229,11 +490,6 @@ function findUnexpectedLongFlagArgument({
 }: {
   args: readonly string[],
 }): string | undefined {
-  const longFlags = new Set(
-    diffArgvSpec.options
-      .filter((option) => option.kind === 'flag' && option.long !== undefined)
-      .map((option) => option.long!),
-  );
   for (const token of args) {
     if (token === '--') {
       break;
@@ -241,33 +497,79 @@ function findUnexpectedLongFlagArgument({
     if (!token.startsWith('--')) {
       continue;
     }
-    const equalsIndex = token.indexOf('=');
-    if (equalsIndex < 0) {
+    if (!token.includes('=')) {
       continue;
     }
-    const name = token.slice(2, equalsIndex);
-    if (longFlags.has(name)) {
-      return `--${name}`;
+    const result = analyzeArgvLongForm({ token, catalog: diffArgvCatalog, longNameMatch: diffArgvPolicy.longNameMatch });
+    if (result.kind === 'matched' && result.value.kind === 'inline' && result.semantic.kind === 'effects') {
+      return result.option;
     }
   }
   return undefined;
+}
+
+function getRawValue({ value }: { value: StandardArgvRawValue }): string | undefined {
+  switch (value.kind) {
+  case 'inline':
+  case 'next-argv':
+    return value.rawValue;
+  case 'none':
+    return undefined;
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled diff option value: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
+function getRequiredValue({ action, value }: {
+  action: Extract<DiffArgvAction, { kind: 'required-value' }>,
+  value: StandardArgvRawValue,
+}): boolean | string | number {
+  const rawValue = getRawValue({ value });
+  if (rawValue === undefined) {
+    throw new Error(`Missing parsed value for ${action.key}`);
+  }
+  const parsed = action.parse?.({ rawValue });
+  switch (parsed?.kind) {
+  case undefined:
+    return rawValue;
+  case 'parsed':
+    return parsed.value;
+  case 'invalid':
+    throw new Error(parsed.message);
+  default: {
+    const _ex: never = parsed;
+    throw new Error(`Unhandled diff option parse result: ${JSON.stringify(_ex)}`);
+  }
+  }
 }
 
 function getEffectValue({
   occurrence,
   key,
 }: {
-  occurrence: ArgvOptionOccurrence,
+  occurrence: DiffArgvOccurrence,
   key: string,
 }): boolean | string | number | undefined {
-  switch (occurrence.kind) {
-  case 'value':
-    return occurrence.key === key ? occurrence.value : undefined;
-  case 'flag':
-  case 'special':
-    return occurrence.effects.find((effect) => effect.key === key)?.value;
+  const { semantic, value } = occurrence;
+  switch (semantic.kind) {
+  case 'required-value':
+    return semantic.key === key ? getRequiredValue({ action: semantic, value }) : undefined;
+  case 'effects':
+    return semantic.effects.find((effect) => effect.key === key)?.value;
+  case 'deferred': {
+    if (key === 'outputKind') {
+      return semantic.tag;
+    }
+    if (key !== 'contextLines') {
+      return undefined;
+    }
+    const rawValue = getRawValue({ value });
+    return rawValue === undefined ? DEFAULT_CONTEXT_LINES : Number(rawValue);
+  }
   default: {
-    const _ex: never = occurrence;
+    const _ex: never = semantic;
     throw new Error(`Unhandled option occurrence: ${JSON.stringify(_ex)}`);
   }
   }
@@ -301,7 +603,7 @@ function collectOccurrenceValues({
   occurrences,
   key,
 }: {
-  occurrences: readonly ArgvOptionOccurrence[],
+  occurrences: readonly DiffArgvOccurrence[],
   key: string,
 }): string[] {
   const values: string[] = [];
@@ -317,7 +619,7 @@ function collectOccurrenceValues({
 function resolveOutputMode({
   occurrences,
 }: {
-  occurrences: readonly ArgvOptionOccurrence[],
+  occurrences: readonly DiffArgvOccurrence[],
 }): DiffOutputMode {
   type DetailedOutputKind = 'normal' | 'context' | 'unified' | 'ed' | 'rcs' | 'side-by-side' | 'ifdef';
 
@@ -520,22 +822,37 @@ function createRecursiveCommandPrefix({
   occurrences,
   args,
 }: {
-  occurrences: readonly ArgvOptionOccurrence[],
+  occurrences: readonly DiffArgvOccurrence[],
   args: readonly string[],
 }): string {
   const parts = ['diff'];
-  for (const occurrence of occurrences) {
-    switch (occurrence.kind) {
-    case 'flag':
-    case 'special':
-      parts.push(shellQuote({ value: occurrence.option }));
+  for (const { resolved, semantic, value } of occurrences) {
+    const form = diffArgvDefinitions[resolved.definitionIndex]!.forms[resolved.formIndex]!;
+    const option = (() => {
+      switch (form.kind) {
+      case 'short': return `-${form.name}`;
+      case 'long': return `--${form.name}`;
+      default: {
+        const _ex: never = form;
+        throw new Error(`Unhandled diff option spelling: ${JSON.stringify(_ex)}`);
+      }
+      }
+    })();
+    switch (semantic.kind) {
+    case 'effects':
+      parts.push(shellQuote({ value: option }));
       break;
-    case 'value':
-      parts.push(shellQuote({ value: occurrence.option }));
-      parts.push(shellQuote({ value: String(occurrence.value) }));
+    case 'deferred': {
+      const rawValue = getRawValue({ value });
+      parts.push(shellQuote({ value: rawValue === undefined ? option : `${option}=${rawValue}` }));
+      break;
+    }
+    case 'required-value':
+      parts.push(shellQuote({ value: option }));
+      parts.push(shellQuote({ value: String(getRequiredValue({ action: semantic, value })) }));
       break;
     default: {
-      const _ex: never = occurrence;
+      const _ex: never = semantic;
       throw new Error(`Unhandled option occurrence: ${JSON.stringify(_ex)}`);
     }
     }
@@ -614,46 +931,63 @@ export const diffCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'diff',
         message: `diff: option '${flagWithArgument}' doesn't allow an argument`,
-        argvSpec: diffArgvSpec,
+        usageSummary: diffArgvUsageSummary,
       });
       return { exitCode: 2 };
     }
 
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: normalizeOptionalShortContextCounts({ args: context.args }),
-        spec: diffArgvSpec,
-        earlyExitOptions: STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS,
+        catalog: diffArgvCatalog,
+        policy: diffArgvPolicy,
+        earlyExitOptions: HELP_VERSION_EARLY_EXIT_OPTIONS,
       }),
-      spec: diffArgvSpec,
+      catalog: diffArgvCatalog,
+      policy: diffArgvPolicy,
     });
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
+      const message = (() => {
+        switch (diagnostic.kind) {
+        case 'unknown_long_option':
+          return `unrecognized option '${diagnostic.option.split('=', 1)[0]}'`;
+        case 'unknown_short_option':
+        case 'ambiguous_long_option':
+        case 'missing_option_value':
+        case 'unexpected_option_value':
+        case 'invalid_option_value':
+          return diagnostic.message;
+        default: {
+          const _ex: never = diagnostic;
+          throw new Error(`Unhandled argv diagnostic: ${JSON.stringify(_ex)}`);
+        }
+        }
+      })();
       await writeCommandUsageError({
         context,
         command: 'diff',
-        message: `diff: ${diagnostic.message}`,
-        argvSpec: diffArgvSpec,
+        message: `diff: ${message}`,
+        usageSummary: diffArgvUsageSummary,
       });
       return { exitCode: 2 };
     }
 
-    const invalidContextLength = collectOccurrenceValues({
-      occurrences: parsed.occurrences,
-      key: 'invalidContextLength',
-    }).at(-1);
-    if (invalidContextLength !== undefined) {
+    const occurrences = parsed.occurrences ?? [];
+    const invalidContext = parsed.deferred.map(({ value }) => getRawValue({ value }))
+      .findLast(rawValue => rawValue !== undefined && parseNonnegativeInteger({ rawValue }).kind === 'invalid');
+    if (invalidContext !== undefined) {
       await writeCommandUsageError({
         context,
         command: 'diff',
-        message: `diff: invalid context length '${invalidContextLength}'`,
-        argvSpec: diffArgvSpec,
+        message: `diff: invalid context length '${invalidContext}'`,
+        usageSummary: diffArgvUsageSummary,
       });
       return { exitCode: 2 };
     }
 
     if (parsed.optionValues.help === true) {
-      await writeCommandHelp({ context, command: 'diff', argvSpec: diffArgvSpec });
+      await writeCommandHelp({ context, command: 'diff', optionLines: formatArgvOptionHelp({ presentation: diffArgvHelp }) });
       return { exitCode: 0 };
     }
     if (parsed.optionValues.version === true) {
@@ -679,7 +1013,7 @@ export const diffCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'diff',
           message: 'diff: missing operand',
-          argvSpec: diffArgvSpec,
+          usageSummary: diffArgvUsageSummary,
         });
         return { exitCode: 2 };
       }
@@ -693,7 +1027,7 @@ export const diffCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'diff',
           message: 'diff: missing operand',
-          argvSpec: diffArgvSpec,
+          usageSummary: diffArgvUsageSummary,
         });
         return { exitCode: 2 };
       }
@@ -702,7 +1036,7 @@ export const diffCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'diff',
           message: `diff: extra operand '${parsed.positionals[2]}'`,
-          argvSpec: diffArgvSpec,
+          usageSummary: diffArgvUsageSummary,
         });
         return { exitCode: 2 };
       }
@@ -723,7 +1057,7 @@ export const diffCommandImplementation: WeshCommandImplementation = {
       return { exitCode: 2 };
     }
 
-    const labels = collectOccurrenceValues({ occurrences: parsed.occurrences, key: 'label' });
+    const labels = collectOccurrenceValues({ occurrences, key: 'label' });
     if (labels.length > 2) {
       await context.text().error({ text: 'diff: too many file label options\n' });
       return { exitCode: 2 };
@@ -733,7 +1067,7 @@ export const diffCommandImplementation: WeshCommandImplementation = {
     const ignorePatterns: RegExp[] = [];
     let functionLinePattern: RegExp | undefined;
     try {
-      for (const source of collectOccurrenceValues({ occurrences: parsed.occurrences, key: 'ignoreMatchingLines' })) {
+      for (const source of collectOccurrenceValues({ occurrences, key: 'ignoreMatchingLines' })) {
         ignorePatterns.push(compileBasicRegularExpression({
           source,
           flags: '',
@@ -745,7 +1079,7 @@ export const diffCommandImplementation: WeshCommandImplementation = {
         }));
       }
       const functionPatternSources = collectOccurrenceValues({
-        occurrences: parsed.occurrences,
+        occurrences,
         key: 'functionLinePattern',
       });
       const functionPatternSource = functionPatternSources[functionPatternSources.length - 1];
@@ -769,10 +1103,10 @@ export const diffCommandImplementation: WeshCommandImplementation = {
     }
 
     try {
-      const excludeSources = collectOccurrenceValues({ occurrences: parsed.occurrences, key: 'exclude' });
+      const excludeSources = collectOccurrenceValues({ occurrences, key: 'exclude' });
       const excludedFromFiles = await readExcludePatterns({
         context,
-        paths: collectOccurrenceValues({ occurrences: parsed.occurrences, key: 'excludeFrom' }),
+        paths: collectOccurrenceValues({ occurrences, key: 'excludeFrom' }),
       });
       for (const excluded of excludedFromFiles) {
         excludeSources.push(excluded);
@@ -788,7 +1122,7 @@ export const diffCommandImplementation: WeshCommandImplementation = {
         tabSize,
       };
       const outputOptions: DiffOutputOptions = {
-        mode: resolveOutputMode({ occurrences: parsed.occurrences }),
+        mode: resolveOutputMode({ occurrences }),
         characterLocaleMode,
         functionLinePattern,
         expandTabs: parsed.optionValues.expandTabs === true,
@@ -818,7 +1152,7 @@ export const diffCommandImplementation: WeshCommandImplementation = {
 
       const stdout = createDiffByteWriter({ handle: context.stdout });
       const stderr = createDiffByteWriter({ handle: context.stderr });
-      const recursiveCommandPrefix = createRecursiveCommandPrefix({ occurrences: parsed.occurrences, args: context.args });
+      const recursiveCommandPrefix = createRecursiveCommandPrefix({ occurrences, args: context.args });
       const stdinCache: DiffStdinCache = {
         bytes: undefined,
         mtime: undefined,
@@ -852,6 +1186,6 @@ export const diffCommandImplementation: WeshCommandImplementation = {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
-  diffArgvSpec,
+  diffArgvCatalog,
   resolveOutputMode,
 };

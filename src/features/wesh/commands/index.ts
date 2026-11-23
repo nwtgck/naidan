@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition } from '@/features/wesh/types';
+import type { WeshRegisteredCommandDefinition } from '@/features/wesh/types';
 import { lsCommandDefinition } from './ls/definition.ts';
 import { cdCommandDefinition } from './cd/definition.ts';
 import { catCommandDefinition } from './cat/definition.ts';
@@ -89,7 +89,7 @@ import { umaskCommandDefinition } from './umask/definition.ts';
 import { gitCommandDefinition } from './git/definition.ts';
 import { nodeCommandDefinition } from './node/definition.ts';
 
-export const builtinCommands: WeshCommandDefinition[] = [
+export const builtinCommands: WeshRegisteredCommandDefinition[] = [
   lsCommandDefinition,
   cdCommandDefinition,
   catCommandDefinition,

@@ -3,7 +3,7 @@ export type WeshCharacterLocaleMode = 'ascii' | 'unicode';
 export function resolveCharacterLocaleMode({
   env,
 }: {
-  env: ReadonlyMap<string, string>,
+  env: Pick<ReadonlyMap<string, string>, 'get'>,
 }): WeshCharacterLocaleMode {
   const locale = env.get('LC_ALL')
     || env.get('LC_CTYPE')

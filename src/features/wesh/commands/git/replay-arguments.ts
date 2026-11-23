@@ -1,4 +1,4 @@
-import { analyzeArgvLongForm, analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvLongForm, analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv';
 import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { GitReplayRequest } from '@/features/wesh/commands/git/replay-operation';

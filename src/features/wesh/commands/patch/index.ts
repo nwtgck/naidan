@@ -1,8 +1,9 @@
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { formatArgvOptionHelp } from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
-import { parsePatchArgv, parsePatchBackupStyle, patchArgvSpec, patchDirectoryOperandsBeforeTerminal } from './argv';
+import { parsePatchArgv, parsePatchBackupStyle, patchArgvHelp, patchArgvUsageSummary, patchDirectoryOperandsBeforeTerminal } from './argv';
 import {
   applyEdSection,
   applyTextSection,
@@ -20,8 +21,12 @@ import {
   readPatchInput,
   readPatchSource,
   installRenamedEntry,
+  publishPatchedEntry,
+  removePatchedEntry,
   resolveEffectiveDirectory,
+  resolvePatchEntry,
   resolvePatchTarget,
+  samePatchOutput,
   writeOutputContent,
 } from './filesystem';
 import { parsePatchDocument } from './parser';
@@ -375,6 +380,13 @@ async function writeRejects({
   if (fullPath === target.destinationPath || fullPath === target.sourcePath) {
     throw new Error(`reject path would overwrite patched file '${fullPath}'`);
   }
+  const outputPath = options.outputPath;
+  if (outputPath !== undefined && outputPath !== '-') {
+    const output = resolvePath({ cwd: effectiveDirectory, path: outputPath });
+    if (await samePatchOutput({ context, first: fullPath, second: output })) {
+      throw new Error(`reject path would overwrite patch output '${output}'`);
+    }
+  }
   if (!initializedRejectPaths.has(fullPath)) {
     await installPatchedEntry({
       context,
@@ -382,7 +394,6 @@ async function writeRejects({
       kind: 'regular',
       content: { kind: 'bytes', bytes },
       mode: 0o644,
-      deleteTarget: false,
     });
     initializedRejectPaths.add(fullPath);
     return;
@@ -975,13 +986,13 @@ async function applySection({
   const adjustedSection = getDirectionAdjustedSection({ section, direction });
   const outputOnly = options.outputPath !== undefined;
   const exitCode = rejectedHunks.length > 0 ? 1 : 0;
-  const resultByteLength = await getPatchContentByteLength({ context, content: resultContent });
+  const resultByteLength = getPatchContentByteLength({ content: resultContent });
 
   if (!options.dryRun && !outputOnly) {
     const backupTarget = (() => {
       switch (adjustedSection.header.operation) {
       case 'create':
-        return { path: target.destinationPath, exists: source.exists };
+        return { path: target.destinationPath, exists: source.entry !== undefined };
       case 'copy':
         return { path: target.destinationPath, exists: false };
       case 'modify':
@@ -989,7 +1000,7 @@ async function applySection({
       case 'rename':
         return {
           path: target.sourcePath ?? target.destinationPath,
-          exists: source.exists,
+          exists: source.entry !== undefined,
         };
       default: {
         const _ex: never = adjustedSection.header.operation;
@@ -1023,7 +1034,7 @@ async function applySection({
       await createBackup({
         context,
         targetPath: backupTarget.path,
-        targetExists: backupTarget.exists,
+        source: backupTarget.exists ? source : undefined,
         options,
         cwd: effectiveDirectory,
       });
@@ -1038,7 +1049,7 @@ async function applySection({
     }
     switch (adjustedSection.header.operation) {
     case 'rename':
-      if (target.sourcePath === undefined) {
+      if (source.entry === undefined) {
         throw new Error(`cannot determine rename source for '${target.destinationPath}'`);
       }
       if (deleteTarget) {
@@ -1046,24 +1057,31 @@ async function applySection({
       }
       await installRenamedEntry({
         context,
-        sourcePath: target.sourcePath,
+        sourceEntry: source.entry,
         destinationPath: target.destinationPath,
         kind: destinationKind,
         content: resultContent,
         mode: destinationMode,
+        sourceMode: source.mode,
       });
       break;
     case 'modify':
     case 'create':
     case 'delete':
     case 'copy':
-      await installPatchedEntry({
+      if (deleteTarget) {
+        if (source.entry !== undefined && sourcePath === target.destinationPath) {
+          await removePatchedEntry({ context, entry: source.entry, retainedEntry: undefined, mode: source.mode });
+        }
+        break;
+      }
+      await publishPatchedEntry({
         context,
         targetPath: target.destinationPath,
+        expected: sourcePath === target.destinationPath ? source.entry : undefined,
         kind: destinationKind,
         content: resultContent,
         mode: destinationMode,
-        deleteTarget,
       });
       break;
     default: {
@@ -1181,7 +1199,7 @@ export const patchCommandImplementation: WeshCommandImplementation = {
     const parsedArgv = parsePatchArgv({ args: context.args });
     switch (parsedArgv.kind) {
     case 'help':
-      await writeCommandHelp({ context, command: 'patch', argvSpec: patchArgvSpec });
+      await writeCommandHelp({ context, command: 'patch', optionLines: formatArgvOptionHelp({ presentation: patchArgvHelp }) });
       return { exitCode: 0 };
     case 'version':
       await context.text().print({ text: 'Wesh patch 1.0\n' });
@@ -1191,7 +1209,7 @@ export const patchCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'patch',
         message: parsedArgv.message,
-        argvSpec: patchArgvSpec,
+        usageSummary: patchArgvUsageSummary,
       });
       return { exitCode: 2 };
     case 'ok':
@@ -1238,7 +1256,7 @@ export const patchCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'patch',
         message: `patch: option '${options.unsupportedOption}' is not supported by Wesh`,
-        argvSpec: patchArgvSpec,
+        usageSummary: patchArgvUsageSummary,
       });
       return { exitCode: 2 };
     }
@@ -1247,7 +1265,7 @@ export const patchCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'patch',
         message: 'patch: --safe-paths requires an explicit -p/--strip value or an explicit original file operand',
-        argvSpec: patchArgvSpec,
+        usageSummary: patchArgvUsageSummary,
       });
       return { exitCode: 2 };
     }
@@ -1273,6 +1291,10 @@ export const patchCommandImplementation: WeshCommandImplementation = {
         });
       }
 
+      const outputPath = options.dryRun || options.outputPath === undefined || options.outputPath === '-' ? options.outputPath
+        : resolvePath({ cwd: effectiveDirectory, path: options.outputPath });
+      const expectedOutput = options.dryRun || outputPath === undefined || outputPath === '-' ? undefined
+        : await resolvePatchEntry({ context, path: outputPath });
       if (options.atomic && !options.dryRun) {
         const preflight = await applyPatchSections({
           context,
@@ -1311,12 +1333,12 @@ export const patchCommandImplementation: WeshCommandImplementation = {
       }
       }
 
-      if (options.outputPath !== undefined && !options.dryRun) {
+      if (outputPath !== undefined && !options.dryRun) {
         await writeOutputContent({
           context,
-          path: options.outputPath,
+          path: outputPath,
           content: { kind: 'sequence', contents: applied.outputs },
-          cwd: effectiveDirectory,
+          expected: expectedOutput,
         });
       }
 

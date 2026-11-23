@@ -7,7 +7,7 @@ import { discoverRepositoryFromContext } from '@/features/wesh/commands/git/repo
 import { statusPathFromCwd } from '@/features/wesh/commands/git/status-output';
 import { worktreeAbsolutePath } from '@/features/wesh/commands/git/worktree';
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
-import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 
 const GREP_OUTPUT_FLUSH_THRESHOLD = 64 * 1024;

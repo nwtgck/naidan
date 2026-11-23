@@ -61,6 +61,41 @@ echo $?`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('creates and reports each requested prefix after following a symlink', async () => {
+    const created = await execute({
+      script: `\
+mkdir -p tree/inner
+ln -s tree/inner up
+mkdir -pv up/../first/../second
+`,
+    });
+
+    expect(created.result.exitCode).toBe(0);
+    expect(created.stderr.text).toBe('');
+    expect(created.stdout.text).toBe(`\
+mkdir: created directory 'up/../first'
+mkdir: created directory 'up/../first/../second'
+`);
+    expect((await wesh.vfs.stat({ path: '/tree/first' })).type).toBe('directory');
+    expect((await wesh.vfs.stat({ path: '/tree/second' })).type).toBe('directory');
+    await expect(wesh.vfs.stat({ path: '/second' })).rejects.toThrow();
+  });
+
+  it('keeps directories made before a later non-directory component', async () => {
+    const result = await execute({
+      script: `\
+printf x > regular
+mkdir -pv first/../regular/child
+`,
+    });
+
+    expect(result.result.exitCode).toBe(1);
+    expect(result.stdout.text).toBe("mkdir: created directory 'first'\n");
+    expect(result.stderr.text).toContain('Not a directory');
+    expect((await wesh.vfs.stat({ path: '/first' })).type).toBe('directory');
+    expect((await wesh.vfs.stat({ path: '/regular' })).type).toBe('file');
+  });
+
   it('creates relative and absolute directories from an existing workspace', async () => {
     await wesh.vfs.mkdir({ path: '/home/user/ws', recursive: true });
 

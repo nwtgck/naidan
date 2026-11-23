@@ -378,6 +378,20 @@ a`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('treats help and double dash as literal sets once operand parsing starts', async () => {
+    const helpAsSet = await execute({ script: 'tr a --help', stdinText: 'aAb' });
+    const dashAsSet = await execute({ script: 'tr a --', stdinText: 'aa' });
+    const explicitBoundary = await execute({ script: 'tr -- -d x', stdinText: 'd-a' });
+
+    expect(helpAsSet.stdout.text).toBe('-Ab');
+    expect(dashAsSet.stdout.text).toBe('--');
+    expect(explicitBoundary.stdout.text).toBe('xxa');
+    for (const execution of [helpAsSet, dashAsSet, explicitBoundary]) {
+      expect(execution.result.exitCode).toBe(0);
+      expect(execution.stderr.text).toBe('');
+    }
+  });
+
   it('allows aligned same-case and opposite-case character classes', async () => {
     const lowerIdentity = await execute({
       script: `tr '[:lower:]' '[:lower:]'`,
@@ -512,5 +526,21 @@ a`,
 
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
+  });
+
+  it('accepts unambiguous long-option prefixes and rejects values for flags', async () => {
+    const deletePrefix = await execute({ script: 'tr --del a', stdinText: 'aAb' });
+    const help = await execute({ script: 'tr --he --unknown', stdinText: undefined });
+    const unexpectedValue = await execute({ script: 'tr --delete=yes a --help', stdinText: undefined });
+
+    expect(deletePrefix.result.exitCode).toBe(0);
+    expect(deletePrefix.stdout.text).toBe('Ab');
+    expect(deletePrefix.stderr.text).toBe('');
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: tr');
+    expect(help.stderr.text).toBe('');
+    expect(unexpectedValue.result.exitCode).toBe(1);
+    expect(unexpectedValue.stdout.text).toBe('');
+    expect(unexpectedValue.stderr.text).toContain("option '--delete' doesn't allow an argument");
   });
 });

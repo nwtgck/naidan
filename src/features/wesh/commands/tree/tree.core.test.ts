@@ -72,6 +72,19 @@ work
     expect(result.exitCode).toBe(0);
   });
 
+  it('validates options after --help and treats --help after -- as a path', async () => {
+    await mkdir({ path: '--help' });
+    const invalid = await execute({ script: 'tree --help --bogus' });
+    expect(invalid.result.exitCode).toBe(1);
+    expect(invalid.stdout.text).toBe('');
+    expect(invalid.stderr.text).toContain("unrecognized option '--bogus'");
+
+    const path = await execute({ script: 'tree --noreport -- --help' });
+    expect(path.result.exitCode).toBe(0);
+    expect(path.stderr.text).toBe('');
+    expect(path.stdout.text).toBe('--help\n');
+  });
+
   it('supports --help, --version, --noreport, -L, -d, and multiple roots', async () => {
     await writeFile({ path: 'src/app.ts', data: 'app\n' });
     await writeFile({ path: 'src/nested/main.ts', data: 'main\n' });

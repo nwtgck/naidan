@@ -2,6 +2,7 @@
 import { MessageChannel } from 'node:worker_threads';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
+import { canCompareFileSystemEntryIdentity } from './remote-directory-handle-identity';
 import {
   createRemoteDirectoryAccess,
   createRemoteDirectoryHandle,
@@ -205,9 +206,21 @@ describe('remote directory handles', () => {
     expect(dispatch).toHaveBeenCalledWith({ request: { type: 'get_directory', parentId: 'root', name: directoryEntry.name, create: true } });
     expect(dispatch).toHaveBeenCalledWith({ request: { type: 'remove_entry', parentId: 'root', name: directoryEntry.name, recursive: true } });
 
+    const sameGrantRoot = createRemoteDirectoryHandle({ access, root: rootEntry });
     const otherRoot = createRemoteDirectoryHandle({ access: createRemoteDirectoryAccess({ dispatch }), root: rootEntry });
+    const native = { kind: 'file', name: fileEntry.name, isSameEntry: vi.fn() } satisfies FileSystemHandle;
+    const anotherNative = { ...native };
+    expect(canCompareFileSystemEntryIdentity({ first: root, second: sameGrantRoot })).toBe(true);
+    expect(canCompareFileSystemEntryIdentity({ first: root, second: otherRoot })).toBe(false);
+    expect(canCompareFileSystemEntryIdentity({ first: root, second: native })).toBe(false);
+    expect(canCompareFileSystemEntryIdentity({ first: native, second: root })).toBe(false);
+    expect(canCompareFileSystemEntryIdentity({ first: native, second: anotherNative })).toBe(true);
+    await expect(root.isSameEntry(sameGrantRoot)).resolves.toBe(true);
+
+    dispatch.mockClear();
     expect(await root.isSameEntry(otherRoot)).toBe(false);
     expect(await root.resolve(otherRoot)).toBeNull();
+    expect(dispatch).not.toHaveBeenCalled();
   });
 
   it('keeps strings and Blobs intact and sends only the selected bytes of buffer views', async () => {

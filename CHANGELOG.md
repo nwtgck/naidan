@@ -27,6 +27,110 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+## [0.74.0] - 2026-11-23
+
+### Added
+
+- Use `rg --sort none` in the browser shell to search and print results as files are discovered.
+- Use `set -a` in browser shell scripts to automatically export variables assigned by the shell and its built-ins. Use `set +a` to stop automatically exporting future assignments.
+- Edit the source, translate and copy the result from a floating Translation window in browsers that support it.
+
+### Changed
+
+- Reduce metadata reads in the browser shell when `find` filters by name and file type.
+- Batch matching lines in the browser shell's `rg` output. With `-q`, stop after the first match when searching a single path in the default order.
+- Reduce redundant ZIP reads when extracting archives with many small entries. The browser shell's `unzip` also makes fewer destination directory lookups.
+- Search large files in chunks with `rg` in the browser shell, allowing the first result to appear before the whole file is read and early-exit searches to skip the remainder.
+- Reduce repeated filesystem lookups in the browser shell when commands such as `find` resolve deeply nested paths.
+- Choose suggested, saved, imported, or Hugging Face models from the model selector in Translation. The default PLaMo 3 Translate 0.8B model is downloaded on the first explicit translation request if it is missing.
+- **Breaking:** Replace bookmarks to `/#/translation/models` with `/#/translation` and open the model selector there.
+- Store Naidan Server assets in a compressed, deduplicated embedded pack while retaining source maps and byte-identical standalone ZIP downloads; serve assets without extracting them to disk or expanding the full asset set into memory.
+
+### Fixed
+
+- Respect read-only mounts when commands in the browser shell copy or write files.
+- Interpret UTC dates with surrounding spaces consistently in the browser shell.
+- Preserve an existing output file when the browser shell's `unzip` rejects the data for a replacement entry.
+- Reject archive entries when the browser shell's `unzip` detects a change to a confirmed destination. Check directory creation paths without following symbolic links.
+- Reject `unzip -x` before the archive name in the browser shell, so a misplaced exclusion cannot lead to unexpected extraction or replacement.
+- A single Stop request interrupts a running browser shell command, even if it ignores `SIGINT`. If the command cannot respond, a forced stop resets the shell session.
+- Give in-progress file saves from an interrupted browser shell command time to finish before resetting the session.
+- Resume input in the browser shell terminal as soon as a command finishes. Limit queued output when the terminal or shell tool is slow to receive it.
+- Preserve existing files when Stop interrupts browser shell redirection before truncation begins.
+- Stop interrupts the browser shell while it waits for a background job. With no operands, `wait` returns success once it has collected the jobs.
+- Deliver subsequent group signals in the browser shell even when a shell ignored a previous signal. A direct `SIGTERM` ends the waiting shell promptly while the background child continues.
+- Stop interrupts browser shell scripts waiting for input from named pipes and commands whose implementation is still loading.
+- Preserve buffered browser shell input when one of several descriptors sharing the stream is closed. Long-running streams release completed I/O notifications as they finish.
+- Report errors when closing files opened by a browser shell command while preserving any earlier failure or signal exit status.
+- When browser shell commands respond to Stop, discard staged output that has not started saving and clean up temporary `sed -i` files and unfinished Git locks.
+- Show the launched program and its arguments in the browser shell's `ps` output.
+- Use the current browser shell's PID when running built-ins such as `printf` and `eval` directly.
+- Run the target of `exec` under the current browser shell's PID and close its inherited file descriptors when it exits. Pass inherited descriptors through `sh` and `bash`.
+- Keep the decimal point in alternate general formats such as `%#g` in the browser shell's `awk` when the fractional part has zero digits.
+- Emit unquoted strings with `jq -j` and `--join-output` in the browser shell. With `-a`, use ASCII JSON output.
+- Limit the browser shell's `git add -A` and `git add -u` to the specified paths.
+- Have the browser shell's `tee` report file-save failures while continuing to copy to other available outputs.
+- Handle compound commands and nested redirections in browser shell pipelines, including cases where redirected stages could hang. Preserve files opened with `exec` across shell calls.
+- Run simple pipeline commands in their stage's PID in the browser shell, so `ps` shows them as direct children of the shell.
+- Preserve numeric arguments during browser shell redirection in commands like `printf '%s' 7 >&2` and `printf '%s' 7&>out`.
+- Preserve browser shell redirections and control flow through `eval`, `command`, and `time`.
+- Release the read end of an input process substitution when a command leaves data unread, allowing the browser shell to finish.
+- Keep process substitutions connected to descriptors opened by `exec` in the browser shell, so later commands can read or write large amounts of data through them.
+- In the browser shell, preserve unread input across duplicated file descriptors and nested shells, including when one reader is stopped.
+- In the browser shell, apply `env` working-directory and environment changes to the command it starts, keeping the invoking shell's state intact.
+- Keep the browser shell's working directory and variables intact when an `awk` program starts a child command with `system()` or a pipe.
+- Pass exported variables and command-prefix assignments to child commands in the browser shell. Use `export NAME` to pass a shell variable and `export -n NAME` to remove its export attribute.
+- Sort the `.` and `..` entries with the rest of `ls -a` output in the browser shell.
+- Use GNU `sort -k` field boundaries around whitespace in the browser shell when no delimiter is specified.
+- In the browser shell's `sort`, diagnose conflicting `--check` options before help and report invalid keys, delimiters, and output options in argument order.
+- Accept historical count forms such as `head -1c` in the browser shell.
+- The browser shell's `head` accepts unambiguous long-option abbreviations and rejects values on options that take no argument.
+- The browser shell's `tail` distinguishes files it cannot open from directories it cannot read.
+- In the browser shell's `tail`, diagnose obsolete count options in the order they appear and accept unambiguous long-option abbreviations.
+- Honor `--output-delimiter` in the browser shell when `cut -b` or `cut -c` selects multiple ranges.
+- Print zero totals in the browser shell when every input to `wc` fails and there are multiple inputs.
+- The browser shell's `wc` accepts unambiguous long-option abbreviations and rejects values on options that take no argument.
+- Fix how child shells list inherited traps in the browser shell. Run local `EXIT` traps with the correct redirections in grouped commands and substitutions.
+- Preserve an existing destination when a browser shell file move fails before committing its replacement, and protect a Git lock acquired by another operation after publication.
+- The browser shell's plain `mv` keeps both entries and reports an error when it would replace a regular file with a symlink or FIFO, or the reverse. `mv --backup` can save the existing destination before moving the other type into place.
+- The browser shell's `mv --backup` keeps an existing backup if preparing its replacement fails. If installing the source fails, it tries to restore the saved destination when its name remains free. It keeps the backup if a new entry occupies the destination.
+- In the browser shell, protect files created after `mv -n`, `mv -i`, `mv --update=none`, or `mv --backup` checks that the destination is free. Preserve a replacement file that appears after an interactive overwrite is confirmed.
+- Create a missing symbolic link target when opening an output file in the browser shell, so commands such as `split` save their output and preserve the link.
+- Resolve symbolic links before processing `..` when opening, removing, or moving files in the browser shell. Reject missing path components before `..`.
+- In the browser shell, create directories in path order with `mkdir -p` and place new symbolic links and FIFOs in the resolved directory. Compute relative links from the directory where the link will be created.
+- Resolve script paths in filesystem order for command execution, `command -v`, and `type` in the browser shell. Paths with missing parent components no longer invoke a registered command by mistake.
+- Match GNU `uniq` in the browser shell when accepting unambiguous long-option abbreviations and reporting invalid grouping options.
+- Finish an accepted backed-up `sed -i` replacement after Stop in the browser shell, and preserve recoverable files when a replacement cannot be confirmed.
+- Preserve existing files in the browser shell when `patch` stops before saving a replacement or `git apply` fails while preparing patched contents, including file type changes.
+- In the browser shell, preserve unrelated files when a `patch` deletion, rename, backup, or explicit output encounters a different file at the expected path.
+- The browser shell's `patch` reports a conflict before writing if rejected hunks and patched output would go to the same file.
+- Keep competing files when the browser shell's `cp` detects that the destination changed after its overwrite decision. `cp -b` reports an error and preserves both entries when it would need to replace a regular file with a symlink or special entry at the backup path, or the reverse.
+- The browser shell's `cp -b` reports a conflict when it cannot verify that the source and previous backup are separate files. When `cp -u` writes through a symbolic link, compare the modification time of the file it would update.
+- The browser shell's `git apply --index` stops before changing worktree files when another operation holds the index lock, and preserves the existing index if it cannot be read.
+- The browser shell's Git preserves competing branch references, rejects commits whose parent reference changed, and finishes accepted reference and reflog updates after Stop.
+- For Git in the browser shell, finish accepted stash removals after Stop, keep recovery history available after a failed update, and preserve remaining stash entries if the list changes during `git stash pop`.
+- For Git branch renames in the browser shell, keep the original branch until its new name and any HEAD update are in place. Finish accepted renames after Stop.
+- Match GNU `shuf` in the browser shell when `-n` is repeated, when `-e` and `-i` conflict, and when reporting invalid ranges and output options.
+- Let the browser shell's `gzip -d` and `gzip -t` read files with names beginning with a dash when supplied after `--`.
+- Accept consecutive negative operands for `jq --args` and `jq --jsonargs` in the browser shell.
+- Honor Bash startup options such as `-O extglob` and `-n` in the browser shell, and preserve the invoked name or the name supplied with `exec -a` as `$0`.
+- Use signed 64-bit arithmetic in the browser shell and follow Bash evaluation order for logical operators, conditional expressions, assignments, and updates.
+- Preserve nested arithmetic and shift assignments in `((…))` in the browser shell. Let scripts continue on the next input line after a failed arithmetic expansion.
+- Keep the browser shell's `rg` from getting stuck when a regular expression matches an empty string before a character such as an emoji.
+- Scripts in the browser shell now handle short-circuiting, arithmetic comparisons, and file tests in `[[ ... ]]` conditions.
+- Preserve the command-not-found exit code (127) when a command is part of a list in the browser shell.
+- Retain a background command's PID and exit status across browser shell inputs so it can be waited on again. Keep process substitutions from earlier inputs available when stopping an unrelated command.
+- Send signals to browser shell processes and process groups by number. Use `kill "$!"` to target a simple background command and `wait "$!"` to collect its exit status.
+- Scripts in the browser shell can handle trapped signals and continue. A trapped signal can interrupt `wait` while keeping the child available to wait on again. Signals sent only to a child leave the parent shell's traps alone.
+- Keep browser shell commands running when they receive signals such as `WINCH` or `URG` with their default dispositions.
+- Run the browser shell's `EXIT` trap on an unhandled `SIGTERM` while separately running children keep their file descriptors. `SIGKILL` can end a trap that is blocked writing to a pipe.
+- When a browser shell script receives `SIGINT` while waiting for a foreground command, use the child's actual termination reason. A normal exit with status 130 can still pass control to the next command.
+- Preserve data when different browser shell descriptors append to the same file, including when `tee` writes to a file that also receives its standard output.
+- Protect the destination and its backup in the browser shell when `mv -b` cannot move a read-only source or detects an active writer before the move.
+- Keep a new file that replaces a symbolic link while the browser shell is removing the link.
+- Clear the first-use download hint when the selected model finishes downloading and restore it if the saved files are removed.
+- Omit unreleased changelog drafts from Naidan Server archives while keeping the published changelog.
+
 ## [0.73.0] - 2026-11-22
 
 ### Added
@@ -1266,7 +1370,8 @@ Do not add entries directly here during ordinary development.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.73.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.74.0...develop
+[0.74.0]: https://github.com/nwtgck/naidan/compare/v0.73.0...v0.74.0
 [0.73.0]: https://github.com/nwtgck/naidan/compare/v0.72.0...v0.73.0
 [0.72.0]: https://github.com/nwtgck/naidan/compare/v0.71.0...v0.72.0
 [0.71.0]: https://github.com/nwtgck/naidan/compare/v0.70.0...v0.71.0

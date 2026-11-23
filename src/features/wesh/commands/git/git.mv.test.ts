@@ -228,7 +228,7 @@ R  a -> b
 `);
   });
 
-  it('supports verbose short and unique-prefix long options through argv-v2', async () => {
+  it('supports verbose short and unique-prefix long options through argv', async () => {
     const short = await execute({
       script: `\
 ${setup}

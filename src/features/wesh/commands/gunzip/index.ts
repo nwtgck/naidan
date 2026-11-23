@@ -5,8 +5,17 @@ import type {
   WeshFileHandle,
   WeshOpenFlags,
 } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { getGzipSuffixDiagnostic } from '@/features/wesh/commands/_shared/gzip-suffix';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
@@ -14,7 +23,7 @@ import {
   consumeGzipInput,
   peekGzipInput,
 } from '@/features/wesh/commands/_shared/gzip-decompression';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
 import { writeAllStreamToHandle } from '@/features/wesh/utils/fs';
 
@@ -92,76 +101,86 @@ async function openOutputFile({
   return context.files.open({ path, flags });
 }
 
-const gunzipArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'c',
-      long: 'stdout',
-      effects: [{ key: 'stdout', value: true }],
-      help: { summary: 'write on standard output, keep original files unchanged', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'f',
-      long: 'force',
-      effects: [{ key: 'force', value: true }],
-      help: { summary: 'force overwrite of output files', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'k',
-      long: 'keep',
-      effects: [{ key: 'keep', value: true }],
-      help: { summary: 'keep input files unchanged', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'q',
-      long: 'quiet',
-      effects: [{ key: 'quiet', value: true }],
-      help: { summary: 'suppress warning messages', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'S',
-      long: 'suffix',
-      key: 'suffix',
-      valueName: 'SUF',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'use suffix SUF on compressed files', valueName: 'SUF' },
-    },
-    {
-      kind: 'flag',
-      short: 't',
-      long: 'test',
-      effects: [{ key: 'test', value: true }],
-      help: { summary: 'test compressed file integrity', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const gunzipOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'stdout', value: true }] },
+    forms: [
+      { kind: 'short', name: 'c', value: { kind: 'none' } },
+      { kind: 'long', name: 'stdout', value: { kind: 'none' } },
+    ],
+    help: { summary: 'write on standard output, keep original files unchanged', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'force', value: true }] },
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'none' } },
+      { kind: 'long', name: 'force', value: { kind: 'none' } },
+    ],
+    help: { summary: 'force overwrite of output files', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'keep', value: true }] },
+    forms: [
+      { kind: 'short', name: 'k', value: { kind: 'none' } },
+      { kind: 'long', name: 'keep', value: { kind: 'none' } },
+    ],
+    help: { summary: 'keep input files unchanged', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'quiet', value: true }] },
+    forms: [
+      { kind: 'short', name: 'q', value: { kind: 'none' } },
+      { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+    ],
+    help: { summary: 'suppress warning messages', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'suffix', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'S', value: { kind: 'required-attached-or-following', missingValueName: 'SUF' } },
+      { kind: 'long', name: 'suffix', value: { kind: 'required', missingValueName: 'SUF' } },
+    ],
+    help: { summary: 'use suffix SUF on compressed files', valueName: 'SUF' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'test', value: true }] },
+    forms: [
+      { kind: 'short', name: 't', value: { kind: 'none' } },
+      { kind: 'long', name: 'test', value: { kind: 'none' } },
+    ],
+    help: { summary: 'test compressed file integrity', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    help: { summary: 'display this help and exit', category: 'common' },
+  },
+] as const;
+const gunzipArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: gunzipOptions.map(({ semantic, forms }) => ({ semantic, forms })),
+  nonExecutableLongOptions: [],
+});
+const gunzipArgvHelp = defineArgvHelpPresentation({
+  catalog: gunzipArgvCatalog,
+  rows: gunzipOptions.map(({ forms, help }) => ({ forms, ...help })),
+});
+const gunzipArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 export const gunzipCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: context.args,
-        spec: gunzipArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: gunzipArgvCatalog,
+        policy: gunzipArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: gunzipArgvSpec,
+      catalog: gunzipArgvCatalog,
+      policy: gunzipArgvPolicy,
     });
 
     const text = context.text();
@@ -171,7 +190,7 @@ export const gunzipCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'gunzip',
         message: `gunzip: ${diagnostic.message}`,
-        argvSpec: gunzipArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: gunzipArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -180,7 +199,7 @@ export const gunzipCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'gunzip',
-        argvSpec: gunzipArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: gunzipArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -190,7 +209,7 @@ export const gunzipCommandImplementation: WeshCommandImplementation = {
     const quiet = parsed.optionValues.quiet === true;
     const testOnly = parsed.optionValues.test === true;
     const keepInput = parsed.optionValues.keep === true || writeToStdout || testOnly;
-    const suffix = (parsed.optionValues.suffix as string | undefined) ?? '.gz';
+    const suffix = typeof parsed.optionValues.suffix === 'string' ? parsed.optionValues.suffix : '.gz';
     const suffixDiagnostic = getGzipSuffixDiagnostic({ suffix });
     if (suffixDiagnostic !== undefined) {
       await text.error({ text: suffixDiagnostic });

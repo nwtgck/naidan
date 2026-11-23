@@ -67,31 +67,17 @@ export const weshWorkerInitRequestSchema = resolveMissingAsUndefined(z.object({
 
 export const weshWorkerExecuteRequestSchema = z.object({
   script: z.string(),
-});
-
-export const weshWorkerStartExecutionResponseSchema = z.object({
-  executionId: z.string().min(1),
-});
-
-export const weshWorkerAwaitExecutionRequestSchema = z.object({
-  executionId: z.string().min(1),
-});
-
-export const weshWorkerInterruptExecutionRequestSchema = z.object({
-  executionId: z.string().min(1),
-});
-
-export const weshWorkerDisposeExecutionRequestSchema = z.object({
-  executionId: z.string().min(1),
-});
-
-export const weshWorkerExecutionSummarySchema = z.object({
-  exitCode: z.number().int(),
+  includeShellState: z.literal(true).optional(),
 });
 
 export const weshWorkerShellStateSchema = z.object({
   cwd: z.string().min(1),
   env: z.record(z.string(), z.string()),
+});
+
+export const weshWorkerExecutionSummarySchema = z.object({
+  exitCode: z.number().int(),
+  shellState: weshWorkerShellStateSchema.optional(),
 });
 
 export const weshWorkerCommandEntrySchema = z.object({
@@ -117,10 +103,6 @@ export const weshWorkerDirectoryEntrySchema = z.object({
 
 export type WeshWorkerInitRequest = z.infer<typeof weshWorkerInitRequestSchema>;
 export type WeshWorkerExecuteRequest = z.infer<typeof weshWorkerExecuteRequestSchema>;
-export type WeshWorkerStartExecutionResponse = z.infer<typeof weshWorkerStartExecutionResponseSchema>;
-export type WeshWorkerAwaitExecutionRequest = z.infer<typeof weshWorkerAwaitExecutionRequestSchema>;
-export type WeshWorkerInterruptExecutionRequest = z.infer<typeof weshWorkerInterruptExecutionRequestSchema>;
-export type WeshWorkerDisposeExecutionRequest = z.infer<typeof weshWorkerDisposeExecutionRequestSchema>;
 export type WeshWorkerExecutionSummary = z.infer<typeof weshWorkerExecutionSummarySchema>;
 export type WeshWorkerMount = z.infer<typeof weshWorkerMountSchema>;
 export type WeshWorkerShellState = z.infer<typeof weshWorkerShellStateSchema>;
@@ -158,37 +140,37 @@ export interface IWeshWorker {
     managedVolumeRemoteAccess?: WorkerProxy<ManagedVolumeRemoteAccess>,
   ): Promise<void>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  startExecution(
+  execute(
     request: WeshWorkerExecuteRequest,
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks require top-level arguments.
     onEvent?: WorkerProxy<(event: WeshWorkerRemoteExecutionEvent) => void | Promise<void>>
-  ): Promise<WeshWorkerStartExecutionResponse>,
-  awaitExecution({ request }: { request: WeshWorkerAwaitExecutionRequest }): Promise<WeshWorkerExecutionSummary>,
-  interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>,
-  disposeExecution({ request }: { request: WeshWorkerDisposeExecutionRequest }): Promise<void>,
-  execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecutionSummary>,
+  ): Promise<WeshWorkerExecutionSummary>,
   getShellState(): Promise<WeshWorkerShellState>,
   listCommands(): Promise<WeshWorkerCommandEntry[]>,
   preloadNextCommand(): Promise<WeshWorkerPreloadCommandResponse>,
   listDirectory({ request }: { request: WeshWorkerListDirectoryRequest }): Promise<WeshWorkerDirectoryEntry[]>,
   interrupt(): Promise<boolean>,
+  isInterruptWaitingForFilePublication(): Promise<boolean>,
   dispose(): Promise<void>,
+}
+
+export type WeshWorkerExecutionOutcome =
+  | ({ status: 'exited' } & WeshWorkerExecutionSummary)
+  | { status: 'terminated' };
+
+export interface WeshWorkerExecution {
+  completion: Promise<WeshWorkerExecutionOutcome>,
+  cancel(): void,
 }
 
 export interface WeshWorkerClient {
   startExecution({ request, onEvent }: {
     request: WeshWorkerExecuteRequest,
     onEvent?: WeshWorkerExecutionEventCallback,
-  }): Promise<WeshWorkerStartExecutionResponse>,
-  awaitExecution({ request }: { request: WeshWorkerAwaitExecutionRequest }): Promise<WeshWorkerExecutionSummary>,
-  interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>,
-  cancelExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>,
-  disposeExecution({ request }: { request: WeshWorkerDisposeExecutionRequest }): Promise<void>,
-  execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecutionSummary>,
+  }): WeshWorkerExecution,
   getShellState(): Promise<WeshWorkerShellState>,
   listCommands(): Promise<WeshWorkerCommandEntry[]>,
   listDirectory({ request }: { request: WeshWorkerListDirectoryRequest }): Promise<WeshWorkerDirectoryEntry[]>,
-  interrupt(): Promise<boolean>,
   dispose(): Promise<void>,
 }
 

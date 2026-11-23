@@ -1,11 +1,14 @@
 import {
-  STANDARD_HELP_EARLY_EXIT_OPTIONS,
-  standardSemanticIssuePrecedesDiagnostic,
-  stopStandardArgvAtFirstEarlyExit,
-} from '@/features/wesh/commands/_shared/argv';
-import { parseStandardArgv } from '@/features/wesh/argv';
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  parseStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+  type StandardArgvRawValue,
+} from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult, WeshFileHandle } from '@/features/wesh/types';
 import { openFileReadStream } from '@/features/wesh/utils/fs';
 
@@ -142,8 +145,10 @@ function parseCutList({
 
 function normalizeCutIntervals({
   ranges,
+  mergeAdjacent,
 }: {
   ranges: CutRange[],
+  mergeAdjacent: boolean,
 }): CutInterval[] {
   const sorted = ranges
     .map((range) => ({
@@ -170,7 +175,7 @@ function normalizeCutIntervals({
 
     const lastEnd = last.end ?? Number.POSITIVE_INFINITY;
     const currentEnd = interval.end ?? Number.POSITIVE_INFINITY;
-    if (interval.start <= lastEnd + 1) {
+    if (interval.start <= lastEnd + (mergeAdjacent ? 1 : 0)) {
       last.end = Math.max(lastEnd, currentEnd);
       if (!Number.isFinite(last.end)) {
         last.end = undefined;
@@ -279,10 +284,12 @@ function selectBytes({
   line,
   intervals,
   complement,
+  outputDelimiter,
 }: {
   line: Uint8Array,
   intervals: CutInterval[],
   complement: boolean,
+  outputDelimiter: Uint8Array | undefined,
 }): Uint8Array {
   const segments = buildSelectedSegments({
     intervals,
@@ -290,10 +297,17 @@ function selectBytes({
     complement,
   });
   const totalLength = segments.reduce((sum, segment) => sum + (segment.end - segment.start), 0);
-  const output = new Uint8Array(totalLength);
+  const separatorLength = outputDelimiter === undefined
+    ? 0
+    : Math.max(0, segments.length - 1) * outputDelimiter.length;
+  const output = new Uint8Array(totalLength + separatorLength);
   let offset = 0;
 
   for (const segment of segments) {
+    if (outputDelimiter !== undefined && offset > 0) {
+      output.set(outputDelimiter, offset);
+      offset += outputDelimiter.length;
+    }
     const chunk = line.subarray(segment.start, segment.end);
     output.set(chunk, offset);
     offset += chunk.length;
@@ -517,301 +531,206 @@ async function *readByteRecords({
   }
 }
 
-type CutPreHelpSemanticIssue =
-  | { readonly kind: 'multiple-lists' }
-  | { readonly kind: 'delimiter', readonly value: string };
+const cutOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'zeroTerminated', value: true }] },
+    forms: [
+      { kind: 'short', name: 'z', value: { kind: 'none' } },
+      { kind: 'long', name: 'zero-terminated', value: { kind: 'none' } },
+    ],
+    summary: 'line delimiter is NUL, not newline',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'help' },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [] },
+    forms: [{ kind: 'short', name: 'n', value: { kind: 'none' } }],
+    summary: 'ignored for compatibility',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'suppress', value: true }] },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'none' } },
+      { kind: 'long', name: 'only-delimited', value: { kind: 'none' } },
+    ],
+    summary: 'suppress lines without delimiters in field mode',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'complement', value: true }] },
+    forms: [{ kind: 'long', name: 'complement', value: { kind: 'none' } }],
+    summary: 'complement the selected bytes, characters, or fields',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'bytes' },
+    forms: [
+      { kind: 'short', name: 'b', value: { kind: 'required-attached-or-following', missingValueName: 'list' } },
+      { kind: 'long', name: 'bytes', value: { kind: 'required', missingValueName: 'list' } },
+    ],
+    summary: 'select only these bytes',
+    valueName: 'LIST',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'characters' },
+    forms: [
+      { kind: 'short', name: 'c', value: { kind: 'required-attached-or-following', missingValueName: 'list' } },
+      { kind: 'long', name: 'characters', value: { kind: 'required', missingValueName: 'list' } },
+    ],
+    summary: 'select only these characters',
+    valueName: 'LIST',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'fields' },
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'required-attached-or-following', missingValueName: 'list' } },
+      { kind: 'long', name: 'fields', value: { kind: 'required', missingValueName: 'list' } },
+    ],
+    summary: 'select only these fields',
+    valueName: 'LIST',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'delimiter' },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'required-attached-or-following', missingValueName: 'delimiter' } },
+      { kind: 'long', name: 'delimiter', value: { kind: 'required', missingValueName: 'delimiter' } },
+    ],
+    summary: 'use DELIM instead of TAB for fields',
+    valueName: 'DELIM',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'outputDelimiter', parse: undefined },
+    forms: [{ kind: 'long', name: 'output-delimiter', value: { kind: 'required', missingValueName: 'string' } }],
+    summary: 'use STRING as the output delimiter',
+    valueName: 'STRING',
+    category: 'advanced',
+  },
+] as const;
 
-function findCutPreHelpSemanticIssue({
-  parsed,
+type CutArgvTag = Extract<(typeof cutOptions)[number]['semantic'], { kind: 'deferred' }>['tag'];
+
+const cutArgvCatalog = defineArgvCatalog<StandardArgvAction<CutArgvTag>>({
+  definitions: cutOptions,
+  nonExecutableLongOptions: [],
+});
+const cutArgvHelp = defineArgvHelpPresentation({ catalog: cutArgvCatalog, rows: cutOptions });
+const cutArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
+
+function readCutOptionValue({ value }: { value: StandardArgvRawValue }): string {
+  if (!('rawValue' in value)) {
+    throw new Error('Missing parsed cut option value');
+  }
+  return value.rawValue;
+}
+
+async function writeCutUsageError({
+  context,
+  message,
 }: {
-  parsed: ReturnType<typeof parseStandardArgv>,
-}): CutPreHelpSemanticIssue | undefined {
-  const listCount = parsed.occurrences.filter((occurrence) => (
-    occurrence.kind === 'value'
-    && (occurrence.key === 'bytes' || occurrence.key === 'characters' || occurrence.key === 'fields')
-  )).length;
-  if (listCount > 1) {
-    return { kind: 'multiple-lists' };
-  }
-
-  for (const occurrence of parsed.occurrences) {
-    if (occurrence.kind !== 'value' || occurrence.key !== 'delimiter' || typeof occurrence.value !== 'string') {
-      continue;
-    }
-    const delimiterByteLength = new TextEncoder().encode(occurrence.value).length;
-    if (delimiterByteLength !== 0 && delimiterByteLength !== 1) {
-      return { kind: 'delimiter', value: occurrence.value };
-    }
-  }
-  return undefined;
+  context: WeshCommandContext,
+  message: string,
+}): Promise<WeshCommandResult> {
+  await writeCommandUsageError({
+    context,
+    command: 'cut',
+    message,
+    usageSummary: formatArgvUsageSummary({ presentation: cutArgvHelp }),
+  });
+  return { exitCode: 1 };
 }
 
 export const cutCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const cutArgvSpec: StandardArgvParserSpec = {
-      options: [
-        {
-          kind: 'flag',
-          short: 'z',
-          long: 'zero-terminated',
-          effects: [{ key: 'zeroTerminated', value: true }],
-          help: { summary: 'line delimiter is NUL, not newline', category: 'common' },
-        },
-        {
-          kind: 'flag',
-          short: undefined,
-          long: 'help',
-          effects: [{ key: 'help', value: true }],
-          help: { summary: 'display this help and exit', category: 'common' },
-        },
-        {
-          kind: 'flag',
-          short: 'n',
-          long: undefined,
-          effects: [{ key: 'compatibilityNoOp', value: true }],
-          help: { summary: 'ignored for compatibility', category: 'advanced' },
-        },
-        {
-          kind: 'flag',
-          short: 's',
-          long: 'only-delimited',
-          effects: [{ key: 'suppress', value: true }],
-          help: { summary: 'suppress lines without delimiters in field mode', category: 'common' },
-        },
-        {
-          kind: 'flag',
-          short: undefined,
-          long: 'complement',
-          effects: [{ key: 'complement', value: true }],
-          help: { summary: 'complement the selected bytes, characters, or fields', category: 'common' },
-        },
-        {
-          kind: 'value',
-          short: 'b',
-          long: 'bytes',
-          key: 'bytes',
-          valueName: 'list',
-          allowAttachedValue: true,
-          parseValue: undefined,
-          help: { summary: 'select only these bytes', valueName: 'LIST', category: 'common' },
-        },
-        {
-          kind: 'value',
-          short: 'c',
-          long: 'characters',
-          key: 'characters',
-          valueName: 'list',
-          allowAttachedValue: true,
-          parseValue: undefined,
-          help: { summary: 'select only these characters', valueName: 'LIST', category: 'common' },
-        },
-        {
-          kind: 'value',
-          short: 'f',
-          long: 'fields',
-          key: 'fields',
-          valueName: 'list',
-          allowAttachedValue: true,
-          parseValue: undefined,
-          help: { summary: 'select only these fields', valueName: 'LIST', category: 'common' },
-        },
-        {
-          kind: 'value',
-          short: 'd',
-          long: 'delimiter',
-          key: 'delimiter',
-          valueName: 'delimiter',
-          allowAttachedValue: true,
-          parseValue: undefined,
-          help: { summary: 'use DELIM instead of TAB for fields', valueName: 'DELIM', category: 'common' },
-        },
-        {
-          kind: 'value',
-          short: undefined,
-          long: 'output-delimiter',
-          key: 'outputDelimiter',
-          valueName: 'string',
-          allowAttachedValue: true,
-          parseValue: undefined,
-          help: { summary: 'use STRING as the output delimiter', valueName: 'STRING', category: 'advanced' },
-        },
-      ],
-      allowShortFlagBundles: true,
-      stopAtDoubleDash: true,
-      treatSingleDashAsPositional: true,
-      specialTokenParsers: [],
-    };
-
-    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
+    const parsed = parseStandardArgv({
       args: context.args,
-      spec: cutArgvSpec,
-      earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
-    });
-    const parsed = parseStandardArgv({ args: parsedArgs, spec: cutArgvSpec });
-    const preHelpSemanticIssue = findCutPreHelpSemanticIssue({ parsed });
-    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
-      args: parsedArgs,
-      spec: cutArgvSpec,
-      parsed,
-      findSemanticIssue: findCutPreHelpSemanticIssue,
+      catalog: cutArgvCatalog,
+      policy: cutArgvPolicy,
     });
 
-    if (parsed.diagnostics.length > 0 && !semanticIssuePrecedesDiagnostic) {
-      await writeCommandUsageError({
-        context,
-        command: 'cut',
-        message: `cut: ${parsed.diagnostics[0]!.message}`,
-        argvSpec: cutArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
+    const diagnostic = parsed.diagnostics[0];
+    let selection: { mode: CutMode, list: string } | undefined;
+    let fieldDelimiterByte: number | undefined;
 
-    if (preHelpSemanticIssue !== undefined) {
-      switch (preHelpSemanticIssue.kind) {
-      case 'multiple-lists':
-        await writeCommandUsageError({
-          context,
-          command: 'cut',
-          message: 'cut: only one list may be specified',
-          argvSpec: cutArgvSpec,
-        });
-        return { exitCode: 1 };
-      case 'delimiter':
-        await writeCommandUsageError({
-          context,
-          command: 'cut',
-          message: 'cut: the delimiter must be a single character',
-          argvSpec: cutArgvSpec,
-        });
-        return { exitCode: 1 };
-      default: {
-        const _ex: never = preHelpSemanticIssue;
-        throw new Error(`Unhandled cut pre-help semantic issue: ${JSON.stringify(_ex)}`);
+    // A second list or a malformed delimiter is fatal at its argument position.
+    // The selected list itself is parsed only after help, as in GNU cut.
+    for (const occurrence of parsed.deferred) {
+      if (diagnostic !== undefined && diagnostic.argvIndex <= occurrence.argvIndex) {
+        break;
       }
-      }
-    }
 
-    const listSelectionCount = parsed.occurrences.reduce((count, occurrence) => {
-      switch (occurrence.kind) {
-      case 'value':
-        return occurrence.key === 'bytes' || occurrence.key === 'characters' || occurrence.key === 'fields'
-          ? count + 1
-          : count;
-      case 'flag':
-      case 'special':
-        return count;
-      default: {
-        const _ex: never = occurrence;
-        throw new Error(`Unhandled cut option occurrence: ${String(_ex)}`);
-      }
-      }
-    }, 0);
-    if (listSelectionCount > 1) {
-      throw new Error('cut pre-help validation missed multiple list selections');
-    }
-
-    const delimiterValue = typeof parsed.optionValues.delimiter === 'string'
-      ? parsed.optionValues.delimiter
-      : undefined;
-    const encodedFieldDelimiter = delimiterValue === undefined
-      ? undefined
-      : new TextEncoder().encode(delimiterValue);
-    const fieldDelimiterByte = encodedFieldDelimiter === undefined
-      ? undefined
-      : encodedFieldDelimiter.length === 0
-        ? 0x00
-        : encodedFieldDelimiter.length === 1
-          ? encodedFieldDelimiter[0]
-          : undefined;
-    if (delimiterValue !== undefined && fieldDelimiterByte === undefined) {
-      throw new Error(`cut pre-help validation missed delimiter: ${delimiterValue}`);
-    }
-
-    if (parsed.optionValues.help === true) {
-      await writeCommandHelp({
-        context,
-        command: 'cut',
-        argvSpec: cutArgvSpec,
-      });
-      return { exitCode: 0 };
-    }
-
-    const hasBytes = parsed.optionValues.bytes !== undefined;
-    const hasCharacters = parsed.optionValues.characters !== undefined;
-    const hasFields = parsed.optionValues.fields !== undefined;
-    const selectedModeCount = [hasBytes, hasCharacters, hasFields].filter(Boolean).length;
-    if (selectedModeCount !== 1) {
-      await writeCommandUsageError({
-        context,
-        command: 'cut',
-        message: 'cut: must specify exactly one of -b, -c, or -f',
-        argvSpec: cutArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
-
-    const mode: CutMode = hasBytes
-      ? 'bytes'
-      : hasCharacters
-        ? 'characters'
-        : 'fields';
-
-    const listValue = (() => {
-      switch (mode) {
+      const tag = occurrence.semantic.tag;
+      switch (tag) {
       case 'bytes':
-        return parsed.optionValues.bytes;
       case 'characters':
-        return parsed.optionValues.characters;
       case 'fields':
-        return parsed.optionValues.fields;
+        if (selection !== undefined) {
+          return writeCutUsageError({ context, message: 'cut: only one list may be specified' });
+        }
+        selection = { mode: tag, list: readCutOptionValue({ value: occurrence.value }) };
+        break;
+      case 'delimiter': {
+        const value = readCutOptionValue({ value: occurrence.value });
+        const bytes = new TextEncoder().encode(value);
+        if (bytes.length > 1) {
+          return writeCutUsageError({ context, message: 'cut: the delimiter must be a single character' });
+        }
+        fieldDelimiterByte = bytes[0] ?? 0x00;
+        break;
+      }
+      case 'help':
+        await writeCommandHelp({
+          context,
+          command: 'cut',
+          optionLines: formatArgvOptionHelp({ presentation: cutArgvHelp }),
+        });
+        return { exitCode: 0 };
       default: {
-        const _ex: never = mode;
-        throw new Error(`Unhandled cut mode: ${_ex}`);
+        const _ex: never = tag;
+        throw new Error(`Unhandled cut option: ${_ex}`);
       }
       }
-    })();
-
-    if (typeof listValue !== 'string') {
-      await writeCommandUsageError({
-        context,
-        command: 'cut',
-        message: `cut: missing ${mode} list`,
-        argvSpec: cutArgvSpec,
-      });
-      return { exitCode: 1 };
     }
 
-    const parsedList = parseCutList({ value: listValue });
-    if (!parsedList.ok) {
-      await writeCommandUsageError({
-        context,
-        command: 'cut',
-        message: `cut: ${parsedList.message}`,
-        argvSpec: cutArgvSpec,
-      });
-      return { exitCode: 1 };
+    if (diagnostic !== undefined) {
+      return writeCutUsageError({ context, message: `cut: ${diagnostic.message}` });
     }
-    const intervals = normalizeCutIntervals({
-      ranges: parsedList.value,
-    });
 
-    if (mode !== 'fields' && delimiterValue !== undefined) {
-      await writeCommandUsageError({
+    if (selection === undefined) {
+      return writeCutUsageError({ context, message: 'cut: must specify exactly one of -b, -c, or -f' });
+    }
+
+    const { mode, list } = selection;
+    const suppress = parsed.optionValues.suppress === true;
+    if (mode !== 'fields' && fieldDelimiterByte !== undefined) {
+      return writeCutUsageError({
         context,
-        command: 'cut',
         message: 'cut: an input delimiter may be specified only when operating on fields',
-        argvSpec: cutArgvSpec,
       });
-      return { exitCode: 1 };
     }
-    if (mode !== 'fields' && parsed.optionValues.suppress === true) {
-      await writeCommandUsageError({
+    if (mode !== 'fields' && suppress) {
+      return writeCutUsageError({
         context,
-        command: 'cut',
         message: 'cut: suppressing non-delimited lines makes sense only when operating on fields',
-        argvSpec: cutArgvSpec,
       });
-      return { exitCode: 1 };
+    }
+
+    const parsedList = parseCutList({ value: list });
+    if (!parsedList.ok) {
+      return writeCutUsageError({ context, message: `cut: ${parsedList.message}` });
     }
 
     const rawOutputDelimiter = typeof parsed.optionValues.outputDelimiter === 'string'
@@ -819,12 +738,17 @@ export const cutCommandImplementation: WeshCommandImplementation = {
       : undefined;
     const inputFieldDelimiterByte = fieldDelimiterByte ?? 0x09;
     const outputDelimiter = rawOutputDelimiter === undefined
-      ? Uint8Array.of(inputFieldDelimiterByte)
+      ? undefined
       : rawOutputDelimiter === ''
         ? Uint8Array.of(0x00)
         : new TextEncoder().encode(rawOutputDelimiter);
+    const fieldOutputDelimiter = outputDelimiter ?? Uint8Array.of(inputFieldDelimiterByte);
     const complement = parsed.optionValues.complement === true;
-    const suppress = parsed.optionValues.suppress === true;
+    // Preserve adjacent range boundaries so a byte output delimiter can separate them.
+    const intervals = normalizeCutIntervals({
+      ranges: parsedList.value,
+      mergeAdjacent: mode === 'fields' || outputDelimiter === undefined || complement,
+    });
     const zeroTerminated = parsed.optionValues.zeroTerminated === true;
     const recordDelimiterByte = zeroTerminated ? 0x00 : 0x0a;
     const text = context.text();
@@ -854,6 +778,7 @@ export const cutCommandImplementation: WeshCommandImplementation = {
               line: record.bytes,
               intervals,
               complement,
+              outputDelimiter,
             });
             if (selected.length > 0) {
               await writeAll({
@@ -875,7 +800,7 @@ export const cutCommandImplementation: WeshCommandImplementation = {
             const selected = selectFields({
               line: record.bytes,
               delimiterByte: inputFieldDelimiterByte,
-              outputDelimiter,
+              outputDelimiter: fieldOutputDelimiter,
               intervals,
               complement,
               suppressNoDelimiterLines: suppress,

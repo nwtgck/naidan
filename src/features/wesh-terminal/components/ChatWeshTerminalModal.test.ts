@@ -6,10 +6,7 @@ import { toChatGroupId, toChatId, toVolumeId } from '@/01-models/ids';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const mocks = vi.hoisted(() => ({
-  startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
-  awaitExecution: vi.fn().mockResolvedValue({ exitCode: 0 }),
-  cancelExecution: vi.fn().mockResolvedValue(true),
-  disposeExecution: vi.fn().mockResolvedValue(undefined),
+  startExecution: vi.fn(() => ({ completion: Promise.resolve({ status: 'exited', exitCode: 0, shellState: { cwd: '/home/user', env: {} } }), cancel: vi.fn() })),
   dispose: vi.fn().mockResolvedValue(undefined),
   createClient: vi.fn(),
   resolveVolumeAccess: vi.fn(async ({ volumeId }: { volumeId: import('@/01-models/ids').VolumeId }) => ({
@@ -87,9 +84,6 @@ describe('ChatWeshTerminalModal', () => {
     mocks.ensureChatTmpDirectory.mockResolvedValue({ handle: tmpHandle, mountPath: '/tmp' });
     mocks.createClient.mockResolvedValue({
       startExecution: mocks.startExecution,
-      awaitExecution: mocks.awaitExecution,
-      cancelExecution: mocks.cancelExecution,
-      disposeExecution: mocks.disposeExecution,
       dispose: mocks.dispose,
     });
     const globalRoot = createDirectoryHandleMock({ name: 'global-root' });

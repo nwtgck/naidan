@@ -76,6 +76,61 @@ describe('wesh comm', () => {
     expect(missing.result.exitCode).toBe(1);
   });
 
+  it('keeps help spellings that are claimed by the delimiter or follow double dash', async () => {
+    await writeFile({
+      path: '--help',
+      data: `\
+a
+c
+`,
+    });
+    await writeFile({
+      path: 'right.txt',
+      data: `\
+b
+c
+`,
+    });
+
+    const delimiter = await execute({ script: 'comm --output-delimiter --help -- --help right.txt' });
+
+    expect(delimiter.result.exitCode).toBe(0);
+    expect(delimiter.stdout.text).toBe(`\
+a
+--helpb
+--help--helpc
+`);
+    expect(delimiter.stderr.text).toBe('');
+  });
+
+  it('uses help at its argument position', async () => {
+    const helpFirst = await execute({ script: 'comm --help --unknown' });
+    const invalidFirst = await execute({ script: 'comm --unknown --help' });
+
+    expect(helpFirst.result.exitCode).toBe(0);
+    expect(helpFirst.stdout.text).toContain('usage: comm');
+    expect(helpFirst.stderr.text).toBe('');
+    expect(invalidFirst.result.exitCode).toBe(1);
+    expect(invalidFirst.stdout.text).toBe('');
+    expect(invalidFirst.stderr.text).toContain("comm: unrecognized option '--unknown'");
+  });
+
+  it('supports long-option abbreviations and stops at the first terminal option', async () => {
+    const help = await execute({ script: 'comm --he --version --unknown' });
+    const version = await execute({ script: 'comm --ver --help --unknown' });
+    const unexpectedValue = await execute({ script: 'comm --check-order=yes --help' });
+
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: comm');
+    expect(help.stderr.text).toBe('');
+    expect(version.result.exitCode).toBe(0);
+    expect(version.stdout.text).toBe('comm (wesh)\n');
+    expect(version.stderr.text).toBe('');
+    expect(unexpectedValue.result.exitCode).toBe(1);
+    expect(unexpectedValue.stdout.text).toBe('');
+    expect(unexpectedValue.stderr.text).toContain("option '--check-order' doesn't allow an argument");
+  });
+
   it('compares sorted files and supports column suppression', async () => {
     await writeFile({
       path: 'left.txt',
@@ -259,6 +314,9 @@ c
     const empty = await execute({
       script: "comm --output-delimiter='' left.txt right.txt",
     });
+    const sameDelimiter = await execute({
+      script: "comm --output-delimiter='|' --output='|' --total left.txt right.txt",
+    });
     const duplicate = await execute({
       script: "comm --output-delimiter='|' --output-delimiter='' left.txt right.txt",
     });
@@ -274,9 +332,26 @@ a
     expect(empty.stderr.text).toBe('');
     expect(empty.result.exitCode).toBe(0);
     expect(empty.stdout.text).toBe('a\n\0b\n\0\0c\n');
+    expect(sameDelimiter.result.exitCode).toBe(0);
+    expect(sameDelimiter.stdout.text).toBe(custom.stdout.text);
+    expect(sameDelimiter.stderr.text).toBe('');
     expect(duplicate.stdout.text).toBe('');
     expect(duplicate.stderr.text).toBe('comm: multiple output delimiters specified\n');
     expect(duplicate.result.exitCode).toBe(1);
+  });
+
+  it('reports the first delimiter conflict or option error at its argument position', async () => {
+    const conflictThenHelp = await execute({ script: 'comm --output-delimiter=x --output-delimiter=y --help' });
+    const conflictThenUnknown = await execute({ script: 'comm --output-delimiter=x --output-delimiter=y --unknown' });
+    const unknownThenConflict = await execute({ script: 'comm --unknown --output-delimiter=x --output-delimiter=y' });
+
+    for (const execution of [conflictThenHelp, conflictThenUnknown]) {
+      expect(execution.result.exitCode).toBe(1);
+      expect(execution.stdout.text).toBe('');
+      expect(execution.stderr.text).toBe('comm: multiple output delimiters specified\n');
+    }
+    expect(unknownThenConflict.result.exitCode).toBe(1);
+    expect(unknownThenConflict.stderr.text).toContain("comm: unrecognized option '--unknown'");
   });
 
   it('supports NUL-delimited records and totals', async () => {
@@ -309,7 +384,7 @@ d
     });
 
     const { result, stdout, stderr } = await execute({
-      script: 'comm --check-order left.txt right.txt',
+      script: 'comm --nocheck-order --check-order left.txt right.txt',
     });
 
     expect(stdout.text).toBe('b\n');
@@ -334,7 +409,7 @@ d
     });
 
     const { result, stdout, stderr } = await execute({
-      script: 'comm --nocheck-order left.txt right.txt',
+      script: 'comm --check-order --nocheck-order left.txt right.txt',
     });
 
     expect(stdout.text).toBe(`\

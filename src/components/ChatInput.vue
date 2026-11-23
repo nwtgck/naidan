@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { useAutoTitleActivity } from '@/composables/chat/ui/useAutoTitleActivity';
-import { ref, watch, nextTick, computed, toRaw, onUnmounted, defineAsyncComponent, shallowRef } from 'vue';
+import { ref, watch, nextTick, computed, toRaw, onUnmounted, defineAsyncComponent } from 'vue';
 import { useLayout } from '@/composables/useLayout';
 import {
   isAppInteractionEnabled,
@@ -10,7 +10,7 @@ import {
 import { areEndpointsEqual } from '@/01-models/endpoint';
 import { generateId } from '@/01-models/id';
 import { naturalSort } from '@/utils/string';
-import { promiseAllKeyed } from '@/utils/promise';
+import { useRepositoryDownloadHint } from '@/composables/useRepositoryDownloadHint';
 import ModelSelector from './ModelSelector.vue';
 import type { ModelSelectorItem } from './model-selector-item';
 import { localRepositoryReferenceStorage } from '@/01-models/llama-cpp-browser-model-id';
@@ -212,32 +212,7 @@ function updateSeed({ seed }: { seed: number | 'browser_random' | undefined }) {
 }
 
 const deferredModelId = computed(() => props.deferredRepositoryModel?.modelId);
-const repositoryDownloadSupport = shallowRef<{
-  queue: typeof import('@/features/llama-cpp-browser/hugging-face/download-queue'),
-  source: typeof import('@/features/llama-cpp-browser/model-launch/bundled-repository-target'),
-}>();
-watch(deferredModelId, async id => {
-  if (id !== undefined && repositoryDownloadSupport.value === undefined) {
-    repositoryDownloadSupport.value = await promiseAllKeyed({
-      queue: import('@/features/llama-cpp-browser/hugging-face/download-queue'),
-      source: import('@/features/llama-cpp-browser/model-launch/bundled-repository-target'),
-    });
-  }
-}, { immediate: true });
-const hideFirstUseDownloadHint = computed(() => {
-  const pending = props.deferredRepositoryModel;
-  const support = repositoryDownloadSupport.value;
-  if (pending === undefined || support === undefined) {
-    return false;
-  }
-  const { findModelDownloadJob, getDownloadQueue, jobIsBusy } = support.queue;
-  const { source, destination, defaultDownloadKey } = pending;
-  const request = support.source.repositoryModelDownloadIdentity({ source });
-  const jobs = getDownloadQueue().jobs.value;
-  const job = findModelDownloadJob({ jobs, destination, ...request });
-  const defaultJob = defaultDownloadKey === undefined ? undefined : findModelDownloadJob({ jobs, key: defaultDownloadKey, destination, selection: undefined });
-  return jobIsBusy({ job }) || job?.status === 'complete' || jobIsBusy({ job: defaultJob });
-});
+const hideFirstUseDownloadHint = useRepositoryDownloadHint({ selection: computed(() => props.deferredRepositoryModel), usage: 'chat' });
 const deferredRepositoryPanel = ref<'chat-candidates' | 'huggingface'>();
 const usesSavedModels = computed(() => props.endpoint?.type === 'llama_cpp_browser');
 const hasLocalModelPanels = computed(() => usesSavedModels.value && props.browserModelSelection === 'available');

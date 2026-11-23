@@ -1,8 +1,17 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import {
+  analyzeArgvLongForm,
+  analyzeArgvShortForm,
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  parseStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type {
   WeshCommandContext,
   WeshCommandImplementation,
@@ -282,89 +291,142 @@ async function processFoldStream({
   });
 }
 
-const foldArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'b',
-      long: 'bytes',
-      effects: [{ key: 'bytes', value: true }],
-      help: { summary: 'count bytes rather than columns', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'w',
-      long: 'width',
+const foldOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'bytes', value: true }] },
+    forms: [
+      { kind: 'short', name: 'b', value: { kind: 'none' } },
+      { kind: 'long', name: 'bytes', value: { kind: 'none' } },
+    ],
+    summary: 'count bytes rather than columns',
+    category: 'common',
+  },
+  {
+    semantic: {
+      kind: 'required-value',
       key: 'width',
-      valueName: 'width',
-      allowAttachedValue: true,
-      parseValue: ({ value }) => parseWidth({ value }),
-      help: { summary: 'use WIDTH columns instead of 80', valueName: 'WIDTH', category: 'common' },
+      parse: ({ rawValue }: { rawValue: string }) => {
+        const parsed = parseWidth({ value: rawValue });
+        return parsed.ok
+          ? { kind: 'parsed' as const, value: parsed.value }
+          : { kind: 'invalid' as const, message: parsed.message };
+      },
     },
-    {
-      kind: 'flag',
-      short: 's',
-      long: 'spaces',
-      effects: [{ key: 'spaces', value: true }],
-      help: { summary: 'break at spaces if possible', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [
-    ({ token }) => {
-      if (!/^-[1-9]\d*$/u.test(token)) {
-        return undefined;
-      }
-      const parsed = parseWidth({ value: token.slice(1) });
-      return {
-        kind: 'matched',
-        consumeCount: 1,
-        effects: parsed.ok
-          ? [{ key: 'width', value: parsed.value }]
-          : [{ key: 'obsoleteWidthError', value: parsed.message }],
-      };
-    },
-  ],
+    forms: [
+      { kind: 'short', name: 'w', value: { kind: 'required-attached-or-following', missingValueName: 'width' } },
+      { kind: 'long', name: 'width', value: { kind: 'required', missingValueName: 'width' } },
+    ],
+    summary: 'use WIDTH columns instead of 80',
+    valueName: 'WIDTH',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'spaces', value: true }] },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'none' } },
+      { kind: 'long', name: 'spaces', value: { kind: 'none' } },
+    ],
+    summary: 'break at spaces if possible',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const foldArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: foldOptions,
+  nonExecutableLongOptions: [],
+});
+const foldArgvHelp = defineArgvHelpPresentation({ catalog: foldArgvCatalog, rows: foldOptions });
+const foldArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
+
+function optionUsesFollowingValue({ token }: { token: string }): boolean {
+  if (token.startsWith('--')) {
+    const option = analyzeArgvLongForm({ token, catalog: foldArgvCatalog, longNameMatch: foldArgvPolicy.longNameMatch });
+    return option.kind === 'matched' && option.value.kind === 'following-required';
+  }
+  if (!token.startsWith('-')) {
+    return false;
+  }
+
+  let offset = 1;
+  while (offset < token.length) {
+    const option = analyzeArgvShortForm({ token, bodyOffset: offset, prefix: '-', catalog: foldArgvCatalog });
+    switch (option.kind) {
+    case 'unknown':
+      return false;
+    case 'matched':
+      offset = option.nextBodyOffset;
+      if (offset === token.length) {
+        return option.value.kind === 'following-required';
+      }
+      break;
+    default: {
+      const _ex: never = option;
+      throw new Error(`Unhandled fold option: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+    }
+    }
+  }
+  return false;
+}
+
+// Normalize obsolete widths at option boundaries. Values owned by -w or
+// --width and operands after -- keep their original spelling.
+function normalizeFoldArgs({ args }: { args: readonly string[] }): { args: readonly string[], obsoleteWidthError: string | undefined } {
+  const normalized: string[] = [];
+  let obsoleteWidthError: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]!;
+    if (token === '--') {
+      return { args: normalized.concat(args.slice(index)), obsoleteWidthError };
+    }
+    if (/^-[1-9]\d*$/u.test(token)) {
+      const width = parseWidth({ value: token.slice(1) });
+      if (width.ok) {
+        normalized.push(`-w${width.value}`);
+      } else {
+        obsoleteWidthError = width.message;
+      }
+      continue;
+    }
+
+    normalized.push(token);
+    if (token === '--help') {
+      break;
+    }
+    const following = args[index + 1];
+    if (following !== undefined && optionUsesFollowingValue({ token })) {
+      normalized.push(following);
+      index += 1;
+    }
+  }
+  return { args: normalized, obsoleteWidthError };
+}
 
 export const foldCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+    const { args, obsoleteWidthError } = normalizeFoldArgs({ args: context.args });
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
-        args: context.args,
-        spec: foldArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
-      }),
-      spec: foldArgvSpec,
+      args,
+      catalog: foldArgvCatalog,
+      policy: foldArgvPolicy,
     });
 
-    const diagnostic = parsed.diagnostics[0];
+    const diagnostic = parsed.diagnostics[0]?.message ?? obsoleteWidthError;
     if (diagnostic !== undefined) {
       await writeCommandUsageError({
         context,
         command: 'fold',
-        message: `fold: ${diagnostic.message}`,
-        argvSpec: foldArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
-
-    const obsoleteWidthError = parsed.optionValues.obsoleteWidthError;
-    if (typeof obsoleteWidthError === 'string') {
-      await writeCommandUsageError({
-        context,
-        command: 'fold',
-        message: `fold: ${obsoleteWidthError}`,
-        argvSpec: foldArgvSpec,
+        message: `fold: ${diagnostic}`,
+        usageSummary: formatArgvUsageSummary({ presentation: foldArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -373,7 +435,7 @@ export const foldCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'fold',
-        argvSpec: foldArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: foldArgvHelp }),
       });
       return { exitCode: 0 };
     }

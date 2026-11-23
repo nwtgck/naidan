@@ -1714,6 +1714,42 @@ cat <(printf process-substitution)`,
     expect(wesh.kernel.getProcesses()).toHaveLength(initialProcessCount);
   });
 
+  it('reaps an interrupted command that was still loading with SIGINT ignored', async () => {
+    const initialProcessCount = wesh.kernel.getProcesses().length;
+    const loading = Promise.withResolvers<void>();
+    const proceed = Promise.withResolvers<void>();
+    wesh.registerCommand({
+      definition: {
+        meta: { name: 'load-command', description: '', usage: '' },
+        load: async () => {
+          loading.resolve();
+          await proceed.promise;
+          return async () => {
+            throw new Error('Interrupted command ran');
+          };
+        },
+      },
+    });
+    const controller = new AbortController();
+    const stderr = createTestWriteCaptureHandle();
+    const execution = wesh.execute({
+      source: createTextShellSource({ text: `trap '' INT; load-command` }),
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: createTestWriteCaptureHandle().handle,
+      stderr: stderr.handle,
+      signal: controller.signal,
+    });
+
+    await loading.promise;
+    controller.abort();
+    await wesh.interruptForeground({ foregroundSignal: controller.signal });
+    proceed.resolve();
+
+    expect(await execution).toMatchObject({ exitCode: 130, waitStatus: { kind: 'signaled', signal: 2 } });
+    expect(stderr.text).toBe('');
+    expect(wesh.kernel.getProcesses()).toHaveLength(initialProcessCount);
+  });
+
   it('stores traps in the current shell and lists them', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
@@ -1911,7 +1947,7 @@ first
     expect(stderr.text).toBe('');
   });
 
-  it('preserves $? while signal traps run', async () => {
+  it('reports a signal sent to a child without running the parent shell trap', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
@@ -1936,22 +1972,18 @@ first
       source: createTextShellSource({
         text: `\
 trap -- 'echo $? >&2' PIPE
-signal-pipe`,
+signal-pipe
+printf '%s\\n' "$?"
+`,
       }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
 
-    expect(result.waitStatus).toEqual({
-      kind: 'signaled',
-      signal: 13,
-    });
-    expect(result.exitCode).toBe(141);
-    expect(stdout.text).toBe('');
-    expect(stderr.text).toBe(`\
-141
-`);
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('141\n');
+    expect(stderr.text).toBe('');
   });
 
   it('runs INT traps when a command signals its foreground process group', async () => {

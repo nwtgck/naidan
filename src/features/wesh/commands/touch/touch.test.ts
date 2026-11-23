@@ -362,6 +362,17 @@ printf 'status=%s exists=%s\n' "$?" "$(test -e ./-; echo $?)"`,
     }
   });
 
+  it('does not create a file when the pathname requires a missing directory', async () => {
+    await wesh.vfs.symlink({ path: '/dangling-dir', targetPath: 'missing-dir/' });
+    const result = await execute({ script: 'touch absent/ dangling-dir' });
+
+    expect(result.result.exitCode).toBe(1);
+    expect(result.stderr.text).toContain("touch: cannot touch 'absent/':");
+    expect(result.stderr.text).toContain("touch: cannot touch 'dangling-dir':");
+    await expect(wesh.vfs.lstat({ path: '/absent' })).rejects.toThrow();
+    await expect(wesh.vfs.lstat({ path: '/missing-dir' })).rejects.toThrow();
+  });
+
   it('rejects unsupported access-time selection instead of fabricating metadata', async () => {
     const result = await execute({
       script: 'touch --time=access -d @1 file.txt',
@@ -389,6 +400,8 @@ printf 'status=%s created=%s\n' "$?" "$(test -e created; echo $?)"`,
     const helpFirstTimestamp = await execute({ script: 'touch --help -t bogus' });
     const invalidTimeKind = await execute({ script: 'touch --time=bogus --help' });
     const conflictingSources = await execute({ script: 'touch -t 202401010000 -d now --help' });
+    const repeatedTimestamp = await execute({ script: 'touch -tbogus -t202401010000 --help' });
+    const helpAsValue = await execute({ script: 'touch -t --help' });
 
     expect(invalidTimestamp.result.exitCode).toBe(1);
     expect(invalidTimestamp.stderr.text).toContain("invalid date format 'bogus'");
@@ -398,6 +411,10 @@ printf 'status=%s created=%s\n' "$?" "$(test -e created; echo $?)"`,
     expect(invalidTimeKind.stderr.text).toContain("invalid argument 'bogus' for '--time'");
     expect(conflictingSources.result.exitCode).toBe(0);
     expect(conflictingSources.stderr.text).toBe('');
+    expect(repeatedTimestamp.result.exitCode).toBe(1);
+    expect(repeatedTimestamp.stderr.text).toContain("invalid date format 'bogus'");
+    expect(helpAsValue.result.exitCode).toBe(1);
+    expect(helpAsValue.stderr.text).toContain("invalid date format '--help'");
   });
 
   it('stops argv processing when --help is reached before a later invalid option', async () => {
@@ -410,5 +427,18 @@ printf 'status=%s created=%s\n' "$?" "$(test -e created; echo $?)"`,
 
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
+  });
+
+  it.each([
+    { args: '-tbogus --invalid', error: "invalid date format 'bogus'" },
+    { args: '--invalid -tbogus', error: "unrecognized option '--invalid'" },
+    { args: '--time=bogus --time=mtime --help', error: "invalid argument 'bogus' for '--time'" },
+    { args: '--no-create=extra nonexistent', error: "option '--no-create' doesn't allow an argument" },
+  ])('reports the first error in $args', async ({ args, error }) => {
+    const { result, stdout, stderr } = await execute({ script: `touch ${args}` });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text.split('\n')[0]).toBe(`touch: ${error}`);
   });
 });

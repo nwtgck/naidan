@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition } from '@/features/wesh/types';
+import type { WeshShellBuiltinDefinition } from '@/features/wesh/types';
 
 export const commandCommandDefinition = {
   meta: {
@@ -6,8 +6,8 @@ export const commandCommandDefinition = {
     description: 'Run command with arguments, ignoring any function or alias',
     usage: 'command [-pVv] command [argument...]',
   },
-  load: async () => (await import('./index.ts')).commandCommandImplementation.fn,
-} satisfies WeshCommandDefinition;
+  loadShellBuiltin: async () => (await import('./index.ts')).commandCommandImplementation.fn,
+} satisfies WeshShellBuiltinDefinition;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

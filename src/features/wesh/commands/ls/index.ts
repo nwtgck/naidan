@@ -1,4 +1,4 @@
-import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, type StandardArgvRawValue, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, type StandardArgvRawValue, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv';
 import type {
   WeshCommandImplementation,
   WeshCommandResult,
@@ -15,6 +15,11 @@ type LsSymlinkMode = 'logical' | 'command-line' | 'physical';
 type LsClassifyMode = 'always' | 'never';
 
 type LsSortMode = 'name' | 'time' | 'size';
+
+type LsDirectoryEntry = WeshEntryRef | {
+  readonly name: '.' | '..',
+  readonly dotEntry: WeshEntryRef,
+};
 
 const LS_CLASSIFY_ARGUMENTS: readonly {
   readonly name: string,
@@ -513,20 +518,35 @@ export const lsCommandImplementation: WeshCommandImplementation = {
           activeRecursiveDirectoryPath = directoryEntry.fullPath;
         }
 
-        const allEntries: WeshEntryRef[] = [];
+        const allEntries: LsDirectoryEntry[] = [];
+        if (a) {
+          // A followed directory symlink uses its target's parent for "..".
+          const parentEntry = await context.files.resolveEntry({
+            path: `${directoryEntry.fullPath === '/' ? '' : directoryEntry.fullPath}/..`,
+            finalSymlinkTreatment: 'follow',
+          });
+          allEntries.push(
+            { name: '.', dotEntry: directoryEntry },
+            { name: '..', dotEntry: parentEntry },
+          );
+        }
         for await (const child of context.files.readDirEntry({ entry: directoryEntry })) {
           if (a || almostAll || !child.name.startsWith('.')) {
             allEntries.push(child);
           }
         }
-        const sortStats = new Map<WeshEntryRef, WeshStat>();
+        const sortStats = new Map<LsDirectoryEntry, WeshStat>();
         switch (sortMode) {
         case 'name':
           break;
         case 'time':
         case 'size':
-          for (const child of allEntries) {
-            sortStats.set(child, await context.files.statEntry({ entry: child }));
+          for (const listingEntry of allEntries) {
+            const entryToStat = 'dotEntry' in listingEntry ? listingEntry.dotEntry : listingEntry;
+            const stat = entryToStat === directoryEntry
+              ? directStat
+              : await context.files.statEntry({ entry: entryToStat });
+            sortStats.set(listingEntry, stat);
           }
           break;
         default: {
@@ -556,48 +576,15 @@ export const lsCommandImplementation: WeshCommandImplementation = {
         }
 
         let renderedEntryCount = 0;
-        if (a) {
-          for (const dotName of ['.', '..'] as const) {
-            const dotPath = (() => {
-              switch (dotName) {
-              case '.':
-                return fullPath;
-              case '..':
-                return `${fullPath}/..`;
-              default: {
-                const _ex: never = dotName;
-                throw new Error(`Unhandled dot entry: ${_ex}`);
-              }
-              }
-            })();
-            const dotEntry = await resolveListingEntry({
-              path: dotPath,
-              entry: undefined,
-              isCommandLineArgument: false,
-            });
-            const line = await formatEntry({
-              context,
-              displayName: dotName,
-              fullPath: dotPath,
-              type: dotEntry.type,
-              longFormat: l,
-              humanReadable: h,
-              classify,
-              stat: undefined,
-              getStat: () => context.files.statEntry({ entry: dotEntry }),
-            });
-            await text.print({ text: line + (one || l ? '\n' : '  ') });
-            renderedEntryCount += 1;
-          }
-        }
-
         const resolvedEntries: Array<{
           child: WeshEntryRef,
           resolvedChild: WeshEntryRef,
         }> = [];
-        for (const child of allEntries) {
+        for (const listingEntry of allEntries) {
+          const isDotEntry = 'dotEntry' in listingEntry;
+          const child = isDotEntry ? listingEntry.dotEntry : listingEntry;
           let resolvedChild = child;
-          if (l || classify || R) {
+          if (!isDotEntry && (l || classify || R)) {
             try {
               resolvedChild = await resolveListingEntry({
                 path: child.fullPath,
@@ -614,17 +601,21 @@ export const lsCommandImplementation: WeshCommandImplementation = {
               exitCode = Math.max(exitCode, 1);
             }
           }
-          resolvedEntries.push({ child, resolvedChild });
+          if (R && !isDotEntry) {
+            resolvedEntries.push({ child, resolvedChild });
+          }
           const line = await formatEntry({
             context,
-            displayName: child.name,
+            displayName: listingEntry.name,
             fullPath: child.fullPath,
             type: resolvedChild.type,
             longFormat: l,
             humanReadable: h,
             classify,
-            stat: resolvedChild === child ? sortStats.get(child) : undefined,
-            getStat: () => context.files.statEntry({ entry: resolvedChild }),
+            stat: resolvedChild === child ? sortStats.get(listingEntry) : undefined,
+            getStat: () => resolvedChild === directoryEntry
+              ? Promise.resolve(directStat)
+              : context.files.statEntry({ entry: resolvedChild }),
           });
           await text.print({ text: line + (one || l ? '\n' : '  ') });
           renderedEntryCount += 1;

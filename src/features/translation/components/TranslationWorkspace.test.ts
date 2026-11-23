@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { defineComponent, onMounted, ref, type PropType } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { flushPromises, mount } from '@vue/test-utils';
 import type { useSettings } from '@/composables/useSettings';
@@ -10,18 +10,36 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import TranslationWorkspace from './TranslationWorkspace.vue';
 import type { InspectTranslationModel } from '@/features/translation/types';
 import { useTranslationNavigation } from '@/features/translation/navigation';
+import type { acquireRepositoryModel } from '@/features/llama-cpp-browser/model-launch/acquire-repository-model';
+import type { LocalModel } from '@/features/llama-cpp-browser/types';
+import type { ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
+
+const downloadTarget = ref<ModelDestination>({ kind: 'opfs' });
 
 const mocks = vi.hoisted(() => ({
   inspect: vi.fn<InspectTranslationModel>(),
   generate: vi.fn<LlamaCppBrowserService['generate']>(),
   run: vi.fn<LlamaCppBrowserService['runGenerationOperation']>(),
   prepare: vi.fn<LlamaCppBrowserService['prepareModel']>(),
+  acquire: vi.fn<typeof acquireRepositoryModel>(),
+  inventory: [] as LocalModel[],
   store: undefined as Pick<ReturnType<typeof useSettings>, 'settings' | 'initialized' | 'captureExperimentalStorage' | 'updateExperimentalForStorage'> | undefined,
   state: { status: 'idle' } as EngineState,
   listener: undefined as (({ state }: { state: EngineState }) => void) | undefined,
 }));
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => mocks.store }));
 vi.mock('../model-detection', () => ({ inspectStoredTranslationModel: mocks.inspect }));
+vi.mock('@/features/llama-cpp-browser/model-launch/acquire-repository-model', () => ({ acquireRepositoryModel: mocks.acquire }));
+vi.mock('@/features/llama-cpp-browser/composables/useModelDownloadDestination', () => ({
+  useModelDownloadDestination: () => ({
+    destination: downloadTarget,
+    view: { busy: ref(false) },
+    unavailable: ref(false),
+    captureRoot: () => undefined,
+    authorize: vi.fn(),
+    label: () => 'OPFS',
+  }),
+}));
 vi.mock('@/features/llama-cpp-browser', () => ({
   llamaCppBrowserService: {
     getState: () => mocks.state,
@@ -39,13 +57,32 @@ vi.mock('@/features/llama-cpp-browser', () => ({
     runGenerationOperation: mocks.run,
   },
 }));
-vi.mock('./TranslationModels.vue', () => ({
-  __esModule: true,
-  default: {
-    props: ['disabled', 'suspended', 'modelId'],
-    emits: ['select', 'changed'],
-    template: `<section data-testid="test-models"><button data-testid="test-select-model" :disabled="disabled" @click="$emit('select', 'second.gguf')">Select</button></section>`,
-  },
+vi.mock('./TranslationModelSelector.vue', () => ({
+  default: defineComponent({
+    name: 'TranslationModelSelector',
+    props: { disabled: Boolean, confirmSelection: { type: Function as PropType<({ modelId }: { modelId: string }) => Promise<boolean>>, required: true } },
+    emits: ['openChange', 'inventory', 'inventoryChanged'],
+    setup(props, { emit, expose }) {
+      const open = ref(false);
+      function openPicker(): void {
+        open.value = true;
+        emit('openChange', true);
+      }
+      function closePicker(): void {
+        open.value = false;
+        emit('openChange', false);
+      }
+      async function select(): Promise<void> {
+        if (await props.confirmSelection({ modelId: 'second.gguf' })) {
+          closePicker();
+        }
+      }
+      onMounted(() => emit('inventory', mocks.inventory));
+      expose({ closePicker, closeFromOutside: closePicker });
+      return { open, openPicker, select };
+    },
+    template: '<section data-testid="test-models"><button data-testid="test-open-models" @click="openPicker">Models</button><div v-if="open"><slot name="status" /><button data-testid="test-select-model" :disabled="disabled" @click="select">Select</button></div></section>',
+  }),
 }));
 
 beforeEach(async () => {
@@ -55,9 +92,12 @@ beforeEach(async () => {
   mocks.run.mockReset().mockImplementation(async ({ operation, signal }) => operation({ scope: { signal: signal!, generate: mocks.generate } }));
   mocks.state = { status: 'idle' };
   mocks.prepare.mockReset().mockResolvedValue('ready');
+  mocks.acquire.mockReset();
+  mocks.inventory = [];
+  downloadTarget.value = { kind: 'opfs' };
 });
 
-async function fixture() {
+async function fixture({ stubTeleport = true }: { stubTeleport?: boolean } = {}) {
   const settings = ref<Settings>({ ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: 'https://example.invalid/v1' }, storageType: 'local', defaultModelId: 'chat-default', experimental: { locale: 'en', translation: { modelId: 'first.gguf', autoTranslate: { enabled: false } } } });
   let storageGeneration = 0;
   const save = vi.fn<ReturnType<typeof useSettings>['updateExperimentalForStorage']>().mockImplementation(async ({ isCurrent, updater }) => {
@@ -79,7 +119,7 @@ async function fixture() {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/translation', component: { template: '<div />' } }] });
   await router.push('/translation?from=ja&to=en');
   await router.isReady();
-  const wrapper = mount(TranslationWorkspace, { props: { tab: 'workspace' }, global: { plugins: [router], stubs: { Teleport: true } } });
+  const wrapper = mount(TranslationWorkspace, { global: { plugins: [router], stubs: { Teleport: stubTeleport } } });
   await flushPromises();
   return {
     wrapper,
@@ -97,6 +137,77 @@ async function fixture() {
 }
 
 describe('translation workspace workflow', () => {
+  it('shows a disabled floating-window control without Document Picture-in-Picture', async () => {
+    using f = await fixture();
+    expect(f.wrapper.get<HTMLButtonElement>('[data-testid="translation-open-floating"]').element.disabled).toBe(true);
+  });
+
+  it('shares the draft, generation and clipboard with the floating document', async () => {
+    const frame = document.createElement('iframe');
+    document.body.append(frame);
+    const pip = frame.contentWindow!;
+    const close = vi.spyOn(pip, 'close').mockImplementation(() => {});
+    const requestWindow = vi.fn(async () => pip);
+    const floatingCopy = vi.fn<Clipboard['writeText']>().mockResolvedValue(undefined);
+    Object.defineProperty(pip.navigator, 'clipboard', { value: { writeText: floatingCopy } });
+    vi.stubGlobal('documentPictureInPicture', { requestWindow });
+    using cleanup = {
+      [Symbol.dispose]() {
+        vi.unstubAllGlobals();
+        frame.remove();
+      },
+    };
+    using f = await fixture({ stubTeleport: false });
+    const source = f.wrapper.get<HTMLTextAreaElement>('[data-testid="translation-source"]');
+    await source.setValue('原文');
+    await f.wrapper.get('[data-testid="translation-open-floating"]').trigger('click');
+    await flushPromises();
+    expect(requestWindow).toHaveBeenCalledExactlyOnceWith({ width: 450, height: 410 });
+    expect(mocks.prepare).toHaveBeenCalledOnce();
+    expect(mocks.acquire).not.toHaveBeenCalled();
+    const floatingSource = pip.document.querySelector<HTMLTextAreaElement>('[data-testid="translation-source"]')!;
+    const floatingForm = floatingSource.form!;
+    expect(floatingSource.value).toBe('原文');
+    floatingSource.value = '小窓で編集';
+    floatingSource.dispatchEvent(new Event('input', { bubbles: true }));
+    await flushPromises();
+    expect(source.element.value).toBe('小窓で編集');
+
+    const target = pip.document.querySelector<HTMLButtonElement>('[data-testid="translation-target-language"]')!;
+    target.click();
+    await flushPromises();
+    const menu = pip.document.querySelector('[data-open="true"]');
+    expect(menu?.querySelector('[data-testid="settings-select-search"]')).toBeTruthy();
+    menu?.querySelector<HTMLButtonElement>('[data-testid="settings-select-option-fr"]')?.click();
+    await flushPromises();
+    expect(f.router.currentRoute.value.query.to).toBe('fr');
+    floatingForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushPromises();
+    expect(mocks.generate).toHaveBeenCalledOnce();
+    expect(pip.document.querySelector('[data-testid="translation-current-text"]')?.textContent).toBe('Hello');
+    expect(f.wrapper.get('[data-testid="translation-current-text"]').text()).toBe('Hello');
+    pip.document.querySelector<HTMLButtonElement>('[data-testid="translation-copy"]')!.click();
+    await flushPromises();
+    expect(floatingCopy).toHaveBeenCalledExactlyOnceWith('Hello');
+
+    // A window can close without delivering compositionend to its textarea.
+    floatingSource.dispatchEvent(new Event('compositionstart', { bubbles: true }));
+    pip.dispatchEvent(new Event('pagehide'));
+    await flushPromises();
+    expect(source.element.value).toBe('小窓で編集');
+    expect(pip.document.querySelector('[data-testid="translation-floating"]')).toBeNull();
+    expect(f.wrapper.get<HTMLButtonElement>('[data-testid="translation-run"]').element.disabled).toBe(false);
+
+    await f.wrapper.get('[data-testid="translation-open-floating"]').trigger('click');
+    await flushPromises();
+    pip.document.querySelector<HTMLButtonElement>('[data-testid="translation-clear"]')!.click();
+    await flushPromises();
+    expect(source.element.value).toBe('');
+    f.wrapper.unmount();
+    expect(close).toHaveBeenCalledOnce();
+    void cleanup;
+  });
+
   it('registers independent navigation and keeps text out of saved settings', async () => {
     using f = await fixture();
     expect(useTranslationNavigation().active.value).toBeDefined();
@@ -125,28 +236,154 @@ describe('translation workspace workflow', () => {
   it('keeps the draft while visiting models, selects without creating a chat and returns to the workspace', async () => {
     using f = await fixture();
     await f.wrapper.get('[data-testid="translation-source"]').setValue('draft');
-    await f.wrapper.setProps({ tab: 'models' });
+    await f.wrapper.get('[data-testid="test-open-models"]').trigger('click');
     await flushPromises();
-    expect(f.wrapper.get('form').attributes()).toHaveProperty('inert');
     await f.wrapper.get('[data-testid="test-select-model"]').trigger('click');
     await flushPromises();
-    expect(f.wrapper.emitted('openWorkspace')).toHaveLength(1);
+    expect(f.wrapper.find('[data-testid="test-select-model"]').exists()).toBe(false);
+    expect(f.router.currentRoute.value.fullPath).toBe('/translation?from=ja&to=en');
     expect(f.settings.value.experimental?.translation?.modelId).toBe('second.gguf');
     expect(f.settings.value.defaultModelId).toBe('chat-default');
-    await f.wrapper.setProps({ tab: 'workspace' });
     expect(f.wrapper.get<HTMLTextAreaElement>('[data-testid="translation-source"]').element.value).toBe('draft');
   });
 
   it('does not save an unsupported model or leave the picker after a failed selection', async () => {
     using f = await fixture();
-    await f.wrapper.setProps({ tab: 'models' });
+    await f.wrapper.get('[data-testid="test-open-models"]').trigger('click');
     await flushPromises();
     mocks.inspect.mockResolvedValueOnce({ status: 'unsupported' });
     await f.wrapper.get('[data-testid="test-select-model"]').trigger('click');
     await flushPromises();
     expect(f.save).not.toHaveBeenCalled();
-    expect(f.wrapper.emitted('openWorkspace')).toBeUndefined();
+    expect(f.wrapper.find('[data-testid="test-select-model"]').exists()).toBe(true);
     expect(f.wrapper.text()).toContain('supported translation template');
+  });
+
+  it('downloads the default only after an explicit translation request, then translates once', async () => {
+    using f = await fixture();
+    using _clock = fakeClock();
+    f.settings.value.experimental!.translation = {};
+    const installed = { modelId: 'hf.co/pfnet/plamo-3-translate-0.8b-GGUF:Q4_K_M', size: 570, importedAt: 1 };
+    mocks.acquire.mockResolvedValue(installed);
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('こんにちは');
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(mocks.acquire).not.toHaveBeenCalled();
+    expect(mocks.generate).not.toHaveBeenCalled();
+    await f.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(mocks.acquire).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ selection: expect.objectContaining({ modelId: installed.modelId }), usage: 'translation' }));
+    expect(f.settings.value.experimental?.translation?.modelId).toBe(installed.modelId);
+    expect(mocks.generate).toHaveBeenCalledOnce();
+  });
+
+  it('reuses the installed default for automatic translation without making a download request', async () => {
+    downloadTarget.value = { kind: 'host', directoryId: 'new-folder' };
+    mocks.inventory = [{ modelId: 'hf.co/pfnet/plamo-3-translate-0.8b-GGUF:Q4_K_M', size: 570, importedAt: 1 }];
+    using f = await fixture();
+    using _clock = fakeClock();
+    f.settings.value.experimental!.translation = {};
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('こんにちは');
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(700);
+    expect(mocks.acquire).not.toHaveBeenCalled();
+    expect(mocks.generate).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a completed translation while rechecking the same model after an inventory change', async () => {
+    using f = await fixture();
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('原文');
+    await f.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    const check = Promise.withResolvers<Awaited<ReturnType<InspectTranslationModel>>>();
+    mocks.inspect.mockReturnValueOnce(check.promise);
+    f.wrapper.getComponent({ name: 'TranslationModelSelector' }).vm.$emit('inventoryChanged');
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="translation-current-text"]').text()).toBe('Hello');
+    check.resolve({ status: 'supported', profileId: 'plamo3-translate' });
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="translation-current-text"]').text()).toBe('Hello');
+    expect(mocks.prepare).toHaveBeenCalledOnce();
+  });
+
+  it('waits for a concurrent preferences save before selecting the downloaded model', async () => {
+    using f = await fixture();
+    const installed = { modelId: 'hf.co/pfnet/plamo-3-translate-0.8b-GGUF:Q4_K_M', size: 570, importedAt: 1 };
+    f.settings.value.experimental!.translation = { autoTranslate: { enabled: false } };
+    const download = Promise.withResolvers<LocalModel>();
+    const pendingSave = Promise.withResolvers<void>();
+    mocks.acquire.mockReturnValueOnce(download.promise);
+    const save = f.save.getMockImplementation()!;
+    f.save.mockImplementationOnce(async options => {
+      await pendingSave.promise;
+      return save(options);
+    });
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('原文');
+    await f.wrapper.get('form').trigger('submit');
+    await f.wrapper.get('[data-testid="translation-automatic"]').setValue(true);
+    download.resolve(installed);
+    await flushPromises();
+    expect(f.save).toHaveBeenCalledOnce();
+    pendingSave.resolve();
+    await flushPromises();
+    expect(f.settings.value.experimental?.translation?.modelId).toBe(installed.modelId);
+    expect(mocks.generate).toHaveBeenCalledOnce();
+  });
+
+  it('does not restart automatic translation when a stopped download becomes available', async () => {
+    using f = await fixture();
+    using _clock = fakeClock();
+    f.settings.value.experimental!.translation = {};
+    const installed = { modelId: 'hf.co/pfnet/plamo-3-translate-0.8b-GGUF:Q4_K_M', size: 570, importedAt: 1 };
+    const pending = Promise.withResolvers<LocalModel>();
+    mocks.acquire.mockReturnValueOnce(pending.promise);
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('こんにちは');
+    await f.wrapper.get('form').trigger('submit');
+    await f.wrapper.get('[data-testid="translation-stop"]').trigger('click');
+    expect(mocks.acquire.mock.calls[0]?.[0].signal.aborted).toBe(true);
+    pending.resolve(installed);
+    f.wrapper.getComponent({ name: 'TranslationModelSelector' }).vm.$emit('inventory', [installed]);
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(f.save).not.toHaveBeenCalled();
+    expect(mocks.generate).not.toHaveBeenCalled();
+  });
+
+  it('does not carry a manual request over to another model during first-use preparation', async () => {
+    using f = await fixture();
+    f.settings.value.experimental!.translation = { autoTranslate: { enabled: false } };
+    const installed = { modelId: 'hf.co/pfnet/plamo-3-translate-0.8b-GGUF:Q4_K_M', size: 570, importedAt: 1 };
+    const preparation = Promise.withResolvers<'ready'>();
+    mocks.acquire.mockResolvedValueOnce(installed);
+    mocks.prepare.mockReturnValueOnce(preparation.promise);
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('こんにちは');
+    await f.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(f.settings.value.experimental?.translation?.modelId).toBe(installed.modelId);
+    expect(mocks.prepare).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: installed.modelId }));
+    await f.wrapper.get('[data-testid="test-open-models"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="test-select-model"]').trigger('click');
+    preparation.resolve('ready');
+    await flushPromises();
+    expect(f.settings.value.experimental?.translation?.modelId).toBe('second.gguf');
+    expect(mocks.generate).not.toHaveBeenCalled();
+  });
+
+  it('lets a download complete without translating a new draft after clearing the original', async () => {
+    using f = await fixture();
+    f.settings.value.experimental!.translation = { autoTranslate: { enabled: false } };
+    const download = Promise.withResolvers<LocalModel>();
+    mocks.acquire.mockReturnValueOnce(download.promise);
+    const source = f.wrapper.get('[data-testid="translation-source"]');
+    await source.setValue('原文');
+    await f.wrapper.get('form').trigger('submit');
+    await f.wrapper.get('[data-testid="translation-clear"]').trigger('click');
+    await source.setValue('新しい原文');
+    download.resolve({ modelId: 'hf.co/pfnet/plamo-3-translate-0.8b-GGUF:Q4_K_M', size: 570, importedAt: 1 });
+    await flushPromises();
+    expect(mocks.generate).not.toHaveBeenCalled();
+    expect(f.wrapper.get<HTMLButtonElement>('[data-testid="translation-run"]').element.disabled).toBe(false);
   });
 
   it('replaces URL language preferences without saving settings and disables swap for automatic detection', async () => {
@@ -376,11 +613,12 @@ describe('translation automatic workflow', () => {
     f.settings.value.experimental!.translation = { autoTranslate: { enabled: false } };
     await flushPromises();
     await f.wrapper.get('[data-testid="translation-source"]').setValue('draft before model');
-    const modelPanel = f.wrapper.get('[data-testid="translation-model-panel"]').element;
+    const modelPanel = f.wrapper.get('[data-testid="test-models"]').element;
     const editors = f.wrapper.get('[data-testid="translation-editors"]').element;
     expect(modelPanel.compareDocumentPosition(editors) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(f.wrapper.get('[data-testid="translation-source"]').isVisible()).toBe(true);
     expect(f.wrapper.get('[data-testid="translation-output"]').isVisible()).toBe(true);
+    await f.wrapper.get('[data-testid="test-open-models"]').trigger('click');
     await f.wrapper.get('[data-testid="test-select-model"]').trigger('click');
     await flushPromises();
     expect(f.settings.value.experimental?.translation?.modelId).toBe('second.gguf');
@@ -389,12 +627,12 @@ describe('translation automatic workflow', () => {
 
   it('does not select a model whose inspection resolves after the drawer is closed', async () => {
     using f = await fixture();
-    await f.wrapper.setProps({ tab: 'models' });
+    await f.wrapper.get('[data-testid="test-open-models"]').trigger('click');
     await flushPromises();
     const pending = Promise.withResolvers<Awaited<ReturnType<InspectTranslationModel>>>();
     mocks.inspect.mockReturnValueOnce(pending.promise);
     await f.wrapper.get('[data-testid="test-select-model"]').trigger('click');
-    await f.wrapper.setProps({ tab: 'workspace' });
+    useTranslationNavigation().active.value!.openWorkspace();
     pending.resolve({ status: 'supported', profileId: 'plamo3-translate' });
     await flushPromises();
     expect(f.save).not.toHaveBeenCalled();

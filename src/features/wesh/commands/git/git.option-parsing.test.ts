@@ -102,7 +102,7 @@ git -C cloned branch --show-current`,
     expect(tag.stderr.text).toContain('--format');
   });
 
-  it('keeps replay long options exact-only in the Git-local argv-v2 phase', async () => {
+  it('keeps replay long options exact-only in the Git-local argv phase', async () => {
     const execute = await createGitTestExecutor();
 
     for (const command of ['cherry-pick', 'revert'] as const) {
@@ -127,7 +127,7 @@ git -C cloned branch --show-current`,
     }
   });
 
-  it('accepts rebase --onto prefixes through token-local argv-v2 analysis', async () => {
+  it('accepts rebase --onto prefixes through token-local argv analysis', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -162,7 +162,7 @@ Successfully rebased and updated refs/heads/master.
     expect(rejected.stderr.text).toBe("error: option `onto' requires a value\n");
   });
 
-  it('keeps top-level Git long options exact-only while using argv-v2 value claims', async () => {
+  it('keeps top-level Git long options exact-only while using argv value claims', async () => {
     for (const option of ['--git-d=/tmp', '--work-t=/tmp', '--no-pag'] as const) {
       const execute = await createGitTestExecutor();
       const rejected = await execute({ script: `git ${option} --version` });
@@ -725,7 +725,7 @@ cat nested/.git/HEAD`,
     expect(stdout.text).toBe('ref: refs/heads/master\n');
   });
 
-  it('uses argv-v2 only for the merge fast-forward option family that matches Git prefix rules', async () => {
+  it('uses argv only for the merge fast-forward option family that matches Git prefix rules', async () => {
     for (const option of ['--ff-', '--ff-o'] as const) {
       const execute = await createGitTestExecutor();
       const accepted = await execute({
@@ -1263,7 +1263,7 @@ second=1
 `);
   });
 
-  it('accepts qualified config long-option prefixes through token-local argv-v2 analysis', async () => {
+  it('accepts qualified config long-option prefixes through token-local argv analysis', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -1310,7 +1310,7 @@ two
     }
   });
 
-  it('accepts clean long-option prefixes through token-local argv-v2 analysis', async () => {
+  it('accepts clean long-option prefixes through token-local argv analysis', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\

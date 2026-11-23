@@ -10,7 +10,7 @@ import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repo
 import { resolveRevision, resolveRevisionPath } from "@/features/wesh/commands/git/revision";
 import { parseAnnotatedTagObject } from "@/features/wesh/commands/git/tag-object";
 import { formatLogDate, parseAuthorForLog } from "@/features/wesh/commands/git/log-format";
-import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv';
 
 const SHOW_SHORT_ARGV_CATALOG = defineArgvCatalog<'no-patch'>({
   nonExecutableLongOptions: [],

@@ -20,7 +20,7 @@ export async function readCommandInput({
   operands,
 }: {
   context: ColumnContext,
-  operands: string[],
+  operands: readonly string[],
 }): Promise<{ text: string, exitCode: number }> {
   const inputs = operands.length === 0 ? ['-'] : operands;
   const parts: string[] = [];

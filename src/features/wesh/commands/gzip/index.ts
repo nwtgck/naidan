@@ -1,12 +1,21 @@
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { basenamePath } from '@/features/wesh/commands/_shared/path';
 import { getGzipSuffixDiagnostic } from '@/features/wesh/commands/_shared/gzip-suffix';
 import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
-import { executeGzipDecompressionCommand } from './decompression';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { decompressGzipInputs } from './decompression';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
 import { writeAllStreamToFile, writeAllStreamToHandle } from '@/features/wesh/utils/fs';
 import { pipeThroughBufferSourceTransform } from '@/features/wesh/utils/stream';
@@ -14,24 +23,105 @@ import { addNamedGzipHeader } from './header';
 import { pathExists as pathEntryExists, unlinkForcedOutputSymlink } from './filesystem';
 import { executeGzipListCommand } from './list';
 
-const gzipArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'c', long: 'stdout', effects: [{ key: 'stdout', value: true }], help: { summary: 'write on standard output, keep original files unchanged', category: 'common' } },
-    { kind: 'flag', short: 'd', long: 'decompress', effects: [{ key: 'decompress', value: true }], help: { summary: 'decompress', category: 'common' } },
-    { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'force', value: true }], help: { summary: 'force overwrite of output files', category: 'common' } },
-    { kind: 'flag', short: 'k', long: 'keep', effects: [{ key: 'keep', value: true }], help: { summary: 'keep input files unchanged', category: 'common' } },
-    { kind: 'flag', short: 'l', long: 'list', effects: [{ key: 'list', value: true }], help: { summary: 'list compressed file contents', category: 'common' } },
-    { kind: 'flag', short: 'n', long: 'no-name', effects: [{ key: 'noName', value: true }], help: { summary: 'do not save the original name and timestamp', category: 'common' } },
-    { kind: 'flag', short: 'q', long: 'quiet', effects: [{ key: 'quiet', value: true }], help: { summary: 'suppress warning messages', category: 'common' } },
-    { kind: 'flag', short: 'r', long: 'recursive', effects: [{ key: 'recursive', value: true }], help: { summary: 'operate recursively on directories', category: 'common' } },
-    { kind: 'value', short: 'S', long: 'suffix', key: 'suffix', valueName: 'SUF', allowAttachedValue: true, parseValue: undefined, help: { summary: 'use suffix SUF on compressed files', valueName: 'SUF' } },
-    { kind: 'flag', short: 't', long: 'test', effects: [{ key: 'test', value: true }], help: { summary: 'test compressed file integrity', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const gzipOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'stdout', value: true }] },
+    forms: [
+      { kind: 'short', name: 'c', value: { kind: 'none' } },
+      { kind: 'long', name: 'stdout', value: { kind: 'none' } },
+    ],
+    help: { summary: 'write on standard output, keep original files unchanged', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'decompress', value: true }] },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'none' } },
+      { kind: 'long', name: 'decompress', value: { kind: 'none' } },
+    ],
+    help: { summary: 'decompress', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'force', value: true }] },
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'none' } },
+      { kind: 'long', name: 'force', value: { kind: 'none' } },
+    ],
+    help: { summary: 'force overwrite of output files', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'keep', value: true }] },
+    forms: [
+      { kind: 'short', name: 'k', value: { kind: 'none' } },
+      { kind: 'long', name: 'keep', value: { kind: 'none' } },
+    ],
+    help: { summary: 'keep input files unchanged', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'list', value: true }] },
+    forms: [
+      { kind: 'short', name: 'l', value: { kind: 'none' } },
+      { kind: 'long', name: 'list', value: { kind: 'none' } },
+    ],
+    help: { summary: 'list compressed file contents', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'noName', value: true }] },
+    forms: [
+      { kind: 'short', name: 'n', value: { kind: 'none' } },
+      { kind: 'long', name: 'no-name', value: { kind: 'none' } },
+    ],
+    help: { summary: 'do not save the original name and timestamp', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'quiet', value: true }] },
+    forms: [
+      { kind: 'short', name: 'q', value: { kind: 'none' } },
+      { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+    ],
+    help: { summary: 'suppress warning messages', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'recursive', value: true }] },
+    forms: [
+      { kind: 'short', name: 'r', value: { kind: 'none' } },
+      { kind: 'long', name: 'recursive', value: { kind: 'none' } },
+    ],
+    help: { summary: 'operate recursively on directories', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'suffix', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'S', value: { kind: 'required-attached-or-following', missingValueName: 'SUF' } },
+      { kind: 'long', name: 'suffix', value: { kind: 'required', missingValueName: 'SUF' } },
+    ],
+    help: { summary: 'use suffix SUF on compressed files', valueName: 'SUF' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'test', value: true }] },
+    forms: [
+      { kind: 'short', name: 't', value: { kind: 'none' } },
+      { kind: 'long', name: 'test', value: { kind: 'none' } },
+    ],
+    help: { summary: 'test compressed file integrity', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    help: { summary: 'display this help and exit', category: 'common' },
+  },
+] as const;
+const gzipArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: gzipOptions.map(({ semantic, forms }) => ({ semantic, forms })),
+  nonExecutableLongOptions: [],
+});
+const gzipArgvHelp = defineArgvHelpPresentation({
+  catalog: gzipArgvCatalog,
+  rows: gzipOptions.map(({ forms, help }) => ({ forms, ...help })),
+});
+const gzipArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 type GzipCompressionSettings = {
@@ -293,12 +383,14 @@ async function compressGzipRecursiveOperand({
 export const gzipCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: context.args,
-        spec: gzipArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: gzipArgvCatalog,
+        policy: gzipArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: gzipArgvSpec,
+      catalog: gzipArgvCatalog,
+      policy: gzipArgvPolicy,
     });
 
     const text = context.text();
@@ -308,7 +400,7 @@ export const gzipCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'gzip',
         message: `gzip: ${diagnostic.message}`,
-        argvSpec: gzipArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: gzipArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -317,7 +409,7 @@ export const gzipCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'gzip',
-        argvSpec: gzipArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: gzipArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -328,7 +420,7 @@ export const gzipCommandImplementation: WeshCommandImplementation = {
     const keepInput = parsed.optionValues.keep === true || writeToStdout;
     const quiet = parsed.optionValues.quiet === true;
     const recursive = parsed.optionValues.recursive === true;
-    const suffix = (parsed.optionValues.suffix as string | undefined) ?? '.gz';
+    const suffix = typeof parsed.optionValues.suffix === 'string' ? parsed.optionValues.suffix : '.gz';
     const suffixDiagnostic = getGzipSuffixDiagnostic({ suffix });
     if (suffixDiagnostic !== undefined) {
       await text.error({ text: suffixDiagnostic });
@@ -350,37 +442,19 @@ export const gzipCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'gzip',
           message: 'gzip: recursive decompression is not supported',
-          argvSpec: gzipArgvSpec,
+          usageSummary: formatArgvUsageSummary({ presentation: gzipArgvHelp }),
         });
         return { exitCode: 1 };
       }
-      const delegatedArgs: string[] = [];
-      if (writeToStdout) {
-        delegatedArgs.push('-c');
-      }
-      if (force) {
-        delegatedArgs.push('-f');
-      }
-      if (parsed.optionValues.keep === true) {
-        delegatedArgs.push('-k');
-      }
-      if (quiet) {
-        delegatedArgs.push('-q');
-      }
-      if (parsed.optionValues.suffix !== undefined) {
-        delegatedArgs.push('-S', suffix);
-      }
-      if (testOnly) {
-        delegatedArgs.push('-t');
-      }
-      for (const positional of parsed.positionals) {
-        delegatedArgs.push(positional);
-      }
-      return executeGzipDecompressionCommand({
-        context: {
-          ...context,
-          args: delegatedArgs,
-        },
+      return decompressGzipInputs({
+        context,
+        inputs,
+        writeToStdout,
+        force,
+        quiet,
+        testOnly,
+        keepInput: keepInput || testOnly,
+        suffix,
       });
     }
 

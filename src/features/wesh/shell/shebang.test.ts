@@ -1,7 +1,24 @@
-import { describe, expect, it } from 'vitest';
-import { parseShellShebangLine, splitEnvShebangArguments } from './shebang';
+import { describe, expect, it, vi } from 'vitest';
+import { createTestReadHandleFromText } from '@/features/wesh/utils/test-stream';
+import { parseShellShebangLine, readShellShebangLine, splitEnvShebangArguments } from './shebang';
 
 describe('shell shebang parsing', () => {
+  it('reads a short header without requesting the rest of a large script', async () => {
+    const handle = createTestReadHandleFromText({ text: `#!/bin/sh -e\n${'body '.repeat(100_000)}` });
+    using read = vi.spyOn(handle, 'read');
+
+    expect(await readShellShebangLine({ handle })).toBe('#!/bin/sh -e');
+    expect(read).toHaveBeenCalledOnce();
+    expect(read.mock.calls[0]?.[0].buffer.length).toBe(256);
+  });
+
+  it('keeps the terminating NUL and arguments across multiple header reads', async () => {
+    const firstLine = `\uFEFF#!${' '.repeat(255)}/bin/bash arg   \0`;
+    const handle = createTestReadHandleFromText({ text: `${firstLine}ignored\n` });
+
+    expect(await readShellShebangLine({ handle })).toBe(firstLine.slice(1));
+  });
+
   it('matches Linux trailing space and tab handling on the shebang line', () => {
     expect(parseShellShebangLine({ firstLine: '#!/bin/bash -e   ' })).toEqual({
       interpreter: '/bin/bash',

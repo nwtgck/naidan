@@ -1,8 +1,11 @@
+import type { WeshPreparedRename } from '@/features/wesh/types';
 import { compileGitExtendedRegex, testGitExtendedRegex, type GitExtendedRegex } from "./extended-regex";
 import type { GitFiles } from "./files";
-import { pathExists, readFileText, replaceTextViaLock } from "./files";
+import { pathExists, readFileText, resolveOptionalEntry, withFileLock } from "./files";
 import type { GitRepository } from "./repository";
 import { joinPath } from "./repository";
+
+const textEncoder = new TextEncoder();
 
 export type GitConfigValue =
   | { readonly kind: 'implicit-boolean' }
@@ -595,10 +598,11 @@ function formatSectionHeader({ section, subsection }: {
   if (subsection === undefined) {
     return `[${section}]`;
   }
-  const escapedSubsection = subsection
-    .replace(/\\/gu, '\\\\')
-    .replace(/"/gu, '\\"');
-  return `[${section} "${escapedSubsection}"]`;
+  return `[${section} ${quoteConfigSubsection({ subsection })}]`;
+}
+
+function quoteConfigSubsection({ subsection }: { subsection: string }): string {
+  return `"${subsection.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"')}"`;
 }
 
 function parseConfigEntryName({ line }: { line: string }): string | undefined {
@@ -707,6 +711,34 @@ function findMatchingConfigEntryPhysicalRanges({ currentText, lines, section, su
 
 export type GitSetConfigValueResult = 'set' | 'multiple';
 
+async function editConfigFile<T>({ files, path, edit, publish }: {
+  files: GitFiles,
+  path: string,
+  edit: ({ text }: { text: string | undefined }) => { result: T, text?: string },
+  publish?: ({ rename }: { rename: WeshPreparedRename | undefined }) => Promise<void>,
+}): Promise<T> {
+  return withFileLock({
+    files,
+    path,
+    operation: async ({ replace, verify }) => {
+      const entry = await resolveOptionalEntry({ files, path });
+      if (entry !== undefined && entry.type !== 'file') {
+        throw new Error(`Not a regular config file: ${path}`);
+      }
+      const updated = edit({ text: entry === undefined ? undefined : await readFileText({ files, entry }) });
+      if (updated.text !== undefined) {
+        await replace({
+          replacement: { bytes: textEncoder.encode(updated.text), expectedDestination: { entry }, publish },
+        });
+      } else if (publish !== undefined) {
+        await verify();
+        await publish({ rename: undefined });
+      }
+      return updated.result;
+    },
+  });
+}
+
 async function setConfigValueAtPath({ files, path, key, value, valuePattern }: {
   files: GitFiles,
   path: string,
@@ -716,39 +748,43 @@ async function setConfigValueAtPath({ files, path, key, value, valuePattern }: {
 }): Promise<GitSetConfigValueResult> {
   assertPersistableConfigValue({ key, value });
   const { section, subsection, name } = parseConfigKey({ key });
-  const currentText = await pathExists({ files, path }) ? await readFileText({ files, path }) : '';
-  const lines = currentText.replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
+  return editConfigFile<GitSetConfigValueResult>({
+    files,
+    path,
+    edit: ({ text }) => {
+      const currentText = text ?? '';
+      const lines = currentText.replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
+      const targetSection = findLastConfigSectionPhysicalRange({ lines, section, subsection });
+      const matchingEntryRanges = findMatchingConfigEntryPhysicalRanges({
+        currentText,
+        lines,
+        section,
+        subsection,
+        name,
+        valuePattern,
+      });
+      if (matchingEntryRanges.length > 1) {
+        return { result: 'multiple' };
+      }
 
-  const targetSection = findLastConfigSectionPhysicalRange({ lines, section, subsection });
-  const matchingEntryRanges = findMatchingConfigEntryPhysicalRanges({
-    currentText,
-    lines,
-    section,
-    subsection,
-    name,
-    valuePattern,
+      if (matchingEntryRanges.length === 1) {
+        const [range] = matchingEntryRanges;
+        lines.splice(range!.start, range!.endExclusive - range!.start, `\t${name} = ${formatConfigValueForWrite({ value })}`);
+      } else if (targetSection === undefined) {
+        if (lines.length === 1 && lines[0] === '') {
+          lines.length = 0;
+        }
+        if (lines.length > 0 && lines[lines.length - 1] !== '') {
+          lines.push('');
+        }
+        lines.push(formatSectionHeader({ section, subsection }), `\t${name} = ${formatConfigValueForWrite({ value })}`);
+      } else {
+        lines.splice(targetSection.endExclusive, 0, `\t${name} = ${formatConfigValueForWrite({ value })}`);
+      }
+
+      return { result: 'set', text: `${lines.join('\n')}\n` };
+    },
   });
-  if (matchingEntryRanges.length > 1) {
-    return 'multiple';
-  }
-
-  if (matchingEntryRanges.length === 1) {
-    const [range] = matchingEntryRanges;
-    lines.splice(range!.start, range!.endExclusive - range!.start, `\t${name} = ${formatConfigValueForWrite({ value })}`);
-  } else if (targetSection === undefined) {
-    if (lines.length === 1 && lines[0] === '') {
-      lines.length = 0;
-    }
-    if (lines.length > 0 && lines[lines.length - 1] !== '') {
-      lines.push('');
-    }
-    lines.push(formatSectionHeader({ section, subsection }), `\t${name} = ${formatConfigValueForWrite({ value })}`);
-  } else {
-    lines.splice(targetSection.endExclusive, 0, `\t${name} = ${formatConfigValueForWrite({ value })}`);
-  }
-
-  await replaceTextViaLock({ files, path, text: `${lines.join('\n')}\n` });
-  return 'set';
 }
 
 export async function setLocalConfigValue({ files, repository, key, value, valuePattern }: {
@@ -793,21 +829,26 @@ async function addConfigValueAtPath({ files, path, key, value }: {
 }): Promise<void> {
   assertPersistableConfigValue({ key, value });
   const { section, subsection, name } = parseConfigKey({ key });
-  const currentText = await pathExists({ files, path }) ? await readFileText({ files, path }) : '';
-  const lines = currentText.replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
-  const targetSection = findLastConfigSectionPhysicalRange({ lines, section, subsection });
-  if (targetSection === undefined) {
-    if (lines.length === 1 && lines[0] === '') {
-      lines.length = 0;
-    }
-    if (lines.length > 0 && lines[lines.length - 1] !== '') {
-      lines.push('');
-    }
-    lines.push(formatSectionHeader({ section, subsection }), `\t${name} = ${formatConfigValueForWrite({ value })}`);
-  } else {
-    lines.splice(targetSection.endExclusive, 0, `\t${name} = ${formatConfigValueForWrite({ value })}`);
-  }
-  await replaceTextViaLock({ files, path, text: `${lines.join('\n')}\n` });
+  await editConfigFile({
+    files,
+    path,
+    edit: ({ text }) => {
+      const lines = (text ?? '').replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
+      const targetSection = findLastConfigSectionPhysicalRange({ lines, section, subsection });
+      if (targetSection === undefined) {
+        if (lines.length === 1 && lines[0] === '') {
+          lines.length = 0;
+        }
+        if (lines.length > 0 && lines[lines.length - 1] !== '') {
+          lines.push('');
+        }
+        lines.push(formatSectionHeader({ section, subsection }), `\t${name} = ${formatConfigValueForWrite({ value })}`);
+      } else {
+        lines.splice(targetSection.endExclusive, 0, `\t${name} = ${formatConfigValueForWrite({ value })}`);
+      }
+      return { result: undefined, text: `${lines.join('\n')}\n` };
+    },
+  });
 }
 
 export async function addLocalConfigValue({ files, repository, key, value }: {
@@ -838,31 +879,35 @@ async function unsetConfigValueAtPath({ files, path, key, all, valuePattern }: {
   valuePattern: GitConfigValuePattern | undefined,
 }): Promise<'missing' | 'multiple' | 'removed'> {
   const { section, subsection, name } = parseConfigKey({ key });
-  if (!await pathExists({ files, path })) {
-    return 'missing';
-  }
-  const currentText = await readFileText({ files, path });
-  const lines = currentText.replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
-  const matches = findMatchingConfigEntryPhysicalRanges({
-    currentText,
-    lines,
-    section,
-    subsection,
-    name,
-    valuePattern,
+  return editConfigFile<'missing' | 'multiple' | 'removed'>({
+    files,
+    path,
+    edit: ({ text: currentText }) => {
+      if (currentText === undefined) {
+        return { result: 'missing' };
+      }
+      const lines = currentText.replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
+      const matches = findMatchingConfigEntryPhysicalRanges({
+        currentText,
+        lines,
+        section,
+        subsection,
+        name,
+        valuePattern,
+      });
+      if (matches.length === 0) {
+        return { result: 'missing' };
+      }
+      if (!all && matches.length > 1) {
+        return { result: 'multiple' };
+      }
+      const removal = all ? matches : [matches[0]!];
+      for (const range of [...removal].sort((left, right) => right.start - left.start)) {
+        lines.splice(range.start, range.endExclusive - range.start);
+      }
+      return { result: 'removed', text: `${lines.join('\n')}\n` };
+    },
   });
-  if (matches.length === 0) {
-    return 'missing';
-  }
-  if (!all && matches.length > 1) {
-    return 'multiple';
-  }
-  const removal = all ? matches : [matches[0]!];
-  for (const range of [...removal].sort((left, right) => right.start - left.start)) {
-    lines.splice(range.start, range.endExclusive - range.start);
-  }
-  await replaceTextViaLock({ files, path, text: `${lines.join('\n')}\n` });
-  return 'removed';
 }
 
 export async function unsetLocalConfigValue({ files, repository, key, all, valuePattern }: {
@@ -906,64 +951,90 @@ export async function removeLocalConfigSection({ files, repository, section, sub
   subsection: string,
 }): Promise<boolean> {
   const path = joinPath({ base: repository.commonDirPath, child: 'config' });
-  if (!await pathExists({ files, path })) {
-    return false;
-  }
-  const lines = (await readFileText({ files, path })).replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
-  let sectionStart: number | undefined;
-  let sectionEnd: number | undefined;
-  for (let index = 0; index < lines.length; index += 1) {
-    if (!/^\s*\[/u.test(lines[index]!)) {
-      continue;
-    }
-    if (sectionStart !== undefined) {
-      sectionEnd = index;
-      break;
-    }
-    if (sectionHeaderMatches({ line: lines[index]!, section, subsection })) {
-      sectionStart = index;
-    }
-  }
-  if (sectionStart === undefined) {
-    return false;
-  }
-  if (sectionEnd === undefined) {
-    sectionEnd = lines.length;
-  }
-  lines.splice(sectionStart, sectionEnd - sectionStart);
-  while (lines.length > 0 && lines[lines.length - 1] === '') {
-    lines.pop();
-  }
-  await replaceTextViaLock({ files, path, text: `${lines.join('\n')}\n` });
-  return true;
+  return editConfigFile({
+    files,
+    path,
+    edit: ({ text }) => {
+      if (text === undefined) {
+        return { result: false };
+      }
+      const lines = text.replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
+      let sectionStart: number | undefined;
+      let sectionEnd: number | undefined;
+      for (let index = 0; index < lines.length; index += 1) {
+        if (!/^\s*\[/u.test(lines[index]!)) {
+          continue;
+        }
+        if (sectionStart !== undefined) {
+          sectionEnd = index;
+          break;
+        }
+        if (sectionHeaderMatches({ line: lines[index]!, section, subsection })) {
+          sectionStart = index;
+        }
+      }
+      if (sectionStart === undefined) {
+        return { result: false };
+      }
+      lines.splice(sectionStart, (sectionEnd ?? lines.length) - sectionStart);
+      while (lines.length > 0 && lines[lines.length - 1] === '') {
+        lines.pop();
+      }
+      return { result: true, text: `${lines.join('\n')}\n` };
+    },
+  });
 }
 
 
-export async function renameLocalConfigSection({ files, repository, section, oldSubsection, newSubsection }: {
+function continuedConfigQuote({ line, quoted }: { line: string, quoted: boolean }): boolean | undefined {
+  if (!line.endsWith('\\')) {
+    return undefined;
+  }
+  for (const [token] of line.matchAll(/\\[\s\S]?|["#;]/gu)) {
+    if (token === '\\') {
+      return quoted;
+    }
+    if (token === '"') {
+      quoted = !quoted;
+    } else if (!quoted && (token === '#' || token === ';')) {
+      break;
+    }
+  }
+  return undefined;
+}
+
+export async function withRenamedLocalConfigSection({ files, repository, section, oldSubsection, newSubsection, publish }: {
   files: GitFiles,
   repository: GitRepository,
   section: string,
   oldSubsection: string,
   newSubsection: string,
+  publish: ({ rename }: { rename: WeshPreparedRename | undefined }) => Promise<void>,
 }): Promise<boolean> {
-  const path = joinPath({ base: repository.commonDirPath, child: 'config' });
-  if (!await pathExists({ files, path })) {
-    return false;
-  }
-  const lines = (await readFileText({ files, path })).replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
-  let sourceIndex: number | undefined;
-  for (let index = 0; index < lines.length; index += 1) {
-    if (sectionHeaderMatches({ line: lines[index]!, section, subsection: oldSubsection })) {
-      sourceIndex = index;
-      break;
-    }
-  }
-  if (sourceIndex === undefined) {
-    return false;
-  }
-  lines[sourceIndex] = formatSectionHeader({ section, subsection: newSubsection });
-  await replaceTextViaLock({ files, path, text: `${lines.join('\n')}\n` });
-  return true;
+  return editConfigFile({
+    files,
+    path: joinPath({ base: repository.commonDirPath, child: 'config' }),
+    publish,
+    edit: ({ text }) => {
+      if (text === undefined || oldSubsection === newSubsection) {
+        return { result: false };
+      }
+      // Retain original line terminators and avoid treating a continued value as a header.
+      const parts = text.split(/(\r?\n)/u);
+      const newName = quoteConfigSubsection({ subsection: newSubsection });
+      let continuedQuote: boolean | undefined;
+      let changed = false;
+      for (let index = 0; index < parts.length; index += 2) {
+        const line = parts[index]!;
+        if (continuedQuote === undefined && sectionHeaderMatches({ line, section, subsection: oldSubsection })) {
+          parts[index] = line.replace(/"(?:\\[\\"]|[^"\\])*"/u, () => newName);
+          changed = true;
+        }
+        continuedQuote = continuedConfigQuote({ line, quoted: continuedQuote ?? false });
+      }
+      return changed ? { result: true, text: parts.join('') } : { result: false };
+    },
+  });
 }
 
 export function getConfigValue({ config, key }: { config: GitConfig, key: string }): string | undefined {

@@ -2485,6 +2485,74 @@ two
     expect(result.exitCode).toBe(0);
   });
 
+  it.each(["-A 0 -1", "-1 -A 0"])("preserves explicit after-context alongside shorthand %s", async options => {
+    const { result, stdout, stderr } = await execute({
+      script: `grep ${options} MATCH`,
+      stdinText: `\
+zero
+before
+MATCH
+after
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+before
+MATCH
+`);
+    expect(stderr.text).toBe("");
+  });
+
+  it("validates only shorthand context lengths that remain in use", async () => {
+    const stdinText = `\
+before
+MATCH
+after
+`;
+    const replaced = await execute({
+      script: "grep -9007199254740994 -1 MATCH",
+      stdinText,
+    });
+    const overridden = await execute({
+      script: "grep -9007199254740994 -A0 -B0 MATCH",
+      stdinText,
+    });
+    const help = await execute({ script: "grep -9007199254740994 --help" });
+    const active = await execute({
+      script: "grep -9007199254740994 -A0 MATCH",
+      stdinText,
+    });
+
+    expect(replaced.result.exitCode).toBe(0);
+    expect(replaced.stdout.text).toBe(stdinText);
+    expect(replaced.stderr.text).toBe("");
+    expect(overridden.result.exitCode).toBe(0);
+    expect(overridden.stdout.text).toBe("MATCH\n");
+    expect(overridden.stderr.text).toBe("");
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain("Search for patterns in files");
+    expect(help.stderr.text).toBe("");
+    expect(active.result.exitCode).toBe(2);
+    expect(active.stdout.text).toBe("");
+    expect(active.stderr.text).toBe("grep: 9007199254740994: invalid context length argument\n");
+  });
+
+  it.each(["-e -1", "-- -1"])("does not interpret %s as a numeric context option", async options => {
+    const { result, stdout, stderr } = await execute({
+      script: `grep ${options} -`,
+      stdinText: `\
+before
+-1
+after
+`,
+    });
+
+    expect(stdout.text).toBe("-1\n");
+    expect(stderr.text).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("aligns reported content for --initial-tab", async () => {
     await writeFile({
       path: "left.txt",

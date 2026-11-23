@@ -2,14 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import DebugWeshTerminalModal from './DebugWeshTerminalModal.vue';
+import type { WeshWorkerExecutionOutcome } from '@/features/wesh/worker/types';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const mocks = vi.hoisted(() => ({
-  startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
-  awaitExecution: vi.fn().mockResolvedValue({ exitCode: 0 }),
-  cancelExecution: vi.fn().mockResolvedValue(true),
-  disposeExecution: vi.fn().mockResolvedValue(undefined),
+  startExecution: vi.fn(() => ({ completion: Promise.resolve<WeshWorkerExecutionOutcome>({ status: 'exited', exitCode: 0, shellState: { cwd: '/saved', env: {} } }), cancel: vi.fn() })),
   dispose: vi.fn().mockResolvedValue(undefined),
+  getShellState: vi.fn().mockResolvedValue({ cwd: '/saved', env: {} }),
   createClient: vi.fn(),
   resolveVolumeAccess: vi.fn(async ({ volumeId }: { volumeId: import('@/01-models/ids').VolumeId }) => ({
     kind: 'native',
@@ -70,9 +69,7 @@ describe('DebugWeshTerminalModal', () => {
     mocks.showConfirm.mockResolvedValue(true);
     mocks.createClient.mockResolvedValue({
       startExecution: mocks.startExecution,
-      awaitExecution: mocks.awaitExecution,
-      cancelExecution: mocks.cancelExecution,
-      disposeExecution: mocks.disposeExecution,
+      getShellState: mocks.getShellState,
       dispose: mocks.dispose,
     });
     const globalRoot = createDirectoryHandleMock({ name: 'global-root' });
@@ -128,13 +125,8 @@ describe('DebugWeshTerminalModal', () => {
   });
 
   it('shows input as readonly while a command is running, then writable again', async () => {
-    let resolveAwaitExecution: ((value: { exitCode: number }) => void) | undefined;
-    mocks.startExecution.mockResolvedValue({ executionId: 'exec-1' });
-    mocks.awaitExecution.mockImplementation(
-      () => new Promise((resolve) => {
-        resolveAwaitExecution = resolve;
-      }),
-    );
+    const completion = Promise.withResolvers<WeshWorkerExecutionOutcome>();
+    mocks.startExecution.mockReturnValueOnce({ completion: completion.promise, cancel: vi.fn() });
 
     const wrapper = mount(DebugWeshTerminalModal, {
       props: { isOpen: true },
@@ -153,10 +145,103 @@ describe('DebugWeshTerminalModal', () => {
     expect(wrapper.get('[data-testid="terminal-input"]').attributes('readonly')).toBeDefined();
 
     // Resolve the command
-    resolveAwaitExecution?.({ exitCode: 0 });
+    completion.resolve({ status: 'exited', exitCode: 0, shellState: { cwd: '/saved', env: {} } });
     await flushPromises();
 
     // Textarea is no longer readonly
     expect(wrapper.get('[data-testid="terminal-input"]').attributes('readonly')).toBeUndefined();
+  });
+
+  it.each(['exited', 'terminated'] as const)('sends one Ctrl-C and restores input when the execution is %s', async status => {
+    const completion = Promise.withResolvers<WeshWorkerExecutionOutcome>();
+    const cancel = vi.fn();
+    mocks.startExecution.mockReturnValueOnce({ completion: completion.promise, cancel });
+    const wrapper = mount(DebugWeshTerminalModal, { props: { isOpen: true } });
+    using _wrapper = { [Symbol.dispose]: () => wrapper.unmount() };
+    await flushPromises();
+    await wrapper.get('[data-testid="new-session-button"]').trigger('click');
+    await flushPromises();
+    const readsBeforeRun = mocks.getShellState.mock.calls.length;
+    expect(wrapper.text()).toContain('/saved $');
+    using _restoreShellState = {
+      [Symbol.dispose]: () => {
+        mocks.getShellState.mockReset().mockResolvedValue({ cwd: '/saved', env: {} });
+      },
+    };
+    mocks.getShellState.mockReturnValueOnce(new Promise(() => {}));
+    const textarea = wrapper.get('[data-testid="terminal-input"]');
+    await textarea.setValue('sleep 60');
+    await textarea.trigger('keydown', { key: 'Enter' });
+    await textarea.trigger('keydown', { key: 'c', ctrlKey: true });
+    expect(cancel).toHaveBeenCalledOnce();
+
+    completion.resolve(status === 'exited' ? { status, exitCode: 130, shellState: { cwd: '/after', env: {} } } : { status });
+    await flushPromises();
+
+    expect(mocks.startExecution).toHaveBeenCalledWith(expect.objectContaining({ request: { script: 'sleep 60', includeShellState: true } }));
+    expect(textarea.attributes('readonly')).toBeUndefined();
+    expect(wrapper.text()).toContain('^C');
+    expect(mocks.getShellState).toHaveBeenCalledTimes(readsBeforeRun);
+    if (status === 'exited') {
+      expect(wrapper.text()).toContain('/after $');
+    } else {
+      expect(wrapper.text()).not.toContain('/saved $');
+    }
+  });
+
+  it.each(['directory', 'worker init'] as const)('closes the session during %s and ignores the late result', async phase => {
+    const wrapper = mount(DebugWeshTerminalModal, { props: { isOpen: true } });
+    using _wrapper = { [Symbol.dispose]: () => wrapper.unmount() };
+    await flushPromises();
+    const pendingDirectory = Promise.withResolvers<FileSystemDirectoryHandle>();
+    const pendingShell = Promise.withResolvers<{ cwd: string, env: Record<string, string> }>();
+    if (phase === 'directory') {
+      mocks.getDirectory.mockReturnValueOnce(pendingDirectory.promise);
+    } else {
+      mocks.getShellState.mockReturnValueOnce(pendingShell.promise);
+    }
+    const alreadyCreated = mocks.createClient.mock.calls.length;
+    await wrapper.get('[data-testid="new-session-button"]').trigger('click');
+    await flushPromises();
+    const close = wrapper.findAll('button[aria-label="Close session"]').at(-1)!;
+    await close.trigger('click');
+    await flushPromises();
+
+    const getDirectoryHandle = vi.fn();
+    if (phase === 'directory') {
+      pendingDirectory.resolve({ getDirectoryHandle } as unknown as FileSystemDirectoryHandle);
+    } else {
+      pendingShell.reject(new DOMException('closed', 'AbortError'));
+    }
+    await flushPromises();
+    expect(getDirectoryHandle).not.toHaveBeenCalled();
+    expect(mocks.createClient).toHaveBeenCalledTimes(alreadyCreated + (phase === 'worker init' ? 1 : 0));
+    expect(mocks.dispose).toHaveBeenCalledTimes(phase === 'worker init' ? 1 : 0);
+    expect(wrapper.text()).not.toContain('closed');
+  });
+
+  it('clears the prompt after a Worker failure while keeping it after a command error', async () => {
+    const wrapper = mount(DebugWeshTerminalModal, { props: { isOpen: true } });
+    using _wrapper = { [Symbol.dispose]: () => wrapper.unmount() };
+    await flushPromises();
+    await wrapper.get('[data-testid="new-session-button"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('/saved $');
+
+    mocks.startExecution.mockImplementationOnce(() => ({
+      completion: Promise.reject(new Error('command failed')),
+      cancel: vi.fn(),
+    }));
+    const textarea = wrapper.get('[data-testid="terminal-input"]');
+    await textarea.setValue('pwd');
+    await textarea.trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    expect(wrapper.text()).toContain('command failed');
+    expect(wrapper.text()).toContain('/saved $');
+
+    const { onRuntimeFailure } = mocks.createClient.mock.calls.at(-1)?.[0] as { onRuntimeFailure: () => void };
+    onRuntimeFailure();
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('/saved $');
   });
 });

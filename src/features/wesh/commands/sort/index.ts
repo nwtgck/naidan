@@ -1,16 +1,20 @@
 import {
-  findFirstStandardSemanticIssue,
-  standardSemanticIssuePrecedesDiagnostic,
-  stopStandardArgvAtFirstEarlyExit,
-  type StandardEarlyExitOption,
-} from '@/features/wesh/commands/_shared/argv';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  parseStandardArgv,
+  type ParsedStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+  type StandardArgvRawValue,
+} from '@/features/wesh/argv';
 import {
   resolveCharacterLocaleMode,
   uppercaseAscii,
   type WeshCharacterLocaleMode,
 } from '@/features/wesh/commands/_shared/locale';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult, WeshFileHandle } from '@/features/wesh/types';
 import { openFileReadStream, openHandleReadStream, writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
@@ -155,9 +159,12 @@ function resolveInputPath({
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
-type SortKeyParseResult = { ok: true, value: SortKeySpec } | { ok: false, message: string };
-type SortValidationResult = { ok: true } | { ok: false, message: string };
-type SortResolvedOptionsResult = { ok: true, value: SortResolvedOptions } | { ok: false, message: string };
+type SortKeyParseError = { ok: false, reason: 'syntax' | 'order', message: string };
+type SortKeyParseResult = { ok: true, value: SortKeySpec } | SortKeyParseError;
+type SortResolvedOptionsResult =
+  | { kind: 'help' }
+  | { kind: 'invalid', message: string, exitCode: 1 | 2 }
+  | { kind: 'parsed', options: SortResolvedOptions };
 
 function trimLeadingBlanks({ value }: { value: string }): string {
   return value.replace(/^[ \t]+/, '');
@@ -702,20 +709,12 @@ function splitFields({
     const spans: Array<{ start: number, end: number }> = [];
     let index = 0;
     while (index < line.length) {
-      const blanksStart = index;
+      // With the default separator, preceding blanks belong to each field.
+      // Trailing blanks also form a field of their own.
+      const start = index;
       while (index < line.length && (line[index] === ' ' || line[index] === '\t')) {
         index++;
       }
-      if (index === line.length) {
-        if (spans.length === 0) {
-          spans.push({ start: 0, end: line.length });
-        }
-        break;
-      }
-
-      // GNU sort treats leading blanks as part of the first key field unless
-      // -b is active.  Blanks between later fields remain separators.
-      const start = spans.length === 0 ? blanksStart : index;
       while (index < line.length && line[index] !== ' ' && line[index] !== '\t') {
         index++;
       }
@@ -865,22 +864,22 @@ function parseKeyToken({
   token: string,
 }): SortKeyParseResult {
   if (token.trim().length === 0) {
-    return { ok: false, message: 'empty key definition is not allowed' };
+    return { ok: false, reason: 'syntax', message: 'empty key definition is not allowed' };
   }
 
   const parts = token.split(',');
   if (parts.length > 2) {
-    return { ok: false, message: `invalid key definition: '${token}'` };
+    return { ok: false, reason: 'syntax', message: `invalid key definition: '${token}'` };
   }
 
   const parsePart = ({
     part,
   }: {
     part: string,
-  }): { ok: true, value: { field: number, char: number | undefined, modifiers: string } } | { ok: false, message: string } => {
+  }): { ok: true, value: { field: number, char: number | undefined, modifiers: string } } | SortKeyParseError => {
     const match = part.match(/^([1-9]\d*)(?:\.([1-9]\d*))?([A-Za-z]*)$/);
     if (match === null) {
-      return { ok: false, message: `invalid key definition: '${token}'` };
+      return { ok: false, reason: 'syntax', message: `invalid key definition: '${token}'` };
     }
 
     return {
@@ -960,12 +959,12 @@ function parseKeyToken({
       mode = 'version';
       break;
     default:
-      return { ok: false, message: `invalid key definition: '${token}'` };
+      return { ok: false, reason: 'syntax', message: `invalid key definition: '${token}'` };
     }
   }
 
   if (keyModes.size > 1) {
-    return { ok: false, message: `incompatible ordering options in key definition: '${token}'` };
+    return { ok: false, reason: 'order', message: `incompatible ordering options in key definition: '${token}'` };
   }
 
   return {
@@ -985,227 +984,148 @@ function parseKeyToken({
   };
 }
 
-function collectKeySpecs({
-  occurrences,
-}: {
-  occurrences: ReturnType<typeof parseStandardArgv>['occurrences'],
-}): SortKeyParseResult[] {
-  const results: SortKeyParseResult[] = [];
-  for (const occurrence of occurrences) {
-    switch (occurrence.kind) {
-    case 'flag':
-      continue;
-    case 'special':
-      continue;
-    case 'value':
-      if (occurrence.key !== 'key') {
-        continue;
-      }
-      if (typeof occurrence.value !== 'string') {
-        results.push({ ok: false, message: `invalid key definition: '${String(occurrence.value)}'` });
-        continue;
-      }
-      results.push(parseKeyToken({ token: occurrence.value }));
-      continue;
-    default: {
-      const _ex: never = occurrence;
-      throw new Error(`Unhandled argv occurrence: ${_ex}`);
-    }
-    }
+function readSortOptionValue({ value }: { value: StandardArgvRawValue }): string {
+  if (!('rawValue' in value)) {
+    throw new Error('Missing parsed sort option value');
   }
-  return results;
+  return value.rawValue;
 }
 
-function collectGlobalSortModes({
-  occurrences,
-}: {
-  occurrences: ReturnType<typeof parseStandardArgv>['occurrences'],
-}): Set<SortMode> {
-  const modes = new Set<SortMode>();
-  for (const occurrence of occurrences) {
-    switch (occurrence.kind) {
-    case 'flag':
-    case 'special':
-      for (const effect of occurrence.effects) {
-        if (effect.key !== 'mode') {
-          continue;
-        }
-        switch (effect.value) {
-        case 'numeric':
-        case 'general-numeric':
-        case 'human-numeric':
-        case 'month':
-        case 'version':
-          modes.add(effect.value);
-          break;
-        default:
-          break;
-        }
-      }
-      break;
-    case 'value':
-      break;
-    default: {
-      const _ex: never = occurrence;
-      throw new Error(`Unhandled argv occurrence: ${_ex}`);
-    }
-    }
+function parseSortCheckMode({ value }: { value: string | undefined }):
+  | { ok: true, mode: Exclude<SortCheckMode, 'none'> }
+  | { ok: false, message: string } {
+  if (value === '') {
+    return { ok: false, message: "ambiguous argument '' for '--check'" };
   }
-  return modes;
-}
-
-function validateSortPreHelpSemantics({
-  parsed,
-}: {
-  parsed: ReturnType<typeof parseStandardArgv>,
-}): SortValidationResult {
-  const outputPaths = new Set<string>();
-  const fieldSeparators = new Set<string>();
-  const checkModes = new Set<Exclude<SortCheckMode, 'none'>>();
-
-  for (const occurrence of parsed.occurrences) {
-    switch (occurrence.kind) {
-    case 'value':
-      switch (occurrence.key) {
-      case 'outputPath':
-        if (typeof occurrence.value === 'string') {
-          outputPaths.add(occurrence.value);
-        }
-        break;
-      case 'fieldSeparator':
-        if (typeof occurrence.value === 'string') {
-          const separator = decodeFieldSeparator({ value: occurrence.value });
-          if (new TextEncoder().encode(separator).byteLength !== 1) {
-            return { ok: false, message: `multi-character field separator: '${separator}'` };
-          }
-          fieldSeparators.add(separator);
-        }
-        break;
-      default:
-        break;
-      }
-      break;
-    case 'flag':
-    case 'special':
-      for (const effect of occurrence.effects) {
-        if (effect.key !== 'checkMode') {
-          continue;
-        }
-        switch (effect.value) {
-        case 'strict':
-        case 'silent':
-          checkModes.add(effect.value);
-          break;
-        default:
-          break;
-        }
-      }
-      break;
-    default: {
-      const _ex: never = occurrence;
-      throw new Error(`Unhandled sort option occurrence: ${String(_ex)}`);
-    }
-    }
+  if (value === undefined || 'diagnose-first'.startsWith(value)) {
+    return { ok: true, mode: 'strict' };
   }
-
-  if (outputPaths.size > 1) {
-    return { ok: false, message: 'multiple output files specified' };
+  if ('quiet'.startsWith(value) || 'silent'.startsWith(value)) {
+    return { ok: true, mode: 'silent' };
   }
-  if (fieldSeparators.size > 1) {
-    return { ok: false, message: 'incompatible field separators' };
-  }
-  if (checkModes.size > 1) {
-    return { ok: false, message: "options '-cC' are incompatible" };
-  }
-
-  return { ok: true };
-}
-
-function findSortPreHelpSemanticIssue({
-  parsed,
-}: {
-  parsed: ReturnType<typeof parseStandardArgv>,
-}): string | undefined {
-  const keyError = collectKeySpecs({ occurrences: parsed.occurrences })
-    .find((result) => !result.ok && !result.message.startsWith('incompatible ordering options'));
-  if (keyError !== undefined && !keyError.ok) {
-    return keyError.message;
-  }
-
-  const semantics = validateSortPreHelpSemantics({ parsed });
-  return semantics.ok ? undefined : semantics.message;
+  return { ok: false, message: `invalid argument '${value}' for '--check'` };
 }
 
 function resolveSortOptions({
   parsed,
   characterLocaleMode,
 }: {
-  parsed: ReturnType<typeof parseStandardArgv>,
+  parsed: ParsedStandardArgv<SortArgvTag>,
   characterLocaleMode: WeshCharacterLocaleMode,
 }): SortResolvedOptionsResult {
-  const outputPaths = parsed.occurrences.reduce((paths, occurrence) => {
-    switch (occurrence.kind) {
-    case 'value':
-      if (occurrence.key === 'outputPath' && typeof occurrence.value === 'string') {
-        paths.add(occurrence.value);
+  const diagnostic = parsed.diagnostics[0];
+  const keySpecs: SortKeySpec[] = [];
+  let outputPath: string | undefined;
+  let fieldSeparator: string | undefined;
+  let checkMode: SortCheckMode = 'none';
+  let mode: SortMode = 'lexical';
+  let incompatibleGlobalModes = false;
+  let keyOrderError: string | undefined;
+
+  // Validate syntax and conflicting option values where they occur. Ordering
+  // modes are checked after help, and repeated keys retain their argv order.
+  for (const occurrence of parsed.deferred) {
+    if (diagnostic !== undefined && (
+      diagnostic.argvIndex < occurrence.argvIndex
+      || (diagnostic.argvIndex === occurrence.argvIndex && diagnostic.tokenOffset <= occurrence.tokenStart)
+    )) {
+      break;
+    }
+
+    const tag = occurrence.semantic.tag;
+    switch (tag) {
+    case 'key': {
+      const key = parseKeyToken({ token: readSortOptionValue({ value: occurrence.value }) });
+      if (key.ok) {
+        keySpecs.push(key.value);
+      } else {
+        switch (key.reason) {
+        case 'syntax':
+          return { kind: 'invalid', message: key.message, exitCode: 2 };
+        case 'order':
+          keyOrderError ??= key.message;
+          break;
+        default: {
+          const _ex: never = key.reason;
+          throw new Error(`Unhandled sort key error: ${_ex}`);
+        }
+        }
       }
-      return paths;
-    case 'flag':
-    case 'special':
-      return paths;
-    default: {
-      const _ex: never = occurrence;
-      throw new Error(`Unhandled sort option occurrence: ${String(_ex)}`);
+      break;
     }
+    case 'outputPath': {
+      const path = readSortOptionValue({ value: occurrence.value });
+      if (outputPath !== undefined && outputPath !== path) {
+        return { kind: 'invalid', message: 'multiple output files specified', exitCode: 2 };
+      }
+      outputPath = path;
+      break;
     }
-  }, new Set<string>());
-  if (outputPaths.size > 1) {
-    return { ok: false, message: 'multiple output files specified' };
-  }
-
-  const globalModes = collectGlobalSortModes({ occurrences: parsed.occurrences });
-  if (globalModes.size > 1) {
-    return { ok: false, message: 'multiple ordering options are incompatible' };
-  }
-
-  const keySpecsResult = collectKeySpecs({ occurrences: parsed.occurrences });
-  for (const result of keySpecsResult) {
-    if (!result.ok) {
-      return result;
+    case 'fieldSeparator': {
+      const separator = decodeFieldSeparator({ value: readSortOptionValue({ value: occurrence.value }) });
+      if (new TextEncoder().encode(separator).byteLength !== 1) {
+        return { kind: 'invalid', message: `multi-character field separator: '${separator}'`, exitCode: 2 };
+      }
+      if (fieldSeparator !== undefined && fieldSeparator !== separator) {
+        return { kind: 'invalid', message: 'incompatible field separators', exitCode: 2 };
+      }
+      fieldSeparator = separator;
+      break;
     }
-  }
-
-  const keySpecs = keySpecsResult
-    .filter((result): result is { ok: true, value: SortKeySpec } => result.ok)
-    .map((result) => result.value);
-
-  const fieldSeparatorValue = typeof parsed.optionValues.fieldSeparator === 'string'
-    ? decodeFieldSeparator({ value: parsed.optionValues.fieldSeparator })
-    : undefined;
-  if (fieldSeparatorValue !== undefined && new TextEncoder().encode(fieldSeparatorValue).byteLength !== 1) {
-    return { ok: false, message: `multi-character field separator: '${fieldSeparatorValue}'` };
-  }
-
-  const mode = (() => {
-    switch (parsed.optionValues.mode) {
+    case 'check':
+    case 'silentCheck': {
+      const value = (() => {
+        switch (tag) {
+        case 'check':
+          return 'rawValue' in occurrence.value ? occurrence.value.rawValue : undefined;
+        case 'silentCheck':
+          return 'silent';
+        default: {
+          const _ex: never = tag;
+          throw new Error(`Unhandled sort check option: ${_ex}`);
+        }
+        }
+      })();
+      const check = parseSortCheckMode({ value });
+      if (!check.ok) {
+        return { kind: 'invalid', message: check.message, exitCode: 1 };
+      }
+      if (checkMode !== 'none' && checkMode !== check.mode) {
+        return { kind: 'invalid', message: "options '-cC' are incompatible", exitCode: 2 };
+      }
+      checkMode = check.mode;
+      break;
+    }
     case 'numeric':
-      return 'numeric';
     case 'general-numeric':
-      return 'general-numeric';
     case 'human-numeric':
-      return 'human-numeric';
     case 'month':
-      return 'month';
     case 'version':
-      return 'version';
-    default:
-      return 'lexical';
+      incompatibleGlobalModes ||= mode !== 'lexical' && mode !== tag;
+      mode = tag;
+      break;
+    case 'help':
+      return { kind: 'help' };
+    default: {
+      const _ex: never = tag;
+      throw new Error(`Unhandled sort option: ${_ex}`);
     }
-  })();
+    }
+  }
+
+  if (diagnostic !== undefined) {
+    return { kind: 'invalid', message: diagnostic.message, exitCode: 2 };
+  }
+  if (incompatibleGlobalModes) {
+    return { kind: 'invalid', message: 'multiple ordering options are incompatible', exitCode: 2 };
+  }
+  if (keyOrderError !== undefined) {
+    return { kind: 'invalid', message: keyOrderError, exitCode: 2 };
+  }
 
   return {
-    ok: true,
-    value: {
+    kind: 'parsed',
+    options: {
       mode,
       order: parsed.optionValues.order === 'reverse' ? 'reverse' : 'forward',
       uniqueness: parsed.optionValues.uniqueness === 'unique' ? 'unique' : 'all',
@@ -1214,15 +1134,11 @@ function resolveSortOptions({
       ignoreLeadingBlanks: parsed.optionValues.ignoreLeadingBlanks === true,
       dictionaryOrder: parsed.optionValues.dictionaryOrder === true,
       ignoreNonprinting: parsed.optionValues.ignoreNonprinting === true,
-      checkMode: parsed.optionValues.checkMode === 'silent'
-        ? 'silent'
-        : parsed.optionValues.checkMode === 'strict'
-          ? 'strict'
-          : 'none',
+      checkMode,
       merge: parsed.optionValues.merge === true,
       zeroTerminated: parsed.optionValues.zeroTerminated === true,
-      outputPath: typeof parsed.optionValues.outputPath === 'string' ? parsed.optionValues.outputPath : undefined,
-      fieldSeparator: fieldSeparatorValue,
+      outputPath,
+      fieldSeparator,
       characterLocaleMode,
       keySpecs: keySpecs.map((keySpec) => ({
         ...keySpec,
@@ -1230,7 +1146,7 @@ function resolveSortOptions({
         foldCase: keySpec.foldCase || parsed.optionValues.foldCase === true,
         dictionaryOrder: keySpec.dictionaryOrder || parsed.optionValues.dictionaryOrder === true,
         ignoreNonprinting: keySpec.ignoreNonprinting || parsed.optionValues.ignoreNonprinting === true,
-        fieldSeparator: fieldSeparatorValue,
+        fieldSeparator,
       })),
     },
   };
@@ -2271,119 +2187,249 @@ async function checkSortedInputs({
   return { exitCode: 0 };
 }
 
-const SORT_HELP_EARLY_EXIT_OPTIONS: readonly StandardEarlyExitOption[] = [
-  { token: '--help', optionKey: 'showHelp' },
-];
+const sortOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'ignoreLeadingBlanks', value: true }] },
+    forms: [
+      { kind: 'short', name: 'b', value: { kind: 'none' } },
+      { kind: 'long', name: 'ignore-leading-blanks', value: { kind: 'none' } },
+    ],
+    summary: 'ignore leading blanks when comparing',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'dictionaryOrder', value: true }] },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'none' } },
+      { kind: 'long', name: 'dictionary-order', value: { kind: 'none' } },
+    ],
+    summary: 'consider only blanks and alphanumeric characters',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'foldCase', value: true }] },
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'none' } },
+      { kind: 'long', name: 'ignore-case', value: { kind: 'none' } },
+    ],
+    summary: 'fold lower case to upper case characters',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'general-numeric' },
+    forms: [
+      { kind: 'short', name: 'g', value: { kind: 'none' } },
+      { kind: 'long', name: 'general-numeric-sort', value: { kind: 'none' } },
+    ],
+    summary: 'compare according to general numerical value',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'human-numeric' },
+    forms: [
+      { kind: 'short', name: 'h', value: { kind: 'none' } },
+      { kind: 'long', name: 'human-numeric-sort', value: { kind: 'none' } },
+    ],
+    summary: 'compare human readable numbers (e.g. 2K)',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'ignoreNonprinting', value: true }] },
+    forms: [
+      { kind: 'short', name: 'i', value: { kind: 'none' } },
+      { kind: 'long', name: 'ignore-nonprinting', value: { kind: 'none' } },
+    ],
+    summary: 'consider only printable characters',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'key' },
+    forms: [
+      { kind: 'short', name: 'k', value: { kind: 'required-attached-or-following', missingValueName: 'KEYDEF' } },
+      { kind: 'long', name: 'key', value: { kind: 'required', missingValueName: 'KEYDEF' } },
+    ],
+    summary: 'sort by a key definition',
+    valueName: 'KEYDEF',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'merge', value: true }] },
+    forms: [
+      { kind: 'short', name: 'm', value: { kind: 'none' } },
+      { kind: 'long', name: 'merge', value: { kind: 'none' } },
+    ],
+    summary: 'merge already-sorted inputs',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'month' },
+    forms: [
+      { kind: 'short', name: 'M', value: { kind: 'none' } },
+      { kind: 'long', name: 'month-sort', value: { kind: 'none' } },
+    ],
+    summary: 'sort by month name',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'numeric' },
+    forms: [
+      { kind: 'short', name: 'n', value: { kind: 'none' } },
+      { kind: 'long', name: 'numeric-sort', value: { kind: 'none' } },
+    ],
+    summary: 'compare according to numerical value',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'outputPath' },
+    forms: [
+      { kind: 'short', name: 'o', value: { kind: 'required-attached-or-following', missingValueName: 'FILE' } },
+      { kind: 'long', name: 'output', value: { kind: 'required', missingValueName: 'FILE' } },
+    ],
+    summary: 'write output to FILE',
+    valueName: 'FILE',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'order', value: 'reverse' }] },
+    forms: [
+      { kind: 'short', name: 'r', value: { kind: 'none' } },
+      { kind: 'long', name: 'reverse', value: { kind: 'none' } },
+    ],
+    summary: 'reverse the result of comparisons',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'stable', value: true }] },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'none' } },
+      { kind: 'long', name: 'stable', value: { kind: 'none' } },
+    ],
+    summary: 'stabilize sort by disabling last-resort comparison',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'fieldSeparator' },
+    forms: [
+      { kind: 'short', name: 't', value: { kind: 'required-attached-or-following', missingValueName: 'SEP' } },
+      { kind: 'long', name: 'field-separator', value: { kind: 'required', missingValueName: 'SEP' } },
+    ],
+    summary: 'use SEP as the field separator',
+    valueName: 'SEP',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'uniqueness', value: 'unique' }] },
+    forms: [
+      { kind: 'short', name: 'u', value: { kind: 'none' } },
+      { kind: 'long', name: 'unique', value: { kind: 'none' } },
+    ],
+    summary: 'output only the first of equal lines',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'version' },
+    forms: [
+      { kind: 'short', name: 'V', value: { kind: 'none' } },
+      { kind: 'long', name: 'version-sort', value: { kind: 'none' } },
+    ],
+    summary: 'natural sort of version numbers',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'zeroTerminated', value: true }] },
+    forms: [
+      { kind: 'short', name: 'z', value: { kind: 'none' } },
+      { kind: 'long', name: 'zero-terminated', value: { kind: 'none' } },
+    ],
+    summary: 'line delimiter is NUL, not newline',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'check' },
+    forms: [
+      { kind: 'short', name: 'c', value: { kind: 'none' } },
+      { kind: 'long', name: 'check', value: { kind: 'optional-inline' } },
+    ],
+    summary: 'check whether input is sorted',
+    valueName: 'MODE',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'silentCheck' },
+    forms: [{ kind: 'short', name: 'C', value: { kind: 'none' } }],
+    summary: 'check without reporting the first disorder (--check=quiet)',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'help' },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
 
-const sortArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'b', long: 'ignore-leading-blanks', effects: [{ key: 'ignoreLeadingBlanks', value: true }], help: { summary: 'ignore leading blanks when comparing', category: 'common' } },
-    { kind: 'flag', short: 'd', long: 'dictionary-order', effects: [{ key: 'dictionaryOrder', value: true }], help: { summary: 'consider only blanks and alphanumeric characters', category: 'advanced' } },
-    { kind: 'flag', short: 'f', long: 'ignore-case', effects: [{ key: 'foldCase', value: true }], help: { summary: 'fold lower case to upper case characters', category: 'common' } },
-    { kind: 'flag', short: 'g', long: 'general-numeric-sort', effects: [{ key: 'mode', value: 'general-numeric' }], help: { summary: 'compare according to general numerical value', category: 'advanced' } },
-    { kind: 'flag', short: 'h', long: 'human-numeric-sort', effects: [{ key: 'mode', value: 'human-numeric' }], help: { summary: 'compare human readable numbers (e.g. 2K)', category: 'advanced' } },
-    { kind: 'flag', short: 'i', long: 'ignore-nonprinting', effects: [{ key: 'ignoreNonprinting', value: true }], help: { summary: 'consider only printable characters', category: 'advanced' } },
-    { kind: 'value', short: 'k', long: 'key', key: 'key', valueName: 'KEYDEF', allowAttachedValue: true, parseValue: undefined, help: { summary: 'sort by a key definition', category: 'common' } },
-    { kind: 'flag', short: 'm', long: 'merge', effects: [{ key: 'merge', value: true }], help: { summary: 'merge already-sorted inputs', category: 'advanced' } },
-    { kind: 'flag', short: 'M', long: 'month-sort', effects: [{ key: 'mode', value: 'month' }], help: { summary: 'sort by month name', category: 'advanced' } },
-    { kind: 'flag', short: 'n', long: 'numeric-sort', effects: [{ key: 'mode', value: 'numeric' }], help: { summary: 'compare according to numerical value', category: 'common' } },
-    { kind: 'value', short: 'o', long: 'output', key: 'outputPath', valueName: 'FILE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'write output to FILE', category: 'common' } },
-    { kind: 'flag', short: 'r', long: 'reverse', effects: [{ key: 'order', value: 'reverse' }], help: { summary: 'reverse the result of comparisons', category: 'common' } },
-    { kind: 'flag', short: 's', long: 'stable', effects: [{ key: 'stable', value: true }], help: { summary: 'stabilize sort by disabling last-resort comparison', category: 'common' } },
-    { kind: 'value', short: 't', long: 'field-separator', key: 'fieldSeparator', valueName: 'SEP', allowAttachedValue: true, parseValue: undefined, help: { summary: 'use SEP as the field separator', category: 'common' } },
-    { kind: 'flag', short: 'u', long: 'unique', effects: [{ key: 'uniqueness', value: 'unique' }], help: { summary: 'output only the first of equal lines', category: 'common' } },
-    { kind: 'flag', short: 'V', long: 'version-sort', effects: [{ key: 'mode', value: 'version' }], help: { summary: 'natural sort of version numbers', category: 'advanced' } },
-    { kind: 'flag', short: 'z', long: 'zero-terminated', effects: [{ key: 'zeroTerminated', value: true }], help: { summary: 'line delimiter is NUL, not newline', category: 'common' } },
-    { kind: 'flag', short: 'c', long: undefined, effects: [{ key: 'checkMode', value: 'strict' }], help: { summary: 'check whether input is sorted (--check)', category: 'common' } },
-    { kind: 'flag', short: 'C', long: undefined, effects: [{ key: 'checkMode', value: 'silent' }], help: { summary: 'like -c, but do not report the first disorder (--check=quiet)', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'showHelp', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+type SortArgvTag = Extract<(typeof sortOptions)[number]['semantic'], { kind: 'deferred' }>['tag'];
+
+const sortArgvCatalog = defineArgvCatalog<StandardArgvAction<SortArgvTag>>({
+  definitions: sortOptions,
+  nonExecutableLongOptions: [
+    'batch-size',
+    'buffer-size',
+    'compress-program',
+    'debug',
+    'files0-from',
+    'parallel',
+    'random-sort',
+    'random-source',
+    'sort',
+    'temporary-directory',
+    'version',
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [
-    ({ token }) => {
-      switch (token) {
-      case '--check':
-        return { kind: 'matched', consumeCount: 1, effects: [{ key: 'checkMode', value: 'strict' }] };
-      case '--check=quiet':
-      case '--check=silent':
-        return { kind: 'matched', consumeCount: 1, effects: [{ key: 'checkMode', value: 'silent' }] };
-      case '--check=diagnose-first':
-        return { kind: 'matched', consumeCount: 1, effects: [{ key: 'checkMode', value: 'strict' }] };
-      default:
-        return undefined;
-      }
-    },
-  ],
+});
+const sortArgvHelp = defineArgvHelpPresentation({ catalog: sortArgvCatalog, rows: sortOptions });
+const sortArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 export const sortCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
+    const parsed = parseStandardArgv({
       args: context.args,
-      spec: sortArgvSpec,
-      earlyExitOptions: SORT_HELP_EARLY_EXIT_OPTIONS,
+      catalog: sortArgvCatalog,
+      policy: sortArgvPolicy,
     });
-    const parsed = parseStandardArgv({ args: parsedArgs, spec: sortArgvSpec });
-    const firstPreHelpSemanticIssue = findFirstStandardSemanticIssue({
-      args: parsedArgs,
-      spec: sortArgvSpec,
-      parsed,
-      findSemanticIssue: findSortPreHelpSemanticIssue,
-    });
-    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
-      args: parsedArgs,
-      spec: sortArgvSpec,
-      parsed,
-      findSemanticIssue: findSortPreHelpSemanticIssue,
-    });
-
-    if (parsed.diagnostics.length > 0 && !semanticIssuePrecedesDiagnostic) {
-      await writeCommandUsageError({
-        context,
-        command: 'sort',
-        message: `sort: ${parsed.diagnostics[0]!.message}`,
-        argvSpec: sortArgvSpec,
-      });
-      return { exitCode: 2 };
-    }
-
-    if (firstPreHelpSemanticIssue !== undefined) {
-      await writeCommandUsageError({
-        context,
-        command: 'sort',
-        message: `sort: ${firstPreHelpSemanticIssue}`,
-        argvSpec: sortArgvSpec,
-      });
-      return { exitCode: 2 };
-    }
-
-    if (parsed.optionValues.showHelp === true) {
-      await writeCommandHelp({
-        context,
-        command: 'sort',
-        argvSpec: sortArgvSpec,
-      });
-      return { exitCode: 0 };
-    }
-
     const resolved = resolveSortOptions({
       parsed,
       characterLocaleMode: resolveCharacterLocaleMode({ env: context.env }),
     });
-    if (!resolved.ok) {
+    switch (resolved.kind) {
+    case 'help':
+      await writeCommandHelp({
+        context,
+        command: 'sort',
+        optionLines: formatArgvOptionHelp({ presentation: sortArgvHelp }),
+      });
+      return { exitCode: 0 };
+    case 'invalid':
       await writeCommandUsageError({
         context,
         command: 'sort',
         message: `sort: ${resolved.message}`,
-        argvSpec: sortArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: sortArgvHelp }),
       });
-      return { exitCode: 2 };
+      return { exitCode: resolved.exitCode };
+    case 'parsed':
+      break;
+    default: {
+      const _ex: never = resolved;
+      throw new Error(`Unhandled sort option result: ${JSON.stringify(_ex)}`);
+    }
     }
 
-    const options = resolved.value;
-    const files: Array<string | undefined> = parsed.positionals.length === 0
+    const { options } = resolved;
+    const files: readonly (string | undefined)[] = parsed.positionals.length === 0
       ? [undefined]
       : parsed.positionals;
 
@@ -2407,7 +2453,7 @@ export const sortCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'sort',
           message: `sort: extra operand '${parsed.positionals[1] ?? ''}' not allowed with ${checkOption}`,
-          argvSpec: sortArgvSpec,
+          usageSummary: formatArgvUsageSummary({ presentation: sortArgvHelp }),
         });
         return { exitCode: 2 };
       }

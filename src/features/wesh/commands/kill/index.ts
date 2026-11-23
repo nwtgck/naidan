@@ -1,4 +1,4 @@
-import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
+import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 import { uppercaseAscii } from '@/features/wesh/commands/_shared/locale';
 import { stripLeadingCLocaleAndTrailingBlankWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import {
@@ -7,7 +7,7 @@ import {
   linuxSignalByNumber,
   parseLinuxSignal,
 } from '@/features/wesh/commands/_shared/linux-signals';
-import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshShellBuiltinFunction } from '@/features/wesh/types';
 
 type KillParseResult =
   | { kind: 'list', values: string[] }
@@ -25,7 +25,6 @@ function parseKillArguments({ args }: { args: string[] }): KillParseResult {
       break;
     }
     if (argument === '--') {
-      index += 1;
       break;
     }
     if (argument === '-l' || argument === '-L' || argument === '--list') {
@@ -52,7 +51,7 @@ function parseKillArguments({ args }: { args: string[] }): KillParseResult {
       }
       signal = parsed;
       index += 2;
-      continue;
+      break;
     }
     if (argument.startsWith('-') && argument.length > 1) {
       const parsed = parseLinuxSignal({ value: argument.slice(1), allowZero: true });
@@ -65,11 +64,15 @@ function parseKillArguments({ args }: { args: string[] }): KillParseResult {
       }
       signal = parsed;
       index += 1;
-      continue;
+      break;
     }
     break;
   }
 
+  // After a signal option, a negative number is a process-group operand.
+  if (args[index] === '--') {
+    index += 1;
+  }
   const targets = args.slice(index);
   if (listSignals) {
     return { kind: 'list', values: targets };
@@ -114,10 +117,10 @@ function formatListedSignal({ value }: { value: string }): string | undefined {
   return linuxSignalByName({ name: signalName })?.number.toString();
 }
 
-export const killCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const killCommandImplementation = {
+  fn: async ({ context, shell }) => {
     if (isStandaloneCommandHelpRequest({ args: context.args, acceptedForms: [['--help']] })) {
-      await writeCommandHelp({ context, command: 'kill' });
+      await writeCommandHelp({ context, command: 'kill', optionLines: [] });
       return { exitCode: 0 };
     }
     const parsed = parseKillArguments({ args: context.args });
@@ -152,78 +155,44 @@ export const killCommandImplementation: WeshCommandImplementation = {
     }
     }
 
-    const processes = context.getProcesses();
-    const ownPid = context.process.getPid();
-    const ownGroupId = context.process.getGroupId();
-    let hadSuccessfulTarget = false;
-    let hadFailedTarget = false;
-
+    let sent = false;
     for (const target of parsed.targets) {
       if (target.startsWith('%')) {
-        await context.text().error({
-          text: `kill: ${target}: job signaling requires Wesh core job process-group support\n`,
-        });
-        hadFailedTarget = true;
+        await context.text().error({ text: `kill: ${target}: job specifications are not supported\n` });
         continue;
       }
-
       const numericTarget = parseNumericTarget({ value: target });
-      if (numericTarget !== undefined && numericTarget < 0) {
-        const pgid = Math.abs(numericTarget);
-        const exists = processes.some(process => process.pgid === pgid);
-        if (!exists) {
-          await context.text().error({ text: `kill: ${target}: no such process or job\n` });
-          hadFailedTarget = true;
-          continue;
-        }
-        if (parsed.signal === 0) {
-          hadSuccessfulTarget = true;
-          continue;
-        }
-        if (pgid !== ownGroupId) {
-          await context.text().error({
-            text: `kill: ${target}: signaling another process group requires Wesh core process-table mutation support\n`,
-          });
-          hadFailedTarget = true;
-          continue;
-        }
-        await context.process.signalGroup({ signal: parsed.signal });
-        hadSuccessfulTarget = true;
-        continue;
-      }
-
-      if (numericTarget === 0) {
-        if (parsed.signal !== 0) {
-          await context.process.signalGroup({ signal: parsed.signal });
-        }
-        hadSuccessfulTarget = true;
-        continue;
-      }
-
-      const pid = numericTarget !== undefined && numericTarget > 0 ? numericTarget : undefined;
-      const exists = pid !== undefined && processes.some(process => process.pid === pid);
-      if (!exists) {
+      if (numericTarget === undefined) {
         await context.text().error({ text: `kill: ${target}: no such process or job\n` });
-        hadFailedTarget = true;
         continue;
       }
-      if (parsed.signal === 0) {
-        hadSuccessfulTarget = true;
+      const result = shell.sendSignal({ target: numericTarget, signal: parsed.signal });
+      let diagnostic: string;
+      switch (result) {
+      case 'interrupted':
+        return { exitCode: 1 };
+      case undefined:
+        sent = true;
         continue;
+      case 'no-such-process':
+        diagnostic = 'no such process or job';
+        break;
+      case 'not-permitted':
+        diagnostic = 'operation not permitted';
+        break;
+      case 'unsupported':
+        diagnostic = 'operation not supported';
+        break;
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled signal delivery result: ${_ex}`);
       }
-      if (pid !== ownPid) {
-        await context.text().error({
-          text: `kill: ${target}: signaling another process requires Wesh core process-table mutation support\n`,
-        });
-        hadFailedTarget = true;
-        continue;
       }
-      await context.process.signalSelf({ signal: parsed.signal });
-      hadSuccessfulTarget = true;
+      await context.text().error({ text: `kill: ${target}: ${diagnostic}\n` });
     }
-    return { exitCode: hadSuccessfulTarget || !hadFailedTarget ? 0 : 1 };
+    return { exitCode: sent ? 0 : 1 };
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'sendSignal'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

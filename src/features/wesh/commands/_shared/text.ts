@@ -1,5 +1,5 @@
 import type { WeshCommandContext, WeshFileHandle } from '@/features/wesh/types';
-import { resolvePath } from '@/features/wesh/path';
+import { toAbsolutePath } from '@/features/wesh/path';
 import { openFileReadStream, openHandleReadStream, readAllFileText } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
 import { iterateUtf8Lines, iterateUtf8Records } from '@/features/wesh/utils/text-records';
@@ -78,7 +78,7 @@ export async function openTextRecordIterator({
     ? openHandleReadStream({ handle: context.stdin })
     : await openFileReadStream({
       files: context.files,
-      path: resolvePath({
+      path: toAbsolutePath({
         cwd: context.cwd,
         path,
       }),

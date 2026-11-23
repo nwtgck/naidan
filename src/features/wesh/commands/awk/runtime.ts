@@ -249,16 +249,10 @@ function formatGeneralNumber({
   precision: number,
   alternateForm: boolean,
 }): string {
-  if (value === 0) {
-    if (!alternateForm) {
-      return Object.is(value, -0) ? '-0' : '0';
-    }
-    return formatFixedNumber({
-      value,
-      precision: Math.max(0, precision - 1),
-    });
+  if (value === 0 && !alternateForm) {
+    return Object.is(value, -0) ? '-0' : '0';
   }
-  const exponent = Math.floor(Math.log10(Math.abs(value)));
+  const exponent = value === 0 ? 0 : Math.floor(Math.log10(Math.abs(value)));
   if (exponent < -4 || exponent >= precision) {
     const formatted = formatExponentialNumber({
       value,
@@ -273,11 +267,12 @@ function formatGeneralNumber({
 
   const fractionDigits = Math.max(0, precision - 1 - exponent);
   const formatted = formatFixedNumber({ value, precision: fractionDigits });
-  return alternateForm
-    ? formatted
-    : formatted
-      .replace(/(\.\d*?[1-9])0+$/, '$1')
-      .replace(/\.0+$/, '');
+  if (alternateForm) {
+    return fractionDigits === 0 ? `${formatted}.` : formatted;
+  }
+  return formatted
+    .replace(/(\.\d*?[1-9])0+$/, '$1')
+    .replace(/\.0+$/, '');
 }
 
 function coerceToString({

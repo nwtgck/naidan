@@ -108,6 +108,19 @@ echo -ne 'x\\ty'
     expect(noNewlineThenUnknown.result.exitCode).toBe(0);
   });
 
+  it('prints standalone help and leaves an unrecognized bundle intact', async () => {
+    const help = await execute({ script: 'echo --help' });
+    const bundle = await execute({ script: 'echo -nz -n text' });
+
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: echo [-neE] [string...]');
+    expect(help.stdout.text).toContain('do not output the trailing newline');
+    expect(help.stderr.text).toBe('');
+    expect(bundle.result.exitCode).toBe(0);
+    expect(bundle.stdout.text).toBe('-nz -n text\n');
+    expect(bundle.stderr.text).toBe('');
+  });
+
   it('stops escaped output before later arguments while preserving argument separators', async () => {
     const stoppedInSecond = await execute({
       script: String.raw`echo -e first 'before\cafter' ignored`,

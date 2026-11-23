@@ -1,6 +1,8 @@
 import { hostModelHandles } from '@/00-storage/service/host-model-handles';
 import { idToRaw, type HostModelDirectoryId } from '@/01-models/ids';
 
+export const hostModelDirectoryRegistrationChangeEvent = 'naidan-host-model-directories-changed';
+
 export function missingHostModelDirectoryApis(): string[] {
   return [
     ...(typeof window === 'undefined' || typeof Reflect.get(window, 'showDirectoryPicker') !== 'function' ? ['showDirectoryPicker'] : []),

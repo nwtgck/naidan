@@ -5,7 +5,7 @@ import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
 import { sortGitUtf8Strings } from "@/features/wesh/commands/git/utf8-order";
 import { fetchLocalRemote } from "@/features/wesh/commands/git/local-transport";
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
-import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 
 const FETCH_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
   nonExecutableLongOptions: [

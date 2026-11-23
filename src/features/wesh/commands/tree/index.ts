@@ -1,6 +1,7 @@
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { parseTreeArgv, treeArgvSpec } from './argv';
+import { formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import { parseTreeArgv, treeArgvHelp } from './argv';
 import { createTreeOutputWriter } from './output';
 import {
   buildTreeForOperand,
@@ -22,7 +23,7 @@ async function runTree({
     await writeCommandHelp({
       context,
       command: 'tree',
-      argvSpec: treeArgvSpec,
+      optionLines: formatArgvOptionHelp({ presentation: treeArgvHelp }),
     });
     return { exitCode: 0 };
   case 'version':
@@ -33,7 +34,7 @@ async function runTree({
       context,
       command: 'tree',
       message: parsed.message,
-      argvSpec: treeArgvSpec,
+      usageSummary: formatArgvUsageSummary({ presentation: treeArgvHelp }),
     });
     return { exitCode: 1 };
   case 'run':

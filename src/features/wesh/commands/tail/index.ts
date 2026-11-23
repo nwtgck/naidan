@@ -1,15 +1,20 @@
 import { createWeshOwnedBytes } from '@/features/wesh/types';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
   parseStandardArgv,
-  type ArgvOptionOccurrence,
-  type StandardArgvParserSpec,
+  stopArgvAtFirstEarlyExit,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
 } from '@/features/wesh/argv';
 import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import {
-  parseCoreutilsLineOrByteCount,
+  lineOrByteCountArgvAction,
   selectLastLineOrByteCount,
 } from '@/features/wesh/commands/_shared/line-byte-count-selection';
 import { openHandleReadStream, openFileReadStream } from '@/features/wesh/utils/fs';
@@ -20,27 +25,10 @@ import {
   type WeshByteRecord,
 } from '@/features/wesh/utils/text-records';
 
-function parseSignedCount({
-  value,
-  label,
-}: {
-  value: string,
-  label: string,
-}): { ok: true, value: string } | { ok: false, message: string } {
-  return parseCoreutilsLineOrByteCount({
-    value,
-    errorPrefix: `invalid number of ${label}`,
-  });
-}
-
-function normalizeLeadingPositiveLegacyCount({
-  args,
-}: {
-  args: readonly string[],
-}): string[] {
+function normalizeLeadingLegacyCount({ args }: { args: readonly string[] }): readonly string[] {
   const first = args[0];
-  if (first === undefined || !/^\+\d+$/.test(first)) {
-    return [...args];
+  if (first === undefined || !/^[+-]\d+$/.test(first)) {
+    return args;
   }
 
   const rest = args.slice(1);
@@ -51,37 +39,11 @@ function normalizeLeadingPositiveLegacyCount({
   );
 
   if (hasOption || operands.length > 1) {
-    return [...args];
+    return args;
   }
 
-  return ['-n', first, ...rest];
-}
-
-function findInvalidObsoleteTailCount({
-  originalArgs,
-  occurrences,
-  positionalCount,
-}: {
-  originalArgs: readonly string[],
-  occurrences: readonly ArgvOptionOccurrence[],
-  positionalCount: number,
-}): string | undefined {
-  const obsoleteOccurrence = occurrences.find(
-    occurrence => occurrence.kind === 'value' && /^-\d+$/.test(occurrence.option),
-  );
-  if (obsoleteOccurrence === undefined || obsoleteOccurrence.kind !== 'value') {
-    return undefined;
-  }
-
-  if (
-    originalArgs[0] !== obsoleteOccurrence.option
-    || occurrences.length !== 1
-    || positionalCount > 1
-  ) {
-    return obsoleteOccurrence.option.slice(1);
-  }
-
-  return undefined;
+  const count = first.startsWith('-') ? first.slice(1) : first;
+  return ['-n', count, ...rest];
 }
 
 async function writeOwnedBytes({
@@ -120,6 +82,13 @@ function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
     return path;
   }
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
+}
+
+function quoteInputPath({ path }: { path: string }): string {
+  if (path.includes("'") && !/["$`\\]/u.test(path)) {
+    return `"${path}"`;
+  }
+  return `'${path.replaceAll("'", "'\\''")}'`;
 }
 
 interface TailByteQueue {
@@ -250,100 +219,102 @@ function appendTailLine({
   }
 }
 
-const tailArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'q',
-      long: 'quiet',
-      effects: [{ key: 'headerMode', value: 'never' }],
-      help: { summary: 'never print headers with file names', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'silent',
-      effects: [{ key: 'headerMode', value: 'never' }],
-      help: { summary: 'same as --quiet', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 'v',
-      long: 'verbose',
-      effects: [{ key: 'headerMode', value: 'always' }],
-      help: { summary: 'always print headers with file names', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'n',
-      long: 'lines',
-      key: 'lines',
-      valueName: 'lines',
-      allowAttachedValue: true,
-      parseValue: ({ value }) => parseSignedCount({ value, label: 'lines' }),
-      help: { summary: 'output the last NUM lines, or start at line NUM with +NUM', valueName: 'NUM', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'c',
-      long: 'bytes',
-      key: 'bytes',
-      valueName: 'bytes',
-      allowAttachedValue: true,
-      parseValue: ({ value }) => parseSignedCount({ value, label: 'bytes' }),
-      help: { summary: 'output the last NUM bytes, or start at byte NUM with +NUM', valueName: 'NUM', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'z',
-      long: 'zero-terminated',
-      effects: [{ key: 'zeroTerminated', value: true }],
-      help: { summary: 'line delimiter is NUL, not newline', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [
-    ({ token }) => {
-      if (!/^-\d+$/.test(token)) {
-        return undefined;
-      }
-      return {
-        kind: 'matched',
-        consumeCount: 1,
-        effects: [{ key: 'lines', value: token.slice(1) }],
-        occurrences: [{ kind: 'value', option: token, key: 'lines', value: token.slice(1) }],
-      };
-    },
-  ],
+const tailOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'headerMode', value: 'never' }] },
+    forms: [
+      { kind: 'short', name: 'q', value: { kind: 'none' } },
+      { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+      { kind: 'long', name: 'silent', value: { kind: 'none' } },
+    ],
+    summary: 'never print headers with file names',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'headerMode', value: 'always' }] },
+    forms: [
+      { kind: 'short', name: 'v', value: { kind: 'none' } },
+      { kind: 'long', name: 'verbose', value: { kind: 'none' } },
+    ],
+    summary: 'always print headers with file names',
+    category: 'common',
+  },
+  {
+    semantic: lineOrByteCountArgvAction({ unit: 'lines' }),
+    forms: [
+      { kind: 'short', name: 'n', value: { kind: 'required-attached-or-following', missingValueName: 'lines' } },
+      { kind: 'long', name: 'lines', value: { kind: 'required', missingValueName: 'lines' } },
+    ],
+    summary: 'output the last NUM lines, or start at line NUM with +NUM',
+    valueName: 'NUM',
+    category: 'common',
+  },
+  {
+    semantic: lineOrByteCountArgvAction({ unit: 'bytes' }),
+    forms: [
+      { kind: 'short', name: 'c', value: { kind: 'required-attached-or-following', missingValueName: 'bytes' } },
+      { kind: 'long', name: 'bytes', value: { kind: 'required', missingValueName: 'bytes' } },
+    ],
+    summary: 'output the last NUM bytes, or start at byte NUM with +NUM',
+    valueName: 'NUM',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'zeroTerminated', value: true }] },
+    forms: [
+      { kind: 'short', name: 'z', value: { kind: 'none' } },
+      { kind: 'long', name: 'zero-terminated', value: { kind: 'none' } },
+    ],
+    summary: 'line delimiter is NUL, not newline',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const tailArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: tailOptions,
+  nonExecutableLongOptions: ['-disable-inotify', '-presume-input-pipe', 'follow', 'max-unchanged-stats', 'pid', 'retry', 'sleep-interval', 'version'],
+});
+const tailArgvHelp = defineArgvHelpPresentation({ catalog: tailArgvCatalog, rows: tailOptions });
+const tailArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'all',
 };
 
 export const tailCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const normalizedArgs = normalizeLeadingPositiveLegacyCount({
+    const normalizedArgs = normalizeLeadingLegacyCount({
       args: context.args,
     });
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({ args: normalizedArgs, spec: tailArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
-      spec: tailArgvSpec,
+      args: stopArgvAtFirstEarlyExit({
+        args: normalizedArgs,
+        catalog: tailArgvCatalog,
+        policy: tailArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
+      }),
+      catalog: tailArgvCatalog,
+      policy: tailArgvPolicy,
     });
 
     const text = context.text();
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
+      if (diagnostic.kind === 'unknown_short_option' && /^-\d$/.test(diagnostic.option)) {
+        await text.error({ text: `tail: option used in invalid context -- ${diagnostic.option.slice(1)}\n` });
+        return { exitCode: 1 };
+      }
       await writeCommandUsageError({
         context,
         command: 'tail',
         message: `tail: ${diagnostic.message}`,
-        argvSpec: tailArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: tailArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -352,25 +323,13 @@ export const tailCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'tail',
-        argvSpec: tailArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: tailArgvHelp }),
       });
       return { exitCode: 0 };
     }
 
-    const invalidObsoleteCount = findInvalidObsoleteTailCount({
-      originalArgs: context.args,
-      occurrences: parsed.occurrences,
-      positionalCount: parsed.positionals.length,
-    });
-    if (invalidObsoleteCount !== undefined) {
-      await context.text().error({
-        text: `tail: option used in invalid context -- ${invalidObsoleteCount}\n`,
-      });
-      return { exitCode: 1 };
-    }
-
     const countSelection = selectLastLineOrByteCount({
-      occurrences: parsed.occurrences,
+      parsed,
       defaultLineCount: '10',
     });
     const { rawLineCount, rawByteCount } = (() => {
@@ -508,39 +467,66 @@ export const tailCommandImplementation: WeshCommandImplementation = {
         stream: openHandleReadStream({ handle: context.stdin }),
       });
     } else {
+      const showHeader = headerMode === 'always'
+        || (headerMode === 'auto' && parsed.positionals.length > 1);
       let printedHeaderCount = 0;
-      for (const f of parsed.positionals) {
-        let stopAfterError = false;
+      for (const operand of parsed.positionals) {
+        const path = operand === '-' ? undefined : resolvePath({ cwd: context.cwd, path: operand });
+        let pendingStream: ReadableStream<Uint8Array> | undefined;
         try {
-          const showHeader = headerMode === 'always'
-            || (headerMode === 'auto' && parsed.positionals.length > 1);
-          const path = f === '-' ? undefined : resolvePath({ cwd: context.cwd, path: f });
           if (path !== undefined) {
-            const stat = await context.files.stat({ path });
-            stopAfterError = (byteCount !== undefined || countFromStart) && stat.type === 'directory';
+            const entry = await context.files.resolveEntry({ path, finalSymlinkTreatment: 'follow' });
+            switch (entry.type) {
+            case 'directory':
+              break;
+            case 'file':
+            case 'fifo':
+            case 'chardev':
+            case 'symlink':
+              pendingStream = await openFileReadStream({ files: context.files, path });
+              break;
+            default: {
+              const _ex: never = entry;
+              throw new Error(`Unhandled entry type: ${_ex}`);
+            }
+            }
           }
+        } catch (error: unknown) {
+          hadError = true;
+          const reason = getPathErrorReason({ error })
+            ?? (error instanceof Error ? error.message : String(error));
+          await text.error({ text: `tail: cannot open ${quoteInputPath({ path: operand })} for reading: ${reason}\n` });
+          continue;
+        }
+
+        try {
           if (showHeader) {
             if (printedHeaderCount > 0) {
               await text.print({ text: '\n' });
             }
-            await text.print({ text: `==> ${f === '-' ? 'standard input' : f} <==\n` });
+            await text.print({ text: `==> ${operand === '-' ? 'standard input' : operand} <==\n` });
             printedHeaderCount += 1;
           }
-          const stream = f === '-'
-            ? openHandleReadStream({ handle: context.stdin })
-            : await openFileReadStream({
-              files: context.files,
-              path: path!,
-            });
-          await processStream({ stream });
-        } catch (e: unknown) {
-          hadError = true;
-          const message = getPathErrorReason({ error: e })
-            ?? (e instanceof Error ? e.message : String(e));
-          await text.error({ text: `tail: ${f}: ${message}\n` });
-          if (stopAfterError) {
-            break;
+
+          // GNU tail prints the header for an existing directory before its read fails.
+          if (path !== undefined && pendingStream === undefined) {
+            hadError = true;
+            await text.error({ text: `tail: error reading ${quoteInputPath({ path: operand })}: Is a directory\n` });
+            if (byteCount !== undefined || countFromStart) {
+              break;
+            }
+            continue;
           }
+
+          const stream = pendingStream ?? openHandleReadStream({ handle: context.stdin });
+          pendingStream = undefined;
+          await processStream({ stream });
+        } catch (error: unknown) {
+          await pendingStream?.cancel().catch(() => undefined);
+          hadError = true;
+          const reason = getPathErrorReason({ error })
+            ?? (error instanceof Error ? error.message : String(error));
+          await text.error({ text: `tail: ${operand}: ${reason}\n` });
         }
       }
     }

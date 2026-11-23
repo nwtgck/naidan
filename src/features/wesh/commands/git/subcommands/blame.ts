@@ -11,7 +11,7 @@ import { resolveCommitRevision } from '@/features/wesh/commands/git/revision';
 import { GIT_DEFAULT_RENAME_LIMIT } from '@/features/wesh/commands/git/renames';
 import { sortGitUtf8Strings } from '@/features/wesh/commands/git/utf8-order';
 import { parseAuthorForLog } from '@/features/wesh/commands/git/log-format';
-import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv';
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 

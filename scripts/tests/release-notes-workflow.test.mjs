@@ -314,25 +314,28 @@ it('shares the signed candidate across branch builds and both Release destinatio
   const main = await readFile(new URL('.github/workflows/main.yml', root), 'utf8');
   const [candidate, publications] = main.split('  prepare_release:\n')[1].split('  release_to_github:\n');
   const [stable, prerelease] = publications.split('  prerelease_to_github:\n');
-  assert.match(candidate, /needs: \[build, test_release_tooling\]/);
+  assert.match(candidate, /needs: \[build, build_naidan_server, test_naidan_server, test_release_tooling\]/);
   assert.doesNotMatch(candidate.split('    steps:')[0], /\n    if:/);
   assert.match(candidate, /id-token: write/);
   assert.match(candidate, /attestations: write/);
+  assert.doesNotMatch(candidate, /setup-go@|goreleaser-action@|go mod download|goreleaser release/);
+  assert.match(candidate, /name: Download the CI server binary\n +if: github\.ref_type == 'branch'[\s\S]*?artifact-ids: \$\{\{ needs\.build_naidan_server\.outputs\.binary-artifact-id \}\}\n +digest-mismatch: error\n +path: dist\/ci-server/);
+  assert.match(candidate, /name: Download tagged server packages\n +if: github\.ref_type == 'tag'[\s\S]*?artifact-ids: \$\{\{ needs\.build_naidan_server\.outputs\.packages-artifact-id \}\}\n +digest-mismatch: error\n +path: dist\/goreleaser-dist/);
   for (const step of candidate.split(/^      - name:/m)) {
-    if (/uses: .*setup-go@|uses: .*goreleaser-action@|goreleaser release/.test(step)) {
-      assert.match(step, /if: github\.ref_type == 'tag'/);
-    }
     if (/id: (prepare|attest|distribution)\b/.test(step)) {
       assert.doesNotMatch(step, /\n        if:/);
     }
   }
-  assert.match(candidate, /--network none[\s\S]*goreleaser release --skip=publish --clean/);
-  assert.match(candidate, /GOTMPDIR=\/work\/dist/);
   assert.match(candidate, /subject-digest: sha256:\$\{\{ steps\.prepare\.outputs\.sha256 \}\}/);
   assert.match(candidate, /attestation-url: \$\{\{ steps\.attest\.outputs\.attestation-url \}\}/);
   assert.match(candidate, /attestation\.bundle\.json/);
   assert.match(candidate, /name: naidan-integrity-\$\{\{ github\.run_attempt \}\}\n +path: \$\{\{ runner\.temp \}\}\/distribution\/naidan-release-integrity\.yaml/);
-  assert.match(candidate, /NAIDAN_WORKFLOW_ARTIFACTS: \$\{\{ needs\.build\.outputs\.artifact-digests \}\}/);
+  assert.match(candidate, /WEB_ARTIFACT_DIGESTS: \$\{\{ needs\.build\.outputs\.artifact-digests \}\}/);
+  assert.match(candidate, /SERVER_BINARY_DIGEST: \$\{\{ needs\.build_naidan_server\.outputs\.binary-artifact-digest \}\}/);
+  assert.match(candidate, /SERVER_BINARY_NAME: \$\{\{ needs\.build_naidan_server\.outputs\.binary-artifact-name \}\}/);
+  assert.match(candidate, /SERVER_PACKAGES_DIGEST: \$\{\{ needs\.build_naidan_server\.outputs\.packages-artifact-digest \}\}/);
+  assert.match(candidate, /SERVER_PACKAGES_NAME: \$\{\{ needs\.build_naidan_server\.outputs\.packages-artifact-name \}\}/);
+  assert.match(candidate, /--arg binary_name "\$SERVER_BINARY_NAME" --arg binary "\$SERVER_BINARY_DIGEST"[\s\S]*\{\(\$binary_name\): \$binary\}/);
   assert.match(candidate, /-e NAIDAN_WORKFLOW_ARTIFACTS/);
   assert.match(candidate, /path: \$\{\{ runner\.temp \}\}\/distribution\//);
   assert.match(stable, /!contains\(github\.ref_name, '-'\)/);
@@ -348,6 +351,14 @@ it('shares the signed candidate across branch builds and both Release destinatio
   assert.match(prerelease, /commits\/refs%2Ftags%2F\$TAG"\)" = "\$GITHUB_SHA"/);
   assert.match(prerelease, /distribution\/naidan-release-integrity\.yaml/);
   assert.doesNotMatch(publications, /attestations: write|goreleaser|actions\/attest/);
+});
+
+it('includes the published changelog in server archives without collecting unreleased drafts', async () => {
+  const config = await readFile(new URL('.goreleaser.yaml', root), 'utf8');
+  const archiveFiles = config.match(/^archives:\n[\s\S]*?^    files:\n((?:^ {6,}.+\n)+)/m)?.[1];
+  assert.ok(archiveFiles);
+  const sources = [...archiveFiles.matchAll(/^ {6}- (?:src: )?(.+)$/gm)].map(match => match[1]);
+  assert.deepEqual(sources.sort(), ['CHANGELOG.md', 'LICENSE', 'README.md', 'naidan-server/THIRD-PARTY-NOTICES.txt']);
 });
 
 it('publishes prerelease notes with the build attestation when no changelog is present', async t => {
@@ -433,7 +444,47 @@ it('protects host publication tooling and Git state across dependency installati
   assert.ok(build.indexOf('rev-parse HEAD)" = "$GITHUB_SHA"') < build.indexOf('name: Run build'));
   assert.ok(build.includes('diff --quiet --no-ext-diff "$GITHUB_SHA" --'));
   assert.ok(build.indexOf('seal-build') < build.indexOf('name: Upload full dist build artifact'));
-  const server = build.split('name: Verify naidan-server build')[1].split('name: Verify individual artifact inputs')[0];
-  assert.match(server, /--pull=never --network none[\s\S]*go run build\.go/);
-  assert.match(server, /GOTMPDIR=\/scratch/);
+  assert.doesNotMatch(build, /setup-go@|go mod download|go run build\.go|naidan-server-binary/);
+});
+
+it('starts Go tests independently and builds the server from the verified Web build alongside Cloudflare', async () => {
+  const main = await readFile(new URL('.github/workflows/main.yml', root), 'utf8');
+  for (const name of ['publish_to_cloudflare', 'publish_to_cloudflare_local_only', 'publish_to_cloudflare_curated']) {
+    const deployment = main.split(`  ${name}:\n`)[1].split(/^  [a-z_]+:/m)[0];
+    assert.match(deployment, /^    needs: \[build, build_docs\]$/m);
+  }
+
+  const server = main.split('  build_naidan_server:\n')[1].split(/^  [a-z_]+:/m)[0];
+  const tests = main.split('  test_naidan_server:\n')[1].split(/^  [a-z_]+:/m)[0];
+  assert.match(server, /^    needs: build$/m);
+  const binaryName = server.match(/^      binary-artifact-name: (naidan-server-binary-\$\{\{ github\.run_attempt \}\})$/m)?.[1];
+  assert.ok(binaryName);
+  assert.equal(binaryName, server.split('name: Upload naidan-server binary artifact')[1].match(/^          name: (.+)$/m)?.[1]);
+  assert.doesNotMatch(tests, /^    needs:|^      - name: Download the web build/m);
+  assert.doesNotMatch(server, /id-token: write|attestations: write/);
+  assert.match(server, /artifact-ids: \$\{\{ needs\.build\.outputs\.artifact-id \}\}\n +digest-mismatch: error/);
+  assert.ok(server.indexOf('Download the web build') < server.indexOf('verify-build dist/naidan-build-receipt.json'));
+  assert.ok(server.indexOf('verify-build dist/naidan-build-receipt.json') < server.indexOf('Build the branch server binary'));
+  assert.ok(server.indexOf('verify-build dist/naidan-build-receipt.json') < server.indexOf('Package server targets for this tag'));
+
+  for (const job of [server, tests]) {
+    const serverModules = job.split('name: Download Go modules')[1].split(/^      - name:/m)[0];
+    assert.match(serverModules, /working-directory: naidan-server[\s\S]*GOMODCACHE: \$\{\{ runner\.temp \}\}\/naidan-go-mod/);
+    assert.match(serverModules, /cat-file -e "\$GITHUB_SHA:naidan-server\/go\.sum"\n +go mod download\n +git --no-replace-objects diff --exit-code --no-ext-diff "\$GITHUB_SHA" -- go\.mod go\.sum/);
+  }
+  const branch = server.split('name: Build the branch server binary')[1].split(/^      - name:/m)[0];
+  const tag = server.split('name: Package server targets for this tag')[1].split(/^      - name:/m)[0];
+  const race = tests.split('name: Test the server offline with the race detector')[1];
+  for (const step of [branch, tag, race]) {
+    assert.match(step, /--pull=never --network none --read-only/);
+    assert.match(step, /source=\$RUNNER_TEMP\/naidan-go-mod,target=\/gomod,readonly/);
+    assert.match(step, /-e GOMODCACHE=\/gomod -e GOPROXY=off/);
+    assert.match(step, /GOTMPDIR=\/scratch/);
+  }
+  assert.match(branch, /if: github\.ref_type == 'branch'[\s\S]*go run build\.go/);
+  assert.match(tag, /if: github\.ref_type == 'tag'[\s\S]*goreleaser release --skip=publish --clean/);
+  assert.match(tag, /source=\$PWD\/dist\/hosted,target=\/work\/dist\/hosted,readonly/);
+  assert.match(race, /CGO_ENABLED=1[\s\S]*go test -race \.\/internal\/packedfs \.\/internal\/packbuild/);
+  assert.match(server, /name: Reuse the tagged Linux binary for the CI artifact\n +if: github\.ref_type == 'tag'/);
+  assert.match(server, /name: Upload tagged server packages\n +if: github\.ref_type == 'tag'/);
 });

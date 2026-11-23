@@ -1,11 +1,12 @@
 import type {
-  WeshCommandContext,
-  WeshCommandImplementation,
+  WeshBuiltinCommandContext,
+  WeshShellBuiltinFunction,
   WeshCommandResult,
 } from '@/features/wesh/types';
 import { compareAsciiStrings } from '@/features/wesh/commands/_shared/ascii-order';
-import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
+import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
+import { SHELL_EXECUTION_OPTION_NAMES } from '@/features/wesh/shell/invocation';
 
 
 const UTF8_ENCODER = new TextEncoder();
@@ -140,9 +141,12 @@ function formatSetVariableValue({
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-async function printShellVariables({ context }: { context: WeshCommandContext }): Promise<void> {
-  const entries = [...context.env.entries()].sort(([left], [right]) => compareAsciiStrings({ left, right }));
-  const localeMode = resolveCharacterLocaleMode({ env: context.env });
+async function printShellVariables({ context, values, localeMode }: {
+  context: WeshBuiltinCommandContext,
+  values: Iterable<[string, string]>,
+  localeMode: WeshCharacterLocaleMode,
+}): Promise<void> {
+  const entries = [...values].sort(([left], [right]) => compareAsciiStrings({ left, right }));
   for (const [name, value] of entries) {
     await context.text().print({
       text: `${name}=${formatSetVariableValue({ value, localeMode })}\n`,
@@ -155,7 +159,7 @@ async function printShellVariables({ context }: { context: WeshCommandContext })
 async function writeStateCapabilityError({
   context,
 }: {
-  context: WeshCommandContext;
+  context: WeshBuiltinCommandContext;
 }): Promise<WeshCommandResult> {
   await context.text().error({
     text: 'set: operation requires Wesh core positional-parameter or pipefail state support\n',
@@ -163,21 +167,37 @@ async function writeStateCapabilityError({
   return { exitCode: 1 };
 }
 
-export const setCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+export const setCommandImplementation = {
+  fn: async ({ context, shell }): Promise<WeshCommandResult> => {
+    const { getExecutionOption, variables } = shell;
     if (isStandaloneCommandHelpRequest({ args: context.args, acceptedForms: [['--help']] })) {
-      await writeCommandHelp({ context, command: 'set' });
+      await writeCommandHelp({ context, command: 'set', optionLines: [] });
       return { exitCode: 0 };
     }
     const args = context.args;
     if (args.length === 0) {
-      await printShellVariables({ context });
+      await printShellVariables({
+        context,
+        values: variables.entries(),
+        localeMode: resolveCharacterLocaleMode({ env: { get: (name) => variables.get({ name }) } }),
+      });
+      return { exitCode: 0 };
+    }
+    if (args.length === 1 && (args[0] === '-o' || args[0] === '+o')) {
+      const reusable = args[0] === '+o';
+      const optionLines = SHELL_EXECUTION_OPTION_NAMES.map((name) => {
+        const enabled = getExecutionOption({ name });
+        return reusable
+          ? `set ${enabled ? '-' : '+'}o ${name}\n`
+          : `${name.padEnd(15)}\t${enabled ? 'on' : 'off'}\n`;
+      }).join('');
+      await context.text().print({ text: optionLines });
       return { exitCode: 0 };
     }
 
     return writeStateCapabilityError({ context });
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'getExecutionOption' | 'variables'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

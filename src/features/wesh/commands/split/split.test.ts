@@ -526,6 +526,24 @@ c
     expect(numericLegacy.stderr.text).toBe('');
   });
 
+  it('keeps obsolete line-count spellings in option values and after --', async () => {
+    const consumed = await execute({
+      script: 'split -l1 --additional-suffix -12 - claimed-',
+      stdinText: 'hello\n',
+    });
+    const positional = await execute({
+      script: 'split -- - -12',
+      stdinText: 'world\n',
+    });
+
+    expect(consumed.result.exitCode).toBe(0);
+    expect(consumed.stderr.text).toBe('');
+    expect(await readFile({ path: 'claimed-aa-12' })).toBe('hello\n');
+    expect(positional.result.exitCode).toBe(0);
+    expect(positional.stderr.text).toBe('');
+    expect(await readFile({ path: '-12aa' })).toBe('world\n');
+  });
+
   it('rejects repeated split modes and preserves an explicit numeric suffix start', async () => {
     await writeFile({
       path: 'input.txt',
@@ -626,6 +644,25 @@ payload
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe("split: 'xaa' would overwrite input; aborting\n");
     expect(result.exitCode).toBe(1);
+  });
+
+  it('creates a dangling output symlink target and keeps the link', async () => {
+    await writeFile({
+      path: 'input.txt',
+      data: `\
+first
+second
+`,
+    });
+    await wesh.vfs.symlink({ path: '/outaa', targetPath: 'missing' });
+
+    const { result, stderr } = await execute({ script: 'split -l 1 input.txt out' });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(await wesh.vfs.readlink({ path: '/outaa' })).toBe('missing');
+    expect(await readFile({ path: 'missing' })).toBe('first\n');
+    expect(await readFile({ path: 'outab' })).toBe('second\n');
   });
 
   it('refuses to overwrite the input through an existing output symlink alias', async () => {

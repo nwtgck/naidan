@@ -10,14 +10,16 @@ import { getRgOptionHelp, getRgUsageSummary, parseRgArgv, type RgParsedArgv } fr
 import { compileRgGlobRule, matchesRgGlobRules, type RgGlobRule } from './glob';
 import { isIgnoredByRgRules, parseRgIgnoreFile, type RgIgnoreRule } from './ignore';
 import { compileRgTypeRules, getRgTypeListText } from './file-types';
+import { createRgLineReader, type RgInputLine } from './lines';
 
 const RG_BINARY_SCAN_LIMIT = 64 * 1024;
+const RG_INPUT_CHUNK_LENGTH = 256 * 1024;
+const RG_OUTPUT_BUFFER_LENGTH = 4096;
 const RG_VERSION_TEXT = 'ripgrep 14.1.1 (Wesh compatible subset)\n';
 
 interface RgSearchFile {
   readonly fullPath: string,
   readonly displayPath: string,
-  readonly relativePath: string,
 }
 
 interface RgLineMatch {
@@ -168,7 +170,8 @@ function compilePattern({ options }: { options: RgParsedArgv }): RgCompiledPatte
         }
         ranges.push({ start: match.index, end: match.index + match[0].length });
         if (match[0].length === 0) {
-          regex.lastIndex += 1;
+          const next = line.codePointAt(regex.lastIndex);
+          regex.lastIndex += next !== undefined && next > 0xffff ? 2 : 1;
           if (regex.lastIndex > line.length) {
             break;
           }
@@ -250,13 +253,14 @@ async function readExplicitIgnoreRules({
   return rules;
 }
 
-async function collectSearchFiles({
+async function discoverSearchFiles({
   context,
   options,
   globs,
   typeRules,
   operands,
   explicitIgnoreRules,
+  consumeFile,
 }: {
   context: WeshCommandContext,
   options: RgParsedArgv,
@@ -264,11 +268,16 @@ async function collectSearchFiles({
   typeRules: readonly RgGlobRule[],
   operands: readonly string[],
   explicitIgnoreRules: readonly RgIgnoreRule[],
+  consumeFile: (({ file, hadDirectoryOperand }: { file: RgSearchFile, hadDirectoryOperand: boolean }) => Promise<boolean>) | undefined,
 }): Promise<{ readonly files: readonly RgSearchFile[], readonly hadError: boolean, readonly hadDirectoryOperand: boolean }> {
   const files: RgSearchFile[] = [];
+  const operandFiles = operands.length === 1 ? files : [];
   const activeDirectories = new Map<string, string>();
   let hadError = false;
   let hadDirectoryOperand = false;
+  let stopped = false;
+  let consumingFile = false;
+  const shouldStop = () => stopped || (consumeFile !== undefined && context.process.getWaitStatus()?.kind === 'signaled');
 
   const reportError = async ({ path, error }: { path: string, error: unknown }): Promise<void> => {
     const detail = error instanceof Error ? error.message : String(error);
@@ -322,7 +331,7 @@ async function collectSearchFiles({
     }
 
     switch (resolvedEntry.type) {
-    case 'file':
+    case 'file': {
       if (!options.hidden && !explicit && basename({ path: displayPath }).startsWith('.')) {
         return;
       }
@@ -338,8 +347,16 @@ async function collectSearchFiles({
       if (!matchesRgGlobRules({ relativePath, rules: typeRules })) {
         return;
       }
-      files.push({ fullPath: resolvedEntry.fullPath, displayPath, relativePath });
+      const file = { fullPath: resolvedEntry.fullPath, displayPath };
+      if (consumeFile === undefined) {
+        operandFiles.push(file);
+      } else {
+        consumingFile = true;
+        stopped = await consumeFile({ file, hadDirectoryOperand });
+        consumingFile = false;
+      }
       return;
+    }
     case 'directory': {
       if (!options.hidden && !explicit && basename({ path: displayPath }).startsWith('.')) {
         return;
@@ -378,6 +395,9 @@ async function collectSearchFiles({
             ignoreRules = [...ignoreRules, ...localRules];
           }
         }
+        if (shouldStop()) {
+          return;
+        }
         for await (const child of context.files.readDirEntry({ entry: directory })) {
           await visit({
             entry: child,
@@ -387,6 +407,9 @@ async function collectSearchFiles({
             inheritedIgnoreRules: ignoreRules,
             depth: depth + 1,
           });
+          if (shouldStop()) {
+            break;
+          }
         }
       } finally {
         activeDirectories.delete(directory.fullPath);
@@ -405,7 +428,9 @@ async function collectSearchFiles({
   };
 
   for (const operand of operands) {
-    const operandFileStart = files.length;
+    if (shouldStop()) {
+      break;
+    }
     const fullPath = resolvePath({ cwd: context.cwd, path: operand });
     try {
       const entry = await context.files.resolveEntry({ path: fullPath, finalSymlinkTreatment: 'no-follow' });
@@ -438,24 +463,35 @@ async function collectSearchFiles({
         inheritedIgnoreRules: [],
         depth: 0,
       });
-      const operandFiles = files.splice(operandFileStart);
-      const sortDirection = (() => {
+      if (consumeFile === undefined) {
         switch (options.sortMode) {
         case 'default':
         case 'path':
-          return 1;
+          operandFiles.sort((left, right) => left.displayPath.localeCompare(right.displayPath));
+          break;
         case 'path-reverse':
-          return -1;
+          operandFiles.sort((left, right) => -left.displayPath.localeCompare(right.displayPath));
+          break;
+        case 'none':
+          break;
         default: {
           const _ex: never = options.sortMode;
           throw new Error(`Unhandled rg sort mode: ${JSON.stringify(_ex)}`);
         }
         }
-      })();
-      operandFiles.sort((left, right) => sortDirection * left.displayPath.localeCompare(right.displayPath));
-      files.push(...operandFiles);
+      }
     } catch (error: unknown) {
+      // Output errors from a candidate belong to the command's normal I/O handling.
+      if (consumingFile) {
+        throw error;
+      }
       await reportError({ path: operand, error });
+    }
+    if (operandFiles !== files) {
+      for (const file of operandFiles) {
+        files.push(file);
+      }
+      operandFiles.length = 0;
     }
   }
 
@@ -506,170 +542,269 @@ function matchColumn({ line, start }: { line: string, start: number }): number {
   return lineByteOffset({ line, start }) + 1;
 }
 
-function lineStartByteOffsets({ bytes }: { bytes: Uint8Array }): readonly number[] {
-  const offsets = [0];
-  for (let index = 0; index < bytes.length; index += 1) {
-    if (bytes[index] === 10 && index + 1 < bytes.length) {
-      offsets.push(index + 1);
+function createBufferedSearchOutput({ print }: {
+  print: ReturnType<WeshCommandContext['text']>['print'],
+}) {
+  let pending = '';
+  const flush = async (): Promise<void> => {
+    if (pending.length === 0) {
+      return;
     }
-  }
-  return offsets;
+    const text = pending;
+    pending = '';
+    await print({ text });
+  };
+  return {
+    append({ text }: { text: string }): boolean {
+      pending += text;
+      return pending.length >= RG_OUTPUT_BUFFER_LENGTH;
+    },
+    hasPending: () => pending.length !== 0,
+    flush,
+  };
 }
 
-async function searchBytes({
+interface RgSearchResult {
+  readonly matched: boolean,
+  readonly hadError: boolean,
+  readonly wroteContextGroup: boolean,
+}
+
+async function reportFileReadError({ context, options, displayPath, error }: {
+  context: WeshCommandContext,
+  options: RgParsedArgv,
+  displayPath: string,
+  error: unknown,
+}): Promise<void> {
+  if (!options.noMessages) {
+    const detail = error instanceof Error ? error.message : String(error);
+    await context.text().error({ text: `rg: ${displayPath}: ${detail}\n` });
+  }
+}
+
+async function searchInput({
   context,
+  stdout,
   options,
   pattern,
-  bytes,
+  input,
   displayPath,
   showFilename,
   contextGroupAlreadyWritten,
 }: {
   context: WeshCommandContext,
+  stdout: ReturnType<typeof createBufferedSearchOutput>,
   options: RgParsedArgv,
   pattern: RgCompiledPattern,
-  bytes: Uint8Array,
+  input: Blob | Uint8Array,
   displayPath: string,
   showFilename: boolean,
   contextGroupAlreadyWritten: boolean,
-}): Promise<{ readonly matched: boolean, readonly hadError: boolean, readonly wroteContextGroup: boolean }> {
-  const nulOffset = findNulOffset({ bytes });
-  const byteOffsets = lineStartByteOffsets({ bytes });
-  const lines = new TextDecoder().decode(bytes).split('\n');
-  if (lines.length > 0 && lines.at(-1) === '') {
-    lines.pop();
-  }
-
-  if (options.maxCount === 0) {
+}): Promise<RgSearchResult> {
+  const maximum = options.maxCount ?? Infinity;
+  if (maximum === 0) {
     return { matched: false, hadError: false, wroteContextGroup: false };
   }
 
-  let selectedLineCount = 0;
-  let matchCount = 0;
-  const selectedLines = new Map<number, RgLineMatch>();
-  for (let index = 0; index < lines.length; index += 1) {
-    const result = pattern.matchLine({ line: lines[index] ?? '' });
-    if (!result.selected) {
-      continue;
-    }
-    selectedLineCount += 1;
-    matchCount += options.invertMatch ? 1 : result.ranges.length;
-    selectedLines.set(index, result);
-    if (options.maxCount !== undefined && selectedLineCount >= options.maxCount) {
-      break;
-    }
-  }
+  const normalOutput = !options.quiet && options.outputMode === 'normal';
+  const countOutput = !options.quiet && (options.outputMode === 'count-lines' || options.outputMode === 'count-matches');
+  const filesWithoutMatch = options.outputMode === 'files-without-match';
+  const countRanges = !options.invertMatch && (options.outputMode === 'count-matches' || options.onlyMatching);
+  const onlyMatching = options.onlyMatching && !options.invertMatch;
+  const showContext = !onlyMatching && (options.beforeContext > 0 || options.afterContext > 0);
+  const wasSignaled = () => context.process.getWaitStatus()?.kind === 'signaled';
+  const readLines = createRgLineReader({ trackByteOffsets: normalOutput && options.byteOffset });
+  const length = input instanceof Uint8Array ? input.length : input.size;
 
-  if (options.quiet) {
-    return { matched: selectedLineCount > 0, hadError: false, wroteContextGroup: false };
-  }
-  switch (options.outputMode) {
-  case 'files-without-match':
-    if (selectedLineCount > 0) {
-      return { matched: false, hadError: false, wroteContextGroup: false };
-    }
-    await context.text().print({ text: `${displayPath}${options.nullOutput ? '\0' : '\n'}` });
-    return { matched: true, hadError: false, wroteContextGroup: false };
-  case 'files-with-matches':
-    if (selectedLineCount === 0) {
-      return { matched: false, hadError: false, wroteContextGroup: false };
-    }
-    await context.text().print({ text: `${displayPath}${options.nullOutput ? '\0' : '\n'}` });
-    return { matched: true, hadError: false, wroteContextGroup: false };
-  case 'count-lines':
-  case 'count-matches': {
-    if (selectedLineCount === 0) {
-      return { matched: false, hadError: false, wroteContextGroup: false };
-    }
-    const value = options.outputMode === 'count-matches' || (options.onlyMatching && !options.invertMatch)
-      ? matchCount
-      : selectedLineCount;
-    const prefix = showFilename ? `${displayPath}${options.nullOutput ? '\0' : ':'}` : '';
-    await context.text().print({ text: `${prefix}${value}\n` });
-    return { matched: true, hadError: false, wroteContextGroup: false };
-  }
-  case 'normal':
-    if (selectedLineCount === 0) {
-      return { matched: false, hadError: false, wroteContextGroup: false };
-    }
-    break;
-  default: {
-    const _ex: never = options.outputMode;
-    throw new Error(`Unhandled rg output mode: ${JSON.stringify(_ex)}`);
-  }
-  }
-  if (nulOffset !== undefined && !options.text) {
-    const prefix = showFilename ? `${displayPath}: ` : '';
-    await context.text().print({ text: `${prefix}binary file matches (found "\\0" byte around offset ${nulOffset})\n` });
-    return { matched: true, hadError: false, wroteContextGroup: false };
-  }
-
-  if (options.onlyMatching && !options.invertMatch) {
-    for (const [index, result] of selectedLines) {
-      const line = lines[index] ?? '';
-      for (const range of result.ranges) {
-        const prefix = formatPrefix({
-          displayPath,
-          lineNumber: index + 1,
-          showFilename,
-          showLineNumber: options.lineNumber ?? options.column,
-          column: options.column ? matchColumn({ line, start: range.start }) : undefined,
-          byteOffset: options.byteOffset
-            ? (byteOffsets[index] ?? 0) + lineByteOffset({ line, start: range.start })
-            : undefined,
-          contextLine: false,
-          nullOutput: options.nullOutput,
-        });
-        await context.text().print({ text: `${prefix}${line.slice(range.start, range.end)}\n` });
-      }
-    }
-    return { matched: true, hadError: false, wroteContextGroup: false };
-  }
-
-  const outputIndexes = new Set<number>();
-  for (const index of selectedLines.keys()) {
-    const start = Math.max(0, index - options.beforeContext);
-    const end = Math.min(lines.length - 1, index + options.afterContext);
-    for (let outputIndex = start; outputIndex <= end; outputIndex += 1) {
-      outputIndexes.add(outputIndex);
-    }
-  }
-  const sortedOutputIndexes = [...outputIndexes].sort((left, right) => left - right);
-  const hasContext = options.beforeContext > 0 || options.afterContext > 0;
-  let previousIndex: number | undefined;
+  let nulOffset: number | undefined;
+  let selected = 0;
+  let count = 0;
+  let flushed = false;
   let wroteContextGroup = false;
-  for (const index of sortedOutputIndexes) {
-    const startsContextGroup = hasContext && (previousIndex === undefined || index > previousIndex + 1);
-    if (startsContextGroup) {
+  let lastOutputLine = 0;
+  let afterThrough = 0;
+  let beforeLines: (RgInputLine | undefined)[] = [];
+  let beforeStart = 0;
+
+  function* formatOutput({ record, match }: { record: RgInputLine, match: RgLineMatch | undefined }): IterableIterator<string> {
+    if (showContext && (lastOutputLine === 0 || record.number > lastOutputLine + 1)) {
       if (contextGroupAlreadyWritten || wroteContextGroup) {
-        await context.text().print({ text: '--\n' });
+        yield '--\n';
       }
       wroteContextGroup = true;
     }
-    const selectedMatch = selectedLines.get(index);
-    const selected = selectedMatch !== undefined;
-    const line = lines[index] ?? '';
-    const firstRange = selectedMatch?.ranges[0];
+    lastOutputLine = record.number;
+    const first = match?.ranges[0];
     const prefix = formatPrefix({
       displayPath,
-      lineNumber: index + 1,
+      lineNumber: record.number,
       showFilename,
       showLineNumber: options.lineNumber ?? options.column,
-      column: selected && options.column && firstRange !== undefined
-        ? matchColumn({ line, start: firstRange.start })
-        : undefined,
-      byteOffset: options.byteOffset ? (byteOffsets[index] ?? 0) : undefined,
-      contextLine: !selected,
+      column: options.column && first !== undefined ? matchColumn({ line: record.text, start: first.start }) : undefined,
+      byteOffset: options.byteOffset ? record.byteOffset : undefined,
+      contextLine: match === undefined,
       nullOutput: options.nullOutput,
     });
-    await context.text().print({ text: `${prefix}${line}\n` });
-    previousIndex = index;
+    yield `${prefix}${record.text}\n`;
   }
-  return { matched: true, hadError: false, wroteContextGroup };
+
+  function* formatMatch({ record, match }: { record: RgInputLine, match: RgLineMatch }): IterableIterator<string> {
+    if (onlyMatching) {
+      for (const { start, end } of match.ranges) {
+        const offset = options.byteOffset || options.column ? lineByteOffset({ line: record.text, start }) : 0;
+        const prefix = formatPrefix({
+          displayPath,
+          lineNumber: record.number,
+          showFilename,
+          showLineNumber: options.lineNumber ?? options.column,
+          column: options.column ? offset + 1 : undefined,
+          byteOffset: options.byteOffset ? record.byteOffset + offset : undefined,
+          contextLine: false,
+          nullOutput: options.nullOutput,
+        });
+        yield `${prefix}${record.text.slice(start, end)}\n`;
+      }
+      return;
+    }
+
+    for (const before of beforeLines) {
+      if (before !== undefined) {
+        yield* formatOutput({ record: before, match: undefined });
+      }
+    }
+    beforeLines.length = 0;
+    beforeStart = 0;
+    yield* formatOutput({ record, match });
+  }
+
+  search: for (let offset = 0; offset < length;) {
+    // Make a sparse first match visible before waiting for more input.
+    if (!flushed && stdout.hasPending()) {
+      await stdout.flush();
+      flushed = true;
+    }
+    if (wasSignaled()) {
+      break;
+    }
+    const firstChunk = offset === 0;
+    const end = Math.min(offset + (firstChunk ? RG_BINARY_SCAN_LIMIT : RG_INPUT_CHUNK_LENGTH), length);
+    let bytes: Uint8Array;
+    try {
+      if (input instanceof Uint8Array) {
+        bytes = input.subarray(offset, end);
+      } else {
+        const chunk = firstChunk && end === length ? input : input.slice(offset, end);
+        bytes = new Uint8Array(await chunk.arrayBuffer());
+      }
+      if (bytes.length !== end - offset) {
+        throw new Error('Unexpected end of file');
+      }
+    } catch (error: unknown) {
+      if (wasSignaled()) {
+        break;
+      }
+      await stdout.flush();
+      if (wasSignaled()) {
+        break;
+      }
+      await reportFileReadError({ context, options, displayPath, error });
+      return { matched: selected !== 0, hadError: true, wroteContextGroup };
+    }
+    if (wasSignaled()) {
+      break;
+    }
+    if (firstChunk && normalOutput && !options.text) {
+      nulOffset = findNulOffset({ bytes });
+    }
+
+    for (const record of readLines({ bytes, endOfInput: end === length })) {
+      const candidate = selected < maximum ? pattern.matchLine({ line: record.text }) : undefined;
+      const match = candidate?.selected ? candidate : undefined;
+      if (match !== undefined) {
+        selected += 1;
+        if (countOutput) {
+          count += countRanges ? match.ranges.length : 1;
+        } else if (!normalOutput || nulOffset !== undefined) {
+          break search;
+        } else if (showContext) {
+          afterThrough = record.number + options.afterContext;
+        }
+      }
+
+      if (normalOutput && nulOffset === undefined) {
+        let output: Iterable<string> | undefined;
+        if (match !== undefined) {
+          output = formatMatch({ record, match });
+        } else if (record.number <= afterThrough) {
+          output = formatOutput({ record, match: undefined });
+        } else if (showContext && options.beforeContext > 0) {
+          beforeLines.push(record);
+          if (beforeLines.length - beforeStart > options.beforeContext) {
+            beforeLines[beforeStart++] = undefined;
+          }
+          if (beforeStart >= 256 && beforeStart * 2 >= beforeLines.length) {
+            beforeLines = beforeLines.slice(beforeStart);
+            beforeStart = 0;
+          }
+        }
+        if (output !== undefined) {
+          for (const text of output) {
+            if (stdout.append({ text })) {
+              await stdout.flush();
+              flushed = true;
+              if (wasSignaled()) {
+                break search;
+              }
+            }
+          }
+        }
+      }
+      if (selected >= maximum && record.number >= afterThrough) {
+        break search;
+      }
+    }
+    offset = end;
+  }
+
+  const matched = selected !== 0;
+  if (wasSignaled() || options.quiet) {
+    return { matched, hadError: false, wroteContextGroup };
+  }
+  const { print } = context.text();
+  switch (options.outputMode) {
+  case 'normal':
+    if (nulOffset !== undefined && matched) {
+      const prefix = showFilename ? `${displayPath}: ` : '';
+      await print({ text: `${prefix}binary file matches (found "\\0" byte around offset ${nulOffset})\n` });
+    } else {
+      await stdout.flush();
+    }
+    return { matched, hadError: false, wroteContextGroup };
+  case 'files-with-matches':
+  case 'files-without-match': {
+    const selectedFile = filesWithoutMatch ? !matched : matched;
+    if (selectedFile) {
+      await print({ text: `${displayPath}${options.nullOutput ? '\0' : '\n'}` });
+    }
+    return { matched: selectedFile, hadError: false, wroteContextGroup: false };
+  }
+  case 'count-lines':
+  case 'count-matches':
+    if (count !== 0) {
+      const prefix = showFilename ? `${displayPath}${options.nullOutput ? '\0' : ':'}` : '';
+      await print({ text: `${prefix}${count}\n` });
+    }
+    return { matched: count !== 0, hadError: false, wroteContextGroup: false };
+  default: {
+    const _ex: never = options.outputMode;
+    throw new Error(`Unhandled rg output mode: ${_ex}`);
+  }
+  }
 }
 
 async function searchOneFile({
   context,
+  stdout,
   options,
   pattern,
   file,
@@ -677,28 +812,44 @@ async function searchOneFile({
   contextGroupAlreadyWritten,
 }: {
   context: WeshCommandContext,
+  stdout: ReturnType<typeof createBufferedSearchOutput>,
   options: RgParsedArgv,
   pattern: RgCompiledPattern,
   file: RgSearchFile,
   showFilename: boolean,
   contextGroupAlreadyWritten: boolean,
-}): Promise<{ readonly matched: boolean, readonly hadError: boolean, readonly wroteContextGroup: boolean }> {
-  let bytes: Uint8Array;
+}): Promise<RgSearchResult> {
+  let input: Blob | Uint8Array;
   try {
-    bytes = await readAllFileBytes({ files: context.files, path: file.fullPath });
-  } catch (error: unknown) {
-    const detail = error instanceof Error ? error.message : String(error);
-    if (!options.noMessages) {
-      await context.text().error({ text: `rg: ${file.displayPath}: ${detail}\n` });
+    const { open, stat, tryReadBlobEfficiently } = context.files;
+    const result = await tryReadBlobEfficiently({ path: file.fullPath });
+    switch (result.kind) {
+    case 'blob':
+      input = result.blob;
+      break;
+    case 'fallback_required':
+      input = await readAllFileBytes({ files: { open, stat }, path: file.fullPath });
+      break;
+    default: {
+      const _ex: never = result;
+      throw new Error(`Unhandled blob result: ${_ex}`);
     }
+    }
+  } catch (error: unknown) {
+    const wasSignaled = context.process.getWaitStatus()?.kind === 'signaled';
+    if (wasSignaled) {
+      return { matched: false, hadError: false, wroteContextGroup: false };
+    }
+    await reportFileReadError({ context, options, displayPath: file.displayPath, error });
     return { matched: false, hadError: true, wroteContextGroup: false };
   }
 
-  return searchBytes({
+  return searchInput({
     context,
+    stdout,
     options,
     pattern,
-    bytes,
+    input,
     displayPath: file.displayPath,
     showFilename,
     contextGroupAlreadyWritten,
@@ -707,23 +858,26 @@ async function searchOneFile({
 
 async function searchStdin({
   context,
+  stdout,
   options,
   pattern,
   showFilename,
   contextGroupAlreadyWritten,
 }: {
   context: WeshCommandContext,
+  stdout: ReturnType<typeof createBufferedSearchOutput>,
   options: RgParsedArgv,
   pattern: RgCompiledPattern,
   showFilename: boolean,
   contextGroupAlreadyWritten: boolean,
-}): Promise<{ readonly matched: boolean, readonly hadError: boolean, readonly wroteContextGroup: boolean }> {
-  const bytes = await readAllHandleBytes({ handle: context.stdin });
-  return searchBytes({
+}): Promise<RgSearchResult> {
+  const input = await readAllHandleBytes({ handle: context.stdin });
+  return searchInput({
     context,
+    stdout,
     options,
     pattern,
-    bytes,
+    input,
     displayPath: '<stdin>',
     showFilename,
     contextGroupAlreadyWritten,
@@ -779,72 +933,99 @@ export const rgCommandImplementation: WeshCommandImplementation = {
     const operands = options.paths.length > 0 ? options.paths : ['.'];
     const stdinOperandCount = operands.filter((operand) => operand === '-').length;
     const filesystemOperands = operands.filter((operand) => operand !== '-');
-    const collected = await collectSearchFiles({
+    // Shell text output preserves raw bytes represented in file names.
+    const { print } = context.text();
+    const wasSignaled = () => context.process.getWaitStatus()?.kind === 'signaled';
+    const stdout = createBufferedSearchOutput({ print });
+    const unsorted = options.sortMode === 'none';
+    // Quiet search over one operand has no output order to preserve. For
+    // sorted multiple operands, check the explicit paths even after a match.
+    const quietSingleOperand = options.quiet && !options.files && options.sortMode === 'default'
+      && operands.length === 1 && stdinOperandCount === 0;
+    let anyMatch = false;
+    let hadError = false;
+    let contextGroupAlreadyWritten = false;
+    const recordSearchResult = ({ result }: { result: RgSearchResult }): boolean => {
+      anyMatch ||= result.matched;
+      hadError ||= result.hadError;
+      contextGroupAlreadyWritten ||= result.wroteContextGroup;
+      return wasSignaled() || (options.quiet && result.matched);
+    };
+    const listFile = async ({ displayPath }: { displayPath: string }): Promise<boolean> => {
+      anyMatch = true;
+      if (unsorted && options.quiet) {
+        return true;
+      }
+      await print({ text: `${displayPath}${options.nullOutput ? '\0' : '\n'}` });
+      return wasSignaled();
+    };
+    const consumeFile = async ({ file, hadDirectoryOperand }: {
+      file: RgSearchFile,
+      hadDirectoryOperand: boolean,
+    }): Promise<boolean> => {
+      if (compiledPattern === undefined) {
+        const displayPath = options.paths.length === 0 ? file.displayPath.replace(/^\.\//, '') : file.displayPath;
+        return listFile({ displayPath });
+      }
+      const result = await searchOneFile({
+        context,
+        stdout,
+        options,
+        pattern: compiledPattern,
+        file,
+        showFilename: options.withFilename ?? (operands.length > 1 || hadDirectoryOperand),
+        contextGroupAlreadyWritten,
+      });
+      return recordSearchResult({ result });
+    };
+    const consumeStdin = async (): Promise<boolean> => {
+      for (let index = 0; index < stdinOperandCount; index += 1) {
+        if (compiledPattern === undefined) {
+          if (await listFile({ displayPath: '<stdin>' })) {
+            return true;
+          }
+        } else {
+          const result = await searchStdin({
+            context,
+            stdout,
+            options,
+            pattern: compiledPattern,
+            showFilename: options.withFilename ?? (operands.length > 1),
+            contextGroupAlreadyWritten,
+          });
+          if (recordSearchResult({ result })) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+    if (unsorted && await consumeStdin()) {
+      return { exitCode: 0 };
+    }
+    const collected = await discoverSearchFiles({
       context,
       options,
       globs: globRules,
       typeRules,
       operands: filesystemOperands,
       explicitIgnoreRules,
+      consumeFile: unsorted || quietSingleOperand ? consumeFile : undefined,
     });
-
-    if (options.files) {
-      for (let index = 0; index < stdinOperandCount; index += 1) {
-        await context.text().print({ text: `<stdin>${options.nullOutput ? '\0' : '\n'}` });
+    if (!unsorted) {
+      if (await consumeStdin()) {
+        return { exitCode: 0 };
       }
       for (const file of collected.files) {
-        const display = options.paths.length === 0 ? file.displayPath.replace(/^\.\//, '') : file.displayPath;
-        await context.text().print({ text: `${display}${options.nullOutput ? '\0' : '\n'}` });
-      }
-      if (collected.hadError) {
-        return { exitCode: 2 };
-      }
-      return { exitCode: stdinOperandCount + collected.files.length > 0 ? 0 : 1 };
-    }
-
-    if (compiledPattern === undefined) {
-      throw new Error('rg pattern compilation invariant violated');
-    }
-    const showFilename = options.withFilename ?? (operands.length > 1 || collected.hadDirectoryOperand);
-    let anyMatch = false;
-    let hadError = collected.hadError;
-    let contextGroupAlreadyWritten = false;
-    for (let index = 0; index < stdinOperandCount; index += 1) {
-      const result = await searchStdin({
-        context,
-        options,
-        pattern: compiledPattern,
-        showFilename,
-        contextGroupAlreadyWritten,
-      });
-      hadError ||= result.hadError;
-      contextGroupAlreadyWritten ||= result.wroteContextGroup;
-      if (result.matched) {
-        anyMatch = true;
-        if (options.quiet) {
+        if (await consumeFile({ file, hadDirectoryOperand: collected.hadDirectoryOperand })) {
           return { exitCode: 0 };
         }
       }
     }
-    for (const file of collected.files) {
-      const result = await searchOneFile({
-        context,
-        options,
-        pattern: compiledPattern,
-        file,
-        showFilename,
-        contextGroupAlreadyWritten,
-      });
-      hadError ||= result.hadError;
-      contextGroupAlreadyWritten ||= result.wroteContextGroup;
-      if (result.matched) {
-        anyMatch = true;
-        if (options.quiet) {
-          return { exitCode: 0 };
-        }
-      }
+    if (options.quiet && anyMatch && (unsorted || !options.files)) {
+      return { exitCode: 0 };
     }
-    if (hadError) {
+    if (hadError || collected.hadError) {
       return { exitCode: 2 };
     }
     return { exitCode: anyMatch ? 0 : 1 };

@@ -2,7 +2,7 @@ import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/type
 import { readPatchInput } from '@/features/wesh/commands/git/subcommands/apply/patch/filesystem';
 import { parsePatchDocument } from '@/features/wesh/commands/git/subcommands/apply/patch/parser';
 import type { TextPatchSection } from '@/features/wesh/commands/git/subcommands/apply/patch/types';
-import { writeIndex } from '@/features/wesh/commands/git/index-file';
+import { readIndex, writeIndex, type GitIndexEntry } from '@/features/wesh/commands/git/index-file';
 import { replaceTrackedWorktreePaths } from '@/features/wesh/commands/git/worktree';
 import { readWorktreeContentConfig } from '@/features/wesh/commands/git/config';
 import { discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
@@ -55,32 +55,44 @@ export async function runApply({ context, args }: {
       return { exitCode: 0 };
     }
 
-    const plan = await planIndexChanges({ context, repository, sections, reverse: parsedArgs.reverse });
-    if (parsedArgs.index && !parsedArgs.cached) {
-      await validateIndexMatchesWorktree({
-        context,
-        repository,
-        originalEntries: plan.originalEntries,
-        validationPaths: plan.validationPaths,
-        worktreeAbsentPaths: plan.worktreeAbsentPaths,
-      });
-    }
+    const updateWorktree = parsedArgs.index && !parsedArgs.cached;
+    const planIndex = async ({ entries }: { entries: GitIndexEntry[] }) => {
+      const plan = await planIndexChanges({ context, repository, originalEntries: entries, sections, reverse: parsedArgs.reverse });
+      if (updateWorktree) {
+        await validateIndexMatchesWorktree({
+          context,
+          repository,
+          originalEntries: plan.originalEntries,
+          validationPaths: plan.validationPaths,
+          worktreeAbsentPaths: plan.worktreeAbsentPaths,
+        });
+      }
+      return plan;
+    };
     if (parsedArgs.check) {
+      await planIndex({ entries: await readIndex({ files: context.files, repository }) });
       return { exitCode: 0 };
     }
 
-    const written = await writePlannedObjects({ context, repository, plan });
-    if (parsedArgs.index && !parsedArgs.cached) {
-      await replaceTrackedWorktreePaths({
-        files: context.files,
-        repository,
-        previousEntries: plan.originalEntries,
-        targetEntries: written.entries,
-        paths: written.touchedPaths,
-        contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env }),
-      });
-    }
-    await writeIndex({ files: context.files, repository, entries: written.entries });
+    await writeIndex({
+      files: context.files,
+      repository,
+      update: async ({ entries }) => {
+        const plan = await planIndex({ entries });
+        const written = await writePlannedObjects({ context, repository, plan });
+        if (updateWorktree) {
+          await replaceTrackedWorktreePaths({
+            files: context.files,
+            repository,
+            previousEntries: plan.originalEntries,
+            targetEntries: written.entries,
+            paths: written.touchedPaths,
+            contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env }),
+          });
+        }
+        return written.entries;
+      },
+    });
     return { exitCode: 0 };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

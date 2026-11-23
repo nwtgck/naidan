@@ -68,6 +68,20 @@ describe('wesh help', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it.each([
+    { command: 'command', exitCode: 2 },
+    { command: 'type', exitCode: 2 },
+    { command: 'eval', exitCode: 2 },
+    { command: 'unset', exitCode: 2 },
+    { command: 'help', exitCode: 1 },
+  ])('rejects an attached value on $command --help', async ({ command, exitCode }) => {
+    const { result, stdout, stderr } = await execute({ script: `${command} --help=ignored` });
+
+    expect(result.exitCode).toBe(exitCode);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain(`${command}: option '--help' doesn't allow an argument\n`);
+  });
+
   it('does not reinterpret option-looking tokens after the first help pattern', async () => {
     const helped = await execute({ script: 'help echo --bogus' });
 

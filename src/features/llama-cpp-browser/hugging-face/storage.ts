@@ -176,10 +176,10 @@ async function assertExpectedRoot({ destination, expectedRoot }: { destination: 
   }
 }
 
-/** Check one linked repository after the folder becomes readable. */
-export async function installedHostRepositoryVariant({ repository, variant, requireProjector, destination, expectedRoot, signal }: {
+/** Check one repository without listing unrelated models or opening a permission prompt. */
+export async function installedRepositoryVariant({ repository, variant, requireProjector, destination, expectedRoot, signal }: {
   repository: string, variant: string, requireProjector: boolean,
-  destination: Extract<ModelDestination, { kind: 'host' }>, expectedRoot: FileSystemDirectoryHandle | undefined, signal: AbortSignal,
+  destination: ModelDestination, expectedRoot: FileSystemDirectoryHandle | undefined, signal: AbortSignal,
 }): Promise<LocalModel | undefined> {
   await assertExpectedRoot({ destination, expectedRoot });
   let models: ModelDirectory[];
@@ -196,7 +196,7 @@ export async function installedHostRepositoryVariant({ repository, variant, requ
   if (directory === undefined || (requireProjector && directory.projectorFile === undefined)) {
     return undefined;
   }
-  const directories = await storageService.loadHostModelDirectories();
+  const directories = isHostDestination(destination) ? await storageService.loadHostModelDirectories() : [];
   const model = describeRepositoryModel({ directory, repository, destination, directories });
   if (models.some(other => other !== directory && describeRepositoryModel({ directory: other, repository, destination, directories }).modelId === model.modelId)) {
     return undefined;

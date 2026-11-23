@@ -103,6 +103,42 @@ describe('wesh strings', () => {
     expect(invalidFirst.result.exitCode).toBe(1);
   });
 
+  it('keeps help spellings that are claimed as values or appear after double dash', async () => {
+    await writeFile({ path: '-h', data: 'named-file\0' });
+    const stdinBytes = new TextEncoder().encode('ABC\0DEFG\0');
+    const shortValue = await execute({ script: 'strings -n3 -s -h', stdinBytes });
+    const longValue = await execute({ script: 'strings -n3 -s --help', stdinBytes });
+    const operand = await execute({ script: 'strings -- -h' });
+
+    expect(shortValue.stdout.text).toBe('ABC-hDEFG-h');
+    expect(longValue.stdout.text).toBe('ABC--helpDEFG--help');
+    expect(operand.stdout.text).toBe('named-file\n');
+    for (const execution of [shortValue, longValue, operand]) {
+      expect(execution.result.exitCode).toBe(0);
+      expect(execution.stderr.text).toBe('');
+    }
+  });
+
+  it('stops at help within a short option bundle', async () => {
+    const helpInBundle = await execute({ script: 'strings -ahZ --unknown' });
+    const invalidBeforeHelp = await execute({ script: 'strings -Zh' });
+
+    expect(helpInBundle.result.exitCode).toBe(0);
+    expect(helpInBundle.stdout.text).toContain('usage: strings');
+    expect(helpInBundle.stderr.text).toBe('');
+    expect(invalidBeforeHelp.result.exitCode).toBe(1);
+    expect(invalidBeforeHelp.stdout.text).toBe('');
+    expect(invalidBeforeHelp.stderr.text).toContain("invalid option -- 'Z'");
+  });
+
+  it('rejects an attached value for a long flag before help', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'strings --all=yes --help' });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("option '--all' doesn't allow an argument");
+  });
+
   it('extracts printable strings from binary input', async () => {
     await writeFile({
       path: 'sample.bin',
@@ -301,6 +337,51 @@ right.bin: xyz
     expect(legacy.stdout.text).toBe('ABC\n');
     expect(legacy.stderr.text).toBe('');
     expect(legacy.result.exitCode).toBe(0);
+  });
+
+  it('keeps the legacy minimum option distinct from values and dash-prefixed operands', async () => {
+    await writeFile({ path: '-3', data: 'named-file\0' });
+    const stdinBytes = new TextEncoder().encode('ABC\0DEFG\0');
+
+    const legacyLast = await execute({ script: 'strings -n4 -3 -s -5', stdinBytes });
+    const explicitLast = await execute({ script: 'strings -3 -n4', stdinBytes });
+    const operand = await execute({ script: 'strings -- -3' });
+
+    expect(legacyLast.result.exitCode).toBe(0);
+    expect(legacyLast.stdout.text).toBe('ABC-5DEFG-5');
+    expect(legacyLast.stderr.text).toBe('');
+    expect(explicitLast.result.exitCode).toBe(0);
+    expect(explicitLast.stdout.text).toBe('DEFG\n');
+    expect(explicitLast.stderr.text).toBe('');
+    expect(operand.result.exitCode).toBe(0);
+    expect(operand.stdout.text).toBe('named-file\n');
+    expect(operand.stderr.text).toBe('');
+  });
+
+  it('reports minimum and radix validation in order around option diagnostics', async () => {
+    const minimumBeforeSyntax = await execute({ script: 'strings -n 0 --unknown' });
+    const syntaxBeforeRadix = await execute({ script: 'strings --unknown -t z' });
+    const earlierInvalidValue = await execute({ script: 'strings -n 0 -n 3 --help' });
+
+    expect(minimumBeforeSyntax.result.exitCode).toBe(1);
+    expect(minimumBeforeSyntax.stderr.text).toBe("strings: invalid minimum string length: '0'\n");
+    expect(syntaxBeforeRadix.result.exitCode).toBe(1);
+    expect(syntaxBeforeRadix.stderr.text).toContain("strings: unrecognized option '--unknown'");
+    expect(earlierInvalidValue.result.exitCode).toBe(1);
+    expect(earlierInvalidValue.stdout.text).toBe('');
+    expect(earlierInvalidValue.stderr.text).toBe("strings: invalid minimum string length: '0'\n");
+  });
+
+  it('rejects minimum and radix errors before later shorthand overrides', async () => {
+    const minimum = await execute({ script: 'strings -n 0 -3' });
+    const radix = await execute({ script: 'strings -t z -o' });
+
+    expect(minimum.result.exitCode).toBe(1);
+    expect(minimum.stdout.text).toBe('');
+    expect(minimum.stderr.text).toBe("strings: invalid minimum string length: '0'\n");
+    expect(radix.result.exitCode).toBe(1);
+    expect(radix.stdout.text).toBe('');
+    expect(radix.stderr.text).toBe("strings: invalid radix: 'z'\n");
   });
 
   it('rejects an explicit dash operand while retaining implicit stdin', async () => {

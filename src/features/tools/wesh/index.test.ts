@@ -1,58 +1,59 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWeshTool } from '.';
-import type { WeshWorkerClient } from '@/features/wesh/worker/types';
+import { createWeshWorkerClient } from '@/features/wesh/worker/client-runtime';
+import type { IWeshWorker, WeshWorkerClient, WeshWorkerExecutionEvent, WeshWorkerExecutionOutcome } from '@/features/wesh/worker/types';
+import { createEndpoint, releaseProxy } from 'comlink';
+import type { WorkerRemote } from '@/utils/worker-transport';
+
+const encoder = new TextEncoder();
 
 describe('createWeshTool', () => {
   let client: WeshWorkerClient;
-  const encoder = new TextEncoder();
+  let cancel: ReturnType<typeof vi.fn<() => void>>;
+
+  function setEvents({ events, exitCode }: { events: WeshWorkerExecutionEvent[], exitCode: number }) {
+    vi.mocked(client.startExecution).mockImplementation(({ onEvent }) => ({
+      completion: Promise.resolve().then(async () => {
+        for (const event of events) {
+          await onEvent?.({ event });
+        }
+        return { status: 'exited', exitCode } as const;
+      }),
+      cancel,
+    }));
+  }
 
   beforeEach(() => {
+    cancel = vi.fn<() => void>();
     client = {
-      startExecution: vi.fn().mockImplementation(async ({ onEvent }) => {
-        await onEvent?.({ event: { type: 'started' } });
-        await onEvent?.({ event: { type: 'stdout', chunk: encoder.encode('hello\n') } });
-        await onEvent?.({ event: { type: 'exit', exitCode: 0 } });
-        return {
-          executionId: 'exec-1',
-        };
-      }),
-      awaitExecution: vi.fn().mockResolvedValue({
-        exitCode: 0,
-      }),
-      interruptExecution: vi.fn().mockResolvedValue(true),
-      cancelExecution: vi.fn().mockResolvedValue(true),
-      disposeExecution: vi.fn().mockResolvedValue(undefined),
-      execute: vi.fn().mockResolvedValue({
-        exitCode: 0,
-      }),
+      startExecution: vi.fn(),
       getShellState: vi.fn().mockResolvedValue({ cwd: '/', env: {} }),
       listCommands: vi.fn().mockResolvedValue([]),
       listDirectory: vi.fn().mockResolvedValue([]),
-      interrupt: vi.fn().mockResolvedValue(true),
       dispose: vi.fn().mockResolvedValue(undefined),
     };
+    setEvents({
+      events: [
+        { type: 'started' },
+        { type: 'stdout', chunk: encoder.encode('hello\n') },
+        { type: 'exit', exitCode: 0 },
+      ],
+      exitCode: 0,
+    });
   });
 
-  it('executes shell commands via the worker client', async () => {
-    const tool = createWeshTool({
-      client,
-      mounts: [],
-      name: 'shell_execute',
-      description: undefined,
-      defaultStdoutLimit: 4096,
-      defaultStderrLimit: 4096,
-    });
+  function createTool({ stdoutLimit, stderrLimit, onOutputLimit }: {
+    stdoutLimit: number, stderrLimit: number, onOutputLimit: Parameters<typeof createWeshTool>[0]['onOutputLimit'],
+  }) {
+    return createWeshTool({ client, mounts: [], name: 'shell_execute', description: undefined, defaultStdoutLimit: stdoutLimit, defaultStderrLimit: stderrLimit, onOutputLimit });
+  }
 
-    const result = await tool.execute({
-      args: {
-        shell_script: 'echo hello',
-      },
-    });
+  it('executes shell commands via the worker client', async () => {
+    const tool = createTool({ stdoutLimit: 4096, stderrLimit: 4096, onOutputLimit: undefined });
+    const result = await tool.execute({ args: { shell_script: 'echo hello' } });
 
     expect(client.startExecution).toHaveBeenCalledWith({
-      request: {
-        script: 'echo hello',
-      },
+      request: { script: 'echo hello' },
       onEvent: expect.any(Function),
     });
     expect(result).toEqual({
@@ -67,91 +68,39 @@ hello
     });
   });
 
-  it('interrupts the worker client when the signal aborts', async () => {
-    const tool = createWeshTool({
-      client,
-      mounts: [],
-      name: 'shell_execute',
-      description: undefined,
-      defaultStdoutLimit: 4096,
-      defaultStderrLimit: 4096,
-    });
-
+  it('interrupts the command when the signal aborts during start', async () => {
+    const tool = createTool({ stdoutLimit: 4096, stderrLimit: 4096, onOutputLimit: undefined });
     const controller = new AbortController();
-    vi.mocked(client.startExecution).mockImplementation(async () => {
+    vi.mocked(client.startExecution).mockImplementation(() => {
       controller.abort();
-      return { executionId: 'exec-1' };
-    });
-    vi.mocked(client.awaitExecution).mockResolvedValue({
-      exitCode: 130,
+      return { completion: Promise.resolve({ status: 'exited', exitCode: 130 }), cancel };
     });
 
-    await expect(tool.execute({
-      args: { shell_script: 'sleep 1' },
-      signal: controller.signal,
-    })).rejects.toThrow('Generation aborted');
-
-    expect(client.cancelExecution).toHaveBeenCalledWith({
-      request: {
-        executionId: 'exec-1',
-      },
-    });
+    await expect(tool.execute({ args: { shell_script: 'sleep 1' }, signal: controller.signal })).rejects.toThrow('Generation aborted');
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
-  it('passes through an explicit timeout override', async () => {
-    const tool = createWeshTool({
-      client,
-      mounts: [],
-      name: 'shell_execute',
-      description: undefined,
-      defaultStdoutLimit: 4096,
-      defaultStderrLimit: 4096,
-    });
-
-    await tool.execute({
-      args: {
-        shell_script: 'echo hello',
-        timeout_ms: 1500,
-      },
-    });
-
+  it('accepts an explicit timeout override', async () => {
+    const tool = createTool({ stdoutLimit: 4096, stderrLimit: 4096, onOutputLimit: undefined });
+    await tool.execute({ args: { shell_script: 'echo hello', timeout_ms: 1500 } });
     expect(client.startExecution).toHaveBeenCalledWith({
-      request: {
-        script: 'echo hello',
-      },
+      request: { script: 'echo hello' },
       onEvent: expect.any(Function),
     });
   });
 
-  it('returns a timeout error with captured output', async () => {
-    vi.mocked(client.startExecution).mockImplementation(async ({ onEvent }) => {
-      await onEvent?.({ event: { type: 'started' } });
-      await onEvent?.({ event: { type: 'stdout', chunk: encoder.encode('before-timeout\n') } });
-      await onEvent?.({ event: { type: 'stderr', chunk: encoder.encode('partial error\n') } });
-      await onEvent?.({ event: { type: 'exit', exitCode: 130 } });
-      return {
-        executionId: 'exec-1',
-      };
-    });
-    vi.mocked(client.awaitExecution).mockResolvedValue({
+  it('preserves the exit code and captured stdout and stderr', async () => {
+    setEvents({
+      events: [
+        { type: 'started' },
+        { type: 'stdout', chunk: encoder.encode('before-timeout\n') },
+        { type: 'stderr', chunk: encoder.encode('partial error\n') },
+        { type: 'exit', exitCode: 130 },
+      ],
       exitCode: 130,
     });
-
-    const tool = createWeshTool({
-      client,
-      mounts: [],
-      name: 'shell_execute',
-      description: undefined,
-      defaultStdoutLimit: 4096,
-      defaultStderrLimit: 4096,
-    });
-
-    const result = await tool.execute({
-      args: {
-        shell_script: 'echo before-timeout; echo partial error >&2; sleep 5',
-      },
-    });
-
+    const tool = createTool({ stdoutLimit: 4096, stderrLimit: 4096, onOutputLimit: undefined });
+    const result = await tool.execute({ args: { shell_script: 'echo before-timeout; echo partial error >&2; sleep 5' } });
     expect(result).toEqual({
       status: 'success',
       content: `\
@@ -168,39 +117,24 @@ partial error
     });
   });
 
-  it('cancels execution when stdout exceeds the configured limit', async () => {
-    vi.mocked(client.startExecution).mockImplementation(async ({ onEvent }) => {
-      await onEvent?.({ event: { type: 'started' } });
-      await onEvent?.({ event: { type: 'stdout', chunk: encoder.encode('abcdef') } });
-      await onEvent?.({ event: { type: 'exit', exitCode: 130 } });
-      return {
-        executionId: 'exec-1',
-      };
-    });
-    vi.mocked(client.awaitExecution).mockResolvedValue({
+  it('keeps forwarding the truncated prefix and exit event while cancellation is pending', async () => {
+    setEvents({
+      events: [
+        { type: 'started' },
+        { type: 'stdout', chunk: encoder.encode('abcdef') },
+        { type: 'exit', exitCode: 130 },
+      ],
       exitCode: 130,
     });
-
-    const tool = createWeshTool({
-      client,
-      mounts: [],
-      name: 'shell_execute',
-      description: undefined,
-      defaultStdoutLimit: 4,
-      defaultStderrLimit: 4096,
-    });
-
-    const result = await tool.execute({
-      args: {
-        shell_script: 'python -c "print(\\"abcdef\\")"',
-      },
-    });
-
-    expect(client.cancelExecution).toHaveBeenCalledWith({
-      request: {
-        executionId: 'exec-1',
-      },
-    });
+    const onEvent = vi.fn();
+    const tool = createTool({ stdoutLimit: 4, stderrLimit: 4096, onOutputLimit: undefined });
+    const result = await tool.execute({ args: { shell_script: 'printf abcdef' }, onEvent });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(onEvent.mock.calls).toEqual([
+      [{ event: { type: 'started' } }],
+      [{ event: { type: 'output', stream: 'stdout', text: 'abcd' } }],
+      [{ event: { type: 'exit', exitCode: 130 } }],
+    ]);
     expect(result).toEqual({
       status: 'success',
       content: `\
@@ -213,157 +147,133 @@ abcd
     });
   });
 
-  it('does not block streaming callbacks while cancellation is in flight', async () => {
-    let resolveCancellation: (() => void) | undefined;
-    let startExecutionReturned = false;
-
-    vi.mocked(client.cancelExecution).mockImplementation(() => {
-      return new Promise<boolean>(resolve => {
-        resolveCancellation = () => resolve(true);
-      });
-    });
-    vi.mocked(client.startExecution).mockImplementation(async ({ onEvent }) => {
-      await onEvent?.({ event: { type: 'started' } });
-      await onEvent?.({ event: { type: 'stdout', chunk: encoder.encode('abcdef') } });
-      startExecutionReturned = true;
-      await onEvent?.({ event: { type: 'exit', exitCode: 130 } });
-      return {
-        executionId: 'exec-1',
-      };
-    });
-    vi.mocked(client.awaitExecution).mockResolvedValue({
-      exitCode: 130,
-    });
-
-    const tool = createWeshTool({
-      client,
-      mounts: [],
-      name: 'shell_execute',
-      description: undefined,
-      defaultStdoutLimit: 4,
-      defaultStderrLimit: 4096,
-    });
-
-    const resultPromise = tool.execute({
-      args: {
-        shell_script: 'python -c "print(\\"abcdef\\")"',
-      },
-    });
-
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    expect(startExecutionReturned).toBe(true);
-    expect(client.cancelExecution).toHaveBeenCalledWith({
-      request: {
-        executionId: 'exec-1',
-      },
-    });
-
-    resolveCancellation?.();
-
-    await expect(resultPromise).resolves.toEqual({
-      status: 'success',
-      content: `\
-Exit Code: 130
-
-STDOUT:
-abcd
-[Output truncated due to size limit]
-`,
-    });
-  });
-
-  it('clears the timeout after ordinary completion instead of leaving a live timer', async () => {
+  it('clears the timeout after ordinary completion', async () => {
     vi.useFakeTimers();
-    using clock = {
-      [Symbol.dispose]() {
-        vi.useRealTimers();
-      },
-    };
-    const tool = createWeshTool({ client, mounts: [], name: 'shell_execute', description: undefined, defaultStdoutLimit: 4096, defaultStderrLimit: 4096 });
+    using _clock = { [Symbol.dispose]: () => vi.useRealTimers() };
+    const tool = createTool({ stdoutLimit: 4096, stderrLimit: 4096, onOutputLimit: undefined });
     const result = await tool.execute({ args: { shell_script: 'echo hello', timeout_ms: 600000 } });
     expect(result.status).toBe('success');
     expect(vi.getTimerCount()).toBe(0);
-    void clock;
   });
 
-  it.each(['resolve', 'reject'] as const)('drains the original execution after cancellation acknowledgements that %s', async cancellation => {
-    const gate = Promise.withResolvers<{ exitCode: number }>();
+  it('waits for the client-owned completion after generation abort and preserves AbortError', async () => {
+    const gate = Promise.withResolvers<WeshWorkerExecutionOutcome>();
     const controller = new AbortController();
-    vi.mocked(client.awaitExecution).mockReturnValue(gate.promise);
-    vi.mocked(client.cancelExecution).mockImplementation(async () => {
-      if (cancellation === 'reject') {
-        throw new Error('Cancellation request failed');
-      }
-      return true;
-    });
-    const tool = createWeshTool({ client, mounts: [], name: 'shell_execute', description: undefined, defaultStdoutLimit: 4096, defaultStderrLimit: 4096 });
+    vi.mocked(client.startExecution).mockReturnValue({ completion: gate.promise, cancel });
+    const tool = createTool({ stdoutLimit: 4096, stderrLimit: 4096, onOutputLimit: undefined });
     const settled = vi.fn();
-    const execution = tool.execute({ args: { shell_script: 'sleep 60' }, signal: controller.signal }).then(settled, settled);
-    await using pending = {
-      async [Symbol.asyncDispose]() {
-        controller.abort();
-        gate.resolve({ exitCode: 130 });
-        await execution;
-      },
-    };
-    await vi.waitFor(() => expect(client.awaitExecution).toHaveBeenCalledOnce());
+    const execution = tool.execute({ args: { shell_script: 'sleep 60' }, signal: controller.signal });
+    void execution.then(settled, settled);
     controller.abort();
-    await vi.waitFor(() => expect(client.cancelExecution).toHaveBeenCalledOnce());
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await Promise.resolve();
+    expect(cancel).toHaveBeenCalledOnce();
     expect(settled).not.toHaveBeenCalled();
-    expect(client.disposeExecution).not.toHaveBeenCalled();
-    gate.resolve({ exitCode: 130 });
-    await execution;
-    expect(settled).toHaveBeenCalledOnce();
-    expect(client.disposeExecution).toHaveBeenCalledExactlyOnceWith({ request: { executionId: 'exec-1' } });
-    void pending;
+    gate.resolve({ status: 'exited', exitCode: 130 });
+    await expect(execution).rejects.toMatchObject({ name: 'AbortError', message: 'Generation aborted' });
   });
 
   it('reports each truncated stream once without requiring callers to parse output text', async () => {
     const onOutputLimit = vi.fn();
-    vi.mocked(client.startExecution).mockImplementation(async ({ onEvent }) => {
-      for (const stream of ['stdout', 'stderr', 'stdout', 'stderr'] as const) {
-        await onEvent?.({ event: { type: stream, chunk: encoder.encode('abcdef') } });
-      }
-      await onEvent?.({ event: { type: 'exit', exitCode: 0 } });
-      return { executionId: 'exec-1' };
+    setEvents({
+      events: [
+        ...(['stdout', 'stderr', 'stdout', 'stderr'] as const).map(type => ({ type, chunk: encoder.encode('abcdef') })),
+        { type: 'exit', exitCode: 0 },
+      ],
+      exitCode: 0,
     });
-    const tool = createWeshTool({ client, mounts: [], name: 'shell_execute', description: undefined, defaultStdoutLimit: 4, defaultStderrLimit: 4, onOutputLimit });
+    const tool = createTool({ stdoutLimit: 4, stderrLimit: 4, onOutputLimit });
     await tool.execute({ args: { shell_script: 'printf abcdef; printf abcdef >&2' } });
     expect(onOutputLimit.mock.calls).toEqual([[{ stream: 'stdout' }], [{ stream: 'stderr' }]]);
-    expect(client.cancelExecution).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
-  it('keeps timed-out executions owned until the original completion settles', async () => {
+  it('keeps timed-out executions owned until the client completes cooperative cancellation', async () => {
     vi.useFakeTimers();
-    using clock = {
-      [Symbol.dispose]() {
-        vi.useRealTimers();
-      },
-    };
-    const gate = Promise.withResolvers<{ exitCode: number }>();
-    vi.mocked(client.awaitExecution).mockReturnValue(gate.promise);
-    const tool = createWeshTool({ client, mounts: [], name: 'shell_execute', description: undefined, defaultStdoutLimit: 4096, defaultStderrLimit: 4096 });
-    let settled = false;
-    const execution = tool.execute({ args: { shell_script: 'sleep 60', timeout_ms: 25 } }).then(result => {
-      settled = true;
-      return result;
-    });
-    await using pending = {
-      async [Symbol.asyncDispose]() {
-        gate.resolve({ exitCode: 130 });
-        await execution;
-      },
-    };
+    using _clock = { [Symbol.dispose]: () => vi.useRealTimers() };
+    const gate = Promise.withResolvers<WeshWorkerExecutionOutcome>();
+    vi.mocked(client.startExecution).mockImplementation(({ onEvent }) => ({
+      completion: Promise.resolve().then(async () => {
+        await onEvent?.({ event: { type: 'stdout', chunk: encoder.encode('partial') } });
+        return gate.promise;
+      }),
+      cancel,
+    }));
+    const tool = createTool({ stdoutLimit: 4096, stderrLimit: 4096, onOutputLimit: undefined });
+    const settled = vi.fn();
+    const execution = tool.execute({ args: { shell_script: 'sleep 60', timeout_ms: 25 } });
+    void execution.then(settled);
     await vi.advanceTimersByTimeAsync(26);
-    expect(client.cancelExecution).toHaveBeenCalledOnce();
-    expect(settled).toBe(false);
-    expect(client.disposeExecution).not.toHaveBeenCalled();
-    gate.resolve({ exitCode: 130 });
-    expect(await execution).toMatchObject({ status: 'error', code: 'timeout' });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(settled).not.toHaveBeenCalled();
+    gate.resolve({ status: 'exited', exitCode: 130 });
+    await expect(execution).resolves.toEqual({
+      status: 'error',
+      code: 'timeout',
+      message: `\
+Shell execution timed out after 25ms.
+
+Exit Code: 130
+
+STDOUT:
+partial
+`,
+    });
     expect(vi.getTimerCount()).toBe(0);
-    void clock;
-    void pending;
+  });
+
+  it.each(['timeout during command', 'timeout during initialization', 'abort during command'] as const)('settles after %s without an interrupt or execution RPC response', async mode => {
+    vi.useFakeTimers();
+    using _clock = { [Symbol.dispose]: () => vi.useRealTimers() };
+    const terminate = vi.fn();
+    const remote = {
+      init: vi.fn<IWeshWorker['init']>(() => mode === 'timeout during initialization' ? new Promise<void>(() => {}) : Promise.resolve()),
+      execute: vi.fn<IWeshWorker['execute']>(() => new Promise<{ exitCode: number }>(() => {})),
+      interrupt: vi.fn<IWeshWorker['interrupt']>(() => new Promise<boolean>(() => {})),
+      getShellState: vi.fn(),
+      listCommands: vi.fn(),
+      preloadNextCommand: vi.fn(),
+      listDirectory: vi.fn(),
+      dispose: vi.fn(),
+      [createEndpoint]: vi.fn(),
+      [releaseProxy]: vi.fn(),
+    };
+    const actualClient = createWeshWorkerClient({
+      rootHandle: 'readonly',
+      mounts: [],
+      user: 'user',
+      initialEnv: {},
+      initialCwd: undefined,
+      createSession: async () => ({
+        worker: Object.assign(new EventTarget(), { terminate }) as unknown as Worker,
+        remote: remote as unknown as WorkerRemote<IWeshWorker>,
+      }),
+    });
+    const tool = createWeshTool({ client: actualClient, mounts: [], name: 'shell_execute', description: undefined, defaultStdoutLimit: 4096, defaultStderrLimit: 4096 });
+    const controller = new AbortController();
+    const result = tool.execute({ args: { shell_script: 'sleep 60', timeout_ms: 25 }, signal: controller.signal });
+    // Attach a rejection handler before advancing the clock.
+    const settled = result.then(value => value, (error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(0);
+    if (mode === 'abort during command') {
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(150);
+      expect(await settled).toMatchObject({ name: 'AbortError', message: 'Generation aborted' });
+    } else {
+      await vi.advanceTimersByTimeAsync(175);
+      await expect(result).resolves.toEqual({
+        status: 'error',
+        code: 'timeout',
+        message: `\
+Shell execution timed out after 25ms.
+
+Shell worker terminated.
+`,
+      });
+    }
+    expect(remote.init).toHaveBeenCalledOnce();
+    expect(remote.interrupt).toHaveBeenCalledTimes(mode === 'timeout during initialization' ? 0 : 1);
+    expect(terminate).toHaveBeenCalledOnce();
+    await tool.dispose?.();
+    expect(terminate).toHaveBeenCalledOnce();
   });
 });

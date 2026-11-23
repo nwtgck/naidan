@@ -11,18 +11,14 @@ import { NaidanSysfsProvider } from '@/features/wesh/naidan-sysfs/provider';
 import {
   createOpfsNaidanSysfsStorageReader,
   createRemoteNaidanSysfsStorageReader,
-} from '@/features/wesh/naidan-sysfs/storage-reader';
+} from '@/features/wesh/naidan-sysfs/worker-storage-reader';
 import { ReadonlyDirectoryHandle } from '@/features/wesh/readonly-directory-handle';
+import { WeshBrokenPipeError, type WeshFileHandle } from '@/features/wesh/types';
 import { createTestReadHandleFromText } from '@/features/wesh/utils/test-stream';
-import { createWriteHandleFromStream } from '@/features/wesh/utils/stream';
 import {
-  weshWorkerAwaitExecutionRequestSchema,
-  weshWorkerDisposeExecutionRequestSchema,
   weshWorkerExecuteRequestSchema,
   weshWorkerExecutionSummarySchema,
   weshWorkerInitRequestSchema,
-  weshWorkerInterruptExecutionRequestSchema,
-  weshWorkerStartExecutionResponseSchema,
   weshWorkerShellStateSchema,
   weshWorkerCommandEntrySchema,
   weshWorkerListDirectoryRequestSchema,
@@ -30,7 +26,6 @@ import {
   weshWorkerDirectoryEntrySchema,
   type IWeshWorker,
   type WeshWorkerRemoteExecutionEvent,
-  type WeshWorkerExecutionSummary,
 } from './types';
 
 const FORWARDING_BUFFER_LIMIT_BYTES = 32 * 1024;
@@ -43,11 +38,16 @@ function createForwardingHandle({
   stream: 'stdout' | 'stderr',
   onEvent: ({ event }: { event: WeshWorkerRemoteExecutionEvent }) => Promise<void>,
 }) {
-  let chunks: Uint8Array[] = [];
+  let buffered: Uint8Array<ArrayBuffer> | undefined;
   let bufferedBytes = 0;
   let flushTimer: ReturnType<typeof setTimeout> | undefined;
-  let sendChain: Promise<void> = Promise.resolve();
+  let sending: Promise<void> | undefined;
+  let flushRequested = false;
   let flushFailure: { error: unknown } | undefined;
+  let accepting = true;
+  let writeTail = Promise.resolve();
+  let finishing: Promise<void> | undefined;
+  let references = 0;
 
   const clearFlushTimer = (): void => {
     if (flushTimer === undefined) {
@@ -57,114 +57,162 @@ function createForwardingHandle({
     flushTimer = undefined;
   };
 
-  const combineBufferedChunks = (): ArrayBuffer | undefined => {
-    if (bufferedBytes === 0) {
-      return undefined;
-    }
-
-    if (chunks.length === 1) {
-      const [chunk] = chunks;
-      if (
-        chunk !== undefined
-        && chunk.byteOffset === 0
-        && chunk.byteLength === chunk.buffer.byteLength
-        && chunk.buffer instanceof ArrayBuffer
-      ) {
-        chunks = [];
-        bufferedBytes = 0;
-        return chunk.buffer;
-      }
-    }
-
-    const combined = new Uint8Array(bufferedBytes);
-    let offset = 0;
-    for (const chunk of chunks) {
-      combined.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    chunks = [];
-    bufferedBytes = 0;
-    return combined.buffer;
-  };
-
   const throwStoredFlushFailure = (): void => {
     if (flushFailure !== undefined) {
       throw flushFailure.error;
     }
   };
 
-  const flush = async (): Promise<void> => {
+  const requestFlush = (): void => {
     clearFlushTimer();
-    throwStoredFlushFailure();
-    const buffer = combineBufferedChunks();
-    if (buffer !== undefined) {
-      sendChain = sendChain.then(async () => {
-        await onEvent({
-          event: workerTransfer({
-            value: {
-              type: stream,
-              buffer,
-            },
-            transferables: [buffer],
-          }),
-        });
-      });
+    if (buffered === undefined) {
+      return;
+    }
+    if (sending !== undefined) {
+      // Keep collecting into the next batch while the current callback is pending.
+      flushRequested = true;
+      return;
     }
 
-    try {
-      await sendChain;
-    } catch (error: unknown) {
-      flushFailure = { error };
-      throw error;
+    const buffer = bufferedBytes === buffered.byteLength ? buffered.buffer : buffered.slice(0, bufferedBytes).buffer;
+    buffered = undefined;
+    bufferedBytes = 0;
+    flushRequested = false;
+    sending = Promise.resolve().then(() => onEvent({
+      event: workerTransfer({ value: { type: stream, buffer }, transferables: [buffer] }),
+    }));
+    void sending.then(
+      () => {
+        sending = undefined;
+        if (flushRequested) {
+          requestFlush();
+        }
+      },
+      error => {
+        sending = undefined;
+        flushFailure = { error };
+        clearFlushTimer();
+        buffered = undefined;
+        bufferedBytes = 0;
+      },
+    );
+  };
+
+  const flush = async (): Promise<void> => {
+    while (true) {
+      throwStoredFlushFailure();
+      requestFlush();
+      if (sending === undefined) {
+        return;
+      }
+      await sending;
     }
   };
 
   const scheduleFlush = (): void => {
-    if (flushTimer !== undefined) {
+    if (flushTimer !== undefined || flushRequested) {
       return;
     }
     flushTimer = setTimeout(() => {
       flushTimer = undefined;
-      void flush().catch((error: unknown) => {
-        flushFailure = { error };
-      });
+      requestFlush();
     }, FORWARDING_BUFFER_DELAY_MS);
   };
 
-  const handle = createWriteHandleFromStream({
-    target: new WritableStream({
-      async write(chunk) {
+  const admitWrite = ({ bytes }: { bytes: Uint8Array }): Promise<void> => {
+    // Waiting writers keep their original bytes. Only this writer copies, a frame at a time.
+    const accepted = writeTail.then(async () => {
+      let offset = 0;
+      while (offset < bytes.byteLength) {
         throwStoredFlushFailure();
-        chunks.push(chunk);
-        bufferedBytes += chunk.byteLength;
-        if (bufferedBytes >= FORWARDING_BUFFER_LIMIT_BYTES) {
+        const staging = buffered ??= new Uint8Array(FORWARDING_BUFFER_LIMIT_BYTES);
+        const length = Math.min(staging.byteLength - bufferedBytes, bytes.byteLength - offset);
+        staging.set(bytes.subarray(offset, offset + length), bufferedBytes);
+        bufferedBytes += length;
+        offset += length;
+        if (bufferedBytes === staging.byteLength) {
           await flush();
+        } else {
+          scheduleFlush();
+        }
+      }
+    });
+    writeTail = accepted;
+    return accepted;
+  };
+
+  const finish = (): Promise<void> => {
+    if (finishing === undefined) {
+      // A surviving child may hold a copy of this descriptor after the input ends.
+      accepting = false;
+      finishing = writeTail.then(flush);
+    }
+    return finishing;
+  };
+
+  const createHandle = ({ discardAfterFinish }: { discardAfterFinish: boolean }): WeshFileHandle => {
+    references += 1;
+    let closed = false;
+    const handle: WeshFileHandle = {
+      async read() {
+        throw new Error('Handle is write-only (createWeshWriteFileHandle)');
+      },
+      async write({ buffer, offset, length }) {
+        if (closed || (!accepting && !discardAfterFinish)) {
+          return { bytesWritten: 0 };
+        }
+        const start = offset ?? 0;
+        const bytes = buffer.subarray(start, start + (length ?? buffer.length - start));
+        if (accepting) {
+          await admitWrite({ bytes });
+        }
+        return { bytesWritten: bytes.byteLength };
+      },
+      async writeOwned({ chunk }) {
+        if (closed) {
           return;
         }
-        scheduleFlush();
+        if (!accepting && !discardAfterFinish) {
+          throw new WeshBrokenPipeError();
+        }
+        if (accepting) {
+          await admitWrite({ bytes: chunk.bytes });
+        }
       },
       async close() {
-        await flush();
+        if (!closed) {
+          closed = true;
+          references -= 1;
+          if (references === 0) {
+            await finish();
+          }
+        }
       },
-      async abort() {
-        await flush();
+      async stat() {
+        return { size: 0, mode: 0o644, type: 'fifo', mtime: Date.now(), ino: 0, uid: 0, gid: 0 };
       },
-    }),
-  });
-
-  return {
-    handle,
-    flush,
+      async truncate() {
+        throw new Error('Cannot truncate WeshWriteFileHandle');
+      },
+      async ioctl() {
+        return { ret: 0 };
+      },
+      cloneReference() {
+        // A process that retains this output description may outlive the input.
+        return closed ? handle : createHandle({ discardAfterFinish: accepting || discardAfterFinish });
+      },
+      getCloseSemantics: () => 'hard',
+    };
+    return handle;
   };
+
+  return { handle: createHandle({ discardAfterFinish: false }), finish };
 }
 
 export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
   let wesh: Wesh | undefined;
-  let nextExecutionId = 1;
-  let activeExecutionCount = 0;
-  const executions = new Map<string, {
-    completion: Promise<WeshWorkerExecutionSummary>,
-  }>();
+  type ActiveExecution = { phase: 'starting' | 'running', controller: AbortController };
+  let execution: ActiveExecution | undefined;
 
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
@@ -258,14 +306,16 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
     },
 
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-    async startExecution(request, onEvent) {
-      if (!wesh) {
+    async execute(request, onEvent) {
+      const shell = wesh;
+      if (!shell) {
         throw new Error('Wesh worker is not initialized');
       }
 
+      if (execution !== undefined) {
+        throw new Error('Wesh already has a foreground execution');
+      }
       const validated = weshWorkerExecuteRequestSchema.parse(request);
-      const executionId = `wesh-exec-${nextExecutionId}`;
-      nextExecutionId += 1;
       const emit = async ({ event }: { event: WeshWorkerRemoteExecutionEvent }) => {
         await onEvent?.(event);
       };
@@ -278,107 +328,72 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
         onEvent: emit,
       });
       const stdin = createTestReadHandleFromText({ text: '' });
-      activeExecutionCount += 1;
-      const completion = (async () => {
-        try {
-          await emit({ event: { type: 'started' } });
-          const result = await wesh.execute({
-            source: createTextShellSource({ text: validated.script }),
-            stdin,
-            stdout: stdoutCapture.handle,
-            stderr: stderrCapture.handle,
-          });
-          await Promise.all([
-            stdoutCapture.flush(),
-            stderrCapture.flush(),
-          ]);
-          await emit({ event: { type: 'exit', exitCode: result.exitCode } });
-
-          return weshWorkerExecutionSummarySchema.parse({
-            exitCode: result.exitCode,
-          });
-        } catch (error: unknown) {
-          const forwardingErrors: unknown[] = [];
-          const flushResults = await Promise.allSettled([
-            stdoutCapture.flush(),
-            stderrCapture.flush(),
-          ]);
-          for (const result of flushResults) {
-            switch (result.status) {
-            case 'fulfilled':
-              break;
-            case 'rejected':
-              forwardingErrors.push(result.reason);
-              break;
-            default: {
-              const _exhaustive: never = result;
-              throw new Error(`Unhandled promise result: ${String(_exhaustive)}`);
-            }
-            }
-          }
-          try {
-            await emit({
-              event: {
-                type: 'error',
-                message: error instanceof Error ? error.message : String(error),
-              },
-            });
-          } catch (eventError: unknown) {
-            forwardingErrors.push(eventError);
-          }
-          if (forwardingErrors.length > 0) {
-            throw new AggregateError(
-              [error, ...forwardingErrors],
-              'Wesh execution failed while forwarding worker events',
-            );
-          }
-          throw error;
-        } finally {
-          activeExecutionCount -= 1;
-          await Promise.allSettled([
-            stdoutCapture.handle.close(),
-            stderrCapture.handle.close(),
-            stdin.close(),
-          ]);
-        }
-      })();
-
-      executions.set(executionId, { completion });
-      return weshWorkerStartExecutionResponseSchema.parse({ executionId });
-    },
-
-    async awaitExecution({ request }) {
-      const validated = weshWorkerAwaitExecutionRequestSchema.parse(request);
-      const execution = executions.get(validated.executionId);
-      if (!execution) {
-        throw new Error(`Unknown wesh execution: ${validated.executionId}`);
-      }
-      const summary = await execution.completion;
-      return weshWorkerExecutionSummarySchema.parse(summary);
-    },
-
-    async interruptExecution({ request }) {
-      if (!wesh) {
-        return false;
-      }
-      const validated = weshWorkerInterruptExecutionRequestSchema.parse(request);
-      if (!executions.has(validated.executionId)) {
-        return false;
-      }
-      return wesh.signalForegroundProcessGroup({ signal: 2 });
-    },
-
-    async disposeExecution({ request }) {
-      const validated = weshWorkerDisposeExecutionRequestSchema.parse(request);
-      executions.delete(validated.executionId);
-    },
-
-    async execute({ request }) {
-      const { executionId } = await this.startExecution(request);
+      const active: ActiveExecution = { phase: 'starting', controller: new AbortController() };
+      execution = active;
       try {
-        return await this.awaitExecution({ request: { executionId } });
+        await emit({ event: { type: 'started' } });
+        active.phase = 'running';
+        const result = await shell.execute({
+          source: createTextShellSource({ text: validated.script }),
+          stdin,
+          stdout: stdoutCapture.handle,
+          stderr: stderrCapture.handle,
+          signal: active.controller.signal,
+        });
+        await Promise.all([
+          stdoutCapture.finish(),
+          stderrCapture.finish(),
+        ]);
+        const shellState = validated.includeShellState === true ? shell.getShellState() : undefined;
+        await emit({ event: { type: 'exit', exitCode: result.exitCode } });
+
+        return weshWorkerExecutionSummarySchema.parse({
+          exitCode: result.exitCode,
+          ...(shellState === undefined ? {} : { shellState }),
+        });
+      } catch (error: unknown) {
+        const forwardingErrors: unknown[] = [];
+        const flushResults = await Promise.allSettled([
+          stdoutCapture.finish(),
+          stderrCapture.finish(),
+        ]);
+        for (const result of flushResults) {
+          switch (result.status) {
+          case 'fulfilled':
+            break;
+          case 'rejected':
+            forwardingErrors.push(result.reason);
+            break;
+          default: {
+            const _exhaustive: never = result;
+            throw new Error(`Unhandled promise result: ${String(_exhaustive)}`);
+          }
+          }
+        }
+        try {
+          await emit({
+            event: {
+              type: 'error',
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        } catch (eventError: unknown) {
+          forwardingErrors.push(eventError);
+        }
+        if (forwardingErrors.length > 0) {
+          throw new AggregateError(
+            [error, ...forwardingErrors],
+            'Wesh execution failed while forwarding worker events',
+          );
+        }
+        throw error;
       } finally {
-        await this.disposeExecution({ request: { executionId } });
+        await Promise.allSettled([
+          stdoutCapture.handle.close(),
+          stderrCapture.handle.close(),
+          stdin.close(),
+        ]);
+        execution = undefined;
       }
     },
 
@@ -400,7 +415,7 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
       if (!wesh) {
         throw new Error('Wesh worker is not initialized');
       }
-      if (activeExecutionCount !== 0) {
+      if (execution !== undefined) {
         return weshWorkerPreloadCommandResponseSchema.parse({ status: 'busy' });
       }
 
@@ -420,10 +435,26 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
     },
 
     async interrupt() {
-      if (!wesh) {
+      const active = execution;
+      if (active === undefined) {
         return false;
       }
-      return wesh.signalForegroundProcessGroup({ signal: 2 });
+      active.controller.abort();
+      switch (active.phase) {
+      case 'starting':
+        return true;
+      case 'running':
+        await wesh?.interruptForeground({ foregroundSignal: active.controller.signal });
+        return true;
+      default: {
+        const exhaustive: never = active.phase;
+        throw new Error(String(exhaustive));
+      }
+      }
+    },
+
+    async isInterruptWaitingForFilePublication() {
+      return execution?.controller.signal.aborted === true && (wesh?.vfs.hasPendingFilePublications() ?? false);
     },
 
     async dispose() {
@@ -435,4 +466,5 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  createForwardingHandle,
 };

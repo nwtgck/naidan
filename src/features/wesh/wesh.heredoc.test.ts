@@ -427,7 +427,6 @@ A
 printf next`;
     const parsed = parseNextShellUnit({
       commandLine,
-      env: new Map(),
       sourceCompletion: 'complete',
     });
     expect(parsed.kind).toBe('parsed');
@@ -454,7 +453,6 @@ first
 A
 $FOO
 B`,
-      env: new Map(),
     });
     expect(parsed.kind).toBe('list');
     if (parsed.kind !== 'list') {
@@ -480,12 +478,10 @@ A
 second`;
     expect(parseNextShellUnit({
       commandLine: script,
-      env: new Map(),
       sourceCompletion: 'may-continue',
     })).toEqual({ kind: 'needs-more-source' });
     const complete = parseNextShellUnit({
       commandLine: `${script}\nB\n`,
-      env: new Map(),
       sourceCompletion: 'may-continue',
     });
     expect(complete.kind).toBe('parsed');

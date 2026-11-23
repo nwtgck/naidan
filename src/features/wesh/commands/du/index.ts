@@ -1,9 +1,10 @@
+import { formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { iterateNullTerminatedPathnames } from '@/features/wesh/commands/_shared/files0-from';
 import {
   writeCommandHelp,
   writeCommandUsageError,
-} from '@/features/wesh/commands/_shared/usage';
+} from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
 import type {
   WeshCommandContext,
@@ -18,7 +19,7 @@ import {
   formatDuValue,
 } from './format';
 import {
-  duArgvSpec,
+  duArgvHelp,
   parseDuOptions,
   type DuOptions,
 } from './options';
@@ -42,8 +43,8 @@ async function loadExcludePatterns({
   sources,
 }: {
   context: WeshCommandContext,
-  directPatterns: string[],
-  sources: string[],
+  directPatterns: readonly string[],
+  sources: readonly string[],
 }): Promise<CompiledDuPattern[]> {
   const patterns = directPatterns.map((pattern) => compileDuPattern({ pattern }));
   for (const source of sources) {
@@ -75,7 +76,7 @@ function createOperandSource({
 }: {
   context: WeshCommandContext,
   options: DuOptions,
-  operands: string[],
+  operands: readonly string[],
 }): AsyncIterable<DuOperandRecord> {
   if (options.files0From !== undefined) {
     return iterateNullTerminatedPathnames({
@@ -114,23 +115,25 @@ export const duCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'du',
         message: parsed.message,
-        argvSpec: duArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: duArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
-    for (const diagnostic of parsed.preHelpDiagnostics) {
-      await context.text().error({ text: `${diagnostic}\n` });
+    if (parsed.helpRequested) {
+      for (const diagnostic of parsed.preHelpDiagnostics) {
+        await context.text().error({ text: `${diagnostic}\n` });
+      }
     }
 
-    const { options } = parsed;
+    const exclusions = parsed.helpRequested ? parsed : parsed.options;
 
     let patterns: CompiledDuPattern[];
     try {
       patterns = await loadExcludePatterns({
         context,
-        directPatterns: options.excludePatterns,
-        sources: options.excludeFromFiles,
+        directPatterns: exclusions.excludePatterns,
+        sources: exclusions.excludeFromFiles,
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -145,11 +148,12 @@ export const duCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'du',
-        argvSpec: duArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: duArgvHelp }),
       });
       return { exitCode: 0 };
     }
 
+    const { options } = parsed;
     if (options.summarize && options.maxDepth === 0) {
       await context.text().error({
         text: 'du: warning: summarizing is the same as using --max-depth=0\n',

@@ -1,3 +1,5 @@
+import type { WeshFileHandle } from '@/features/wesh/types';
+
 export interface ParsedShellShebang {
   interpreter: string,
   optionalArgument: string | undefined,
@@ -63,6 +65,32 @@ function decodeEnvSplitEscape({
     return { kind: 'invalid' };
   default:
     return { kind: 'invalid' };
+  }
+}
+
+/** Read the interpreter header without buffering the script body. */
+export async function readShellShebangLine({ handle }: { handle: WeshFileHandle }): Promise<string | undefined> {
+  const buffer = new Uint8Array(256);
+  const decoder = new TextDecoder();
+  let firstLine = '';
+  while (true) {
+    const { bytesRead } = await handle.read({ buffer });
+    if (bytesRead === 0) {
+      firstLine += decoder.decode();
+      return firstLine.startsWith('#!') ? firstLine : undefined;
+    }
+    const chunk = buffer.subarray(0, bytesRead);
+    const newline = chunk.indexOf(0x0a);
+    const nul = chunk.indexOf(0);
+    const end = nul >= 0 && (newline < 0 || nul < newline) ? nul + 1 : newline;
+    if (end >= 0) {
+      firstLine += decoder.decode(chunk.subarray(0, end));
+      return firstLine.startsWith('#!') ? firstLine : undefined;
+    }
+    firstLine += decoder.decode(chunk, { stream: true });
+    if (firstLine.length >= 2 && !firstLine.startsWith('#!')) {
+      return undefined;
+    }
   }
 }
 

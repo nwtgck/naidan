@@ -1,7 +1,16 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv';
 import { getPathErrorReason, isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import {
   canonicalizeExistingPath,
@@ -242,107 +251,118 @@ async function canonicalize({
   }
 }
 
-const realpathArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'e',
-      long: 'canonicalize-existing',
-      effects: [{ key: 'mode', value: 'existing' }],
-      help: { summary: 'require that all path components exist', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'm',
-      long: 'canonicalize-missing',
-      effects: [{ key: 'mode', value: 'missing' }],
-      help: { summary: 'allow missing path components', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'L',
-      long: 'logical',
-      effects: [{ key: 'symlinkResolutionMode', value: 'logical' }],
-      help: { summary: "resolve '..' components before symlinks", category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'P',
-      long: 'physical',
-      effects: [{ key: 'symlinkResolutionMode', value: 'physical' }],
-      help: { summary: 'resolve symlinks as encountered', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 's',
-      long: 'strip',
-      effects: [{ key: 'symlinkResolutionMode', value: 'strip' }],
-      help: { summary: "don't expand symlinks", category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'no-symlinks',
-      effects: [{ key: 'symlinkResolutionMode', value: 'strip' }],
-      help: { summary: "don't expand symlinks", category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 'q',
-      long: 'quiet',
-      effects: [{ key: 'quiet', value: true }],
-      help: { summary: 'suppress most error messages', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: undefined,
-      long: 'relative-to',
-      key: 'relativeTo',
-      valueName: 'DIR',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'print paths relative to DIR', valueName: 'DIR', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: undefined,
-      long: 'relative-base',
-      key: 'relativeBase',
-      valueName: 'DIR',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'print absolute paths unless below DIR', valueName: 'DIR', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 'z',
-      long: 'zero',
-      effects: [{ key: 'zero', value: true }],
-      help: { summary: 'end each output line with NUL, not newline', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const realpathOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'mode', value: 'existing' }] },
+    forms: [
+      { kind: 'short', name: 'e', value: { kind: 'none' } },
+      { kind: 'long', name: 'canonicalize-existing', value: { kind: 'none' } },
+    ],
+    summary: 'require that all path components exist',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'mode', value: 'missing' }] },
+    forms: [
+      { kind: 'short', name: 'm', value: { kind: 'none' } },
+      { kind: 'long', name: 'canonicalize-missing', value: { kind: 'none' } },
+    ],
+    summary: 'allow missing path components',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'symlinkResolutionMode', value: 'logical' }] },
+    forms: [
+      { kind: 'short', name: 'L', value: { kind: 'none' } },
+      { kind: 'long', name: 'logical', value: { kind: 'none' } },
+    ],
+    summary: "resolve '..' components before symlinks",
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'symlinkResolutionMode', value: 'physical' }] },
+    forms: [
+      { kind: 'short', name: 'P', value: { kind: 'none' } },
+      { kind: 'long', name: 'physical', value: { kind: 'none' } },
+    ],
+    summary: 'resolve symlinks as encountered',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'symlinkResolutionMode', value: 'strip' }] },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'none' } },
+      { kind: 'long', name: 'strip', value: { kind: 'none' } },
+    ],
+    summary: "don't expand symlinks",
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'symlinkResolutionMode', value: 'strip' }] },
+    forms: [{ kind: 'long', name: 'no-symlinks', value: { kind: 'none' } }],
+    summary: "don't expand symlinks",
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'quiet', value: true }] },
+    forms: [
+      { kind: 'short', name: 'q', value: { kind: 'none' } },
+      { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+    ],
+    summary: 'suppress most error messages',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'relativeTo', parse: undefined },
+    forms: [{ kind: 'long', name: 'relative-to', value: { kind: 'required', missingValueName: 'DIR' } }],
+    summary: 'print paths relative to DIR',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'relativeBase', parse: undefined },
+    forms: [{ kind: 'long', name: 'relative-base', value: { kind: 'required', missingValueName: 'DIR' } }],
+    summary: 'print absolute paths unless below DIR',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'zero', value: true }] },
+    forms: [
+      { kind: 'short', name: 'z', value: { kind: 'none' } },
+      { kind: 'long', name: 'zero', value: { kind: 'none' } },
+    ],
+    summary: 'end each output line with NUL, not newline',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+const realpathArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  definitions: realpathOptions,
+  nonExecutableLongOptions: [],
+});
+const realpathArgvHelp = defineArgvHelpPresentation({ catalog: realpathArgvCatalog, rows: realpathOptions });
+const realpathArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 export const realpathCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: context.args,
-        spec: realpathArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: realpathArgvCatalog,
+        policy: realpathArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: realpathArgvSpec,
+      catalog: realpathArgvCatalog,
+      policy: realpathArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -351,7 +371,7 @@ export const realpathCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'realpath',
         message: `realpath: ${diagnostic.message}`,
-        argvSpec: realpathArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: realpathArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -360,7 +380,7 @@ export const realpathCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'realpath',
-        argvSpec: realpathArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: realpathArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -370,7 +390,7 @@ export const realpathCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'realpath',
         message: 'realpath: missing operand',
-        argvSpec: realpathArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: realpathArgvHelp }),
       });
       return { exitCode: 1 };
     }

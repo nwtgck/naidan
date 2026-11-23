@@ -7,18 +7,21 @@ import type {
   WeshEntryRef,
   WeshFileHandle,
 } from "@/features/wesh/types";
-import { parseStandardArgv } from "@/features/wesh/argv";
 import {
-  STANDARD_HELP_EARLY_EXIT_OPTIONS,
-  standardSemanticIssuePrecedesDiagnostic,
-  stopStandardArgvAtFirstEarlyExit,
-} from "@/features/wesh/commands/_shared/argv";
-import { decodeCommandDataBytes, encodeCommandDataText } from "@/features/wesh/commands/_shared/data-codec";
-import type {
-  ArgvOptionOccurrence,
-  ArgvSpecialTokenParser,
+  analyzeArgvLongForm,
+  analyzeArgvShortForm,
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  HELP_EARLY_EXIT_OPTIONS,
+  parseStandardArgv,
+  stopArgvAtFirstEarlyExit,
+  type StandardArgvAction,
+  type StandardArgvOccurrence,
+  type StandardArgvPolicy,
 } from "@/features/wesh/argv";
-import type { StandardArgvParserSpec } from "@/features/wesh/argv";
+import { decodeCommandDataBytes, encodeCommandDataText } from "@/features/wesh/commands/_shared/data-codec";
 import {
   foldAsciiCase,
   resolveCharacterLocaleMode,
@@ -27,7 +30,7 @@ import {
 import {
   writeCommandHelp,
   writeCommandUsageError,
-} from "@/features/wesh/commands/_shared/usage";
+} from "@/features/wesh/commands/_shared/usage-output";
 import {
   findPosixLeftmostLongestMatch,
   translateBasicRegularExpression,
@@ -244,35 +247,6 @@ function parseColorMode({
   }
 }
 
-const parseOptionalColorToken: ArgvSpecialTokenParser = ({ token }) => {
-  if (token !== "--color" && token !== "--colour") {
-    return undefined;
-  }
-  return {
-    kind: "matched",
-    consumeCount: 1,
-    effects: [{ key: "color", value: "never" }],
-  };
-};
-
-const parseNumericContextToken: ArgvSpecialTokenParser = ({ token }) => {
-  if (!/^-\d+$/.test(token)) {
-    return undefined;
-  }
-  return {
-    kind: "matched",
-    consumeCount: 1,
-    effects: [{ key: "context", value: token.slice(1) }],
-    occurrences: [
-      {
-        kind: "special",
-        option: token,
-        effects: [{ key: "context", value: token.slice(1) }],
-      },
-    ],
-  };
-};
-
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   if (path.startsWith("/")) {
     return path;
@@ -308,19 +282,6 @@ function basename({ path }: { path: string }): string {
   const end = path.endsWith("/") ? path.length - 1 : path.length;
   const separatorIndex = path.lastIndexOf("/", end - 1);
   return path.slice(separatorIndex + 1, end);
-}
-
-function isValueOccurrenceForKey(
-  occurrence: ArgvOptionOccurrence,
-  key: string,
-): occurrence is Extract<ArgvOptionOccurrence, { kind: "value" }> & {
-  value: string;
-} {
-  return (
-    occurrence.kind === "value" &&
-    occurrence.key === key &&
-    typeof occurrence.value === "string"
-  );
 }
 
 function escapeRegExp({ value }: { value: string }): string {
@@ -464,7 +425,7 @@ function globToRegExp({
 function resolveGrepPatternSyntax({
   occurrences,
 }: {
-  occurrences: ArgvOptionOccurrence[];
+  occurrences: readonly StandardArgvOccurrence<StandardArgvAction<"color">>[];
 }): GrepPatternSyntax {
   let syntax: GrepPatternSyntax = "basic";
   let explicitSyntax: GrepPatternSyntax | undefined;
@@ -481,20 +442,8 @@ function resolveGrepPatternSyntax({
     syntax = selected;
   };
 
-  for (const occurrence of occurrences) {
-    switch (occurrence.kind) {
-    case "flag":
-      break;
-    case "value":
-    case "special":
-      continue;
-    default: {
-      const _ex: never = occurrence;
-      throw new Error(`Unhandled occurrence kind: ${_ex}`);
-    }
-    }
-
-    for (const effect of occurrence.effects) {
+  for (const { semantic } of occurrences) {
+    for (const effect of grepOptionEffects({ action: semantic })) {
       switch (effect.key) {
       case "extendedRegexp":
         selectSyntax({ selected: "extended" });
@@ -515,6 +464,20 @@ function resolveGrepPatternSyntax({
   }
 
   return syntax;
+}
+
+function grepOptionEffects({ action }: { action: StandardArgvAction<"color"> }) {
+  switch (action.kind) {
+  case "effects":
+    return action.effects;
+  case "required-value":
+  case "deferred":
+    return [];
+  default: {
+    const _ex: never = action;
+    throw new Error(`Unhandled grep option action: ${JSON.stringify(_ex)}`);
+  }
+  }
 }
 
 function splitTopLevelPerlAlternatives({
@@ -1957,636 +1920,569 @@ async function classifyGrepInputStream({
   }
 }
 
+function toGrepParsedValue<T extends string>({ parsed }: {
+  parsed: { ok: true; value: T } | { ok: false; message: string };
+}): { kind: "parsed"; value: T } | { kind: "invalid"; message: string } {
+  return parsed.ok
+    ? { kind: "parsed", value: parsed.value }
+    : { kind: "invalid", message: parsed.message };
+}
+
+function parseGrepCountOption({ value, target }: {
+  value: string;
+  target: "max-count" | "context";
+}): { kind: "parsed"; value: number } | { kind: "invalid"; message: string } {
+  const parsed = parseNonNegativeInteger({ value });
+  if (parsed !== undefined) {
+    return { kind: "parsed", value: parsed };
+  }
+  switch (target) {
+  case "max-count":
+    return { kind: "invalid", message: "invalid max count" };
+  case "context":
+    return { kind: "invalid", message: `${value}: invalid context length argument` };
+  default: {
+    const _ex: never = target;
+    throw new Error(`Unhandled grep count option: ${_ex}`);
+  }
+  }
+}
+
+const grepOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: "extendedRegexp", value: true }] },
+    forms: [
+      { kind: 'short', name: "E", value: { kind: 'none' } },
+      { kind: 'long', name: "extended-regexp", value: { kind: 'none' } },
+    ],
+    summary: "use extended regular expressions",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "basicRegexp", value: true }] },
+    forms: [
+      { kind: 'short', name: "G", value: { kind: 'none' } },
+      { kind: 'long', name: "basic-regexp", value: { kind: 'none' } },
+    ],
+    summary: "use basic regular expressions",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "perlRegexp", value: true }] },
+    forms: [
+      { kind: 'short', name: "P", value: { kind: 'none' } },
+      { kind: 'long', name: "perl-regexp", value: { kind: 'none' } },
+    ],
+    summary: "use Perl-compatible regular expressions",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "help", value: true }] },
+    forms: [{ kind: 'long', name: "help", value: { kind: 'none' } }],
+    summary: "display this help and exit",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "ignoreCase", value: true }] },
+    forms: [
+      { kind: 'short', name: "i", value: { kind: 'none' } },
+      { kind: 'long', name: "ignore-case", value: { kind: 'none' } },
+    ],
+    summary: "ignore case distinctions",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "ignoreCase", value: true }] },
+    forms: [{ kind: 'short', name: "y", value: { kind: 'none' } }],
+    summary: "same as -i",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "ignoreCase", value: false }] },
+    forms: [{ kind: 'long', name: "no-ignore-case", value: { kind: 'none' } }],
+    summary: "do not ignore case distinctions",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "invertMatch", value: true }] },
+    forms: [
+      { kind: 'short', name: "v", value: { kind: 'none' } },
+      { kind: 'long', name: "invert-match", value: { kind: 'none' } },
+    ],
+    summary: "select non-matching lines",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "lineNumber", value: true }] },
+    forms: [
+      { kind: 'short', name: "n", value: { kind: 'none' } },
+      { kind: 'long', name: "line-number", value: { kind: 'none' } },
+    ],
+    summary: "print line numbers",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "byteOffset", value: true }] },
+    forms: [
+      { kind: 'short', name: "b", value: { kind: 'none' } },
+      { kind: 'long', name: "byte-offset", value: { kind: 'none' } },
+    ],
+    summary: "print byte offsets",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "wordRegexp", value: true }] },
+    forms: [
+      { kind: 'short', name: "w", value: { kind: 'none' } },
+      { kind: 'long', name: "word-regexp", value: { kind: 'none' } },
+    ],
+    summary: "match only whole words",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "exactLine", value: true }] },
+    forms: [
+      { kind: 'short', name: "x", value: { kind: 'none' } },
+      { kind: 'long', name: "line-regexp", value: { kind: 'none' } },
+    ],
+    summary: "match only whole lines",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "fixedStrings", value: true }] },
+    forms: [
+      { kind: 'short', name: "F", value: { kind: 'none' } },
+      { kind: 'long', name: "fixed-strings", value: { kind: 'none' } },
+    ],
+    summary: "treat patterns as literal strings",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "nullData", value: true }] },
+    forms: [
+      { kind: 'short', name: "z", value: { kind: 'none' } },
+      { kind: 'long', name: "null-data", value: { kind: 'none' } },
+    ],
+    summary: "end input records with NUL instead of newline",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [] },
+    forms: [
+      { kind: 'short', name: "U", value: { kind: 'none' } },
+      { kind: 'long', name: "binary", value: { kind: 'none' } },
+    ],
+    summary: "do not strip carriage returns at end of line",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "obsoleteUnixByteOffsets", value: true }] },
+    forms: [
+      { kind: 'short', name: "u", value: { kind: 'none' } },
+      { kind: 'long', name: "unix-byte-offsets", value: { kind: 'none' } },
+    ],
+    summary: "report Unix-style byte offsets (obsolete no-op)",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "binaryFilesMode", value: "without-match" }] },
+    forms: [{ kind: 'short', name: "I", value: { kind: 'none' } }],
+    summary: "assume binary files contain no matches",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "binaryFilesMode", value: "text" }] },
+    forms: [
+      { kind: 'short', name: "a", value: { kind: 'none' } },
+      { kind: 'long', name: "text", value: { kind: 'none' } },
+    ],
+    summary: "process binary files as text",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'required-value', key: "binaryFilesMode", parse: ({ rawValue }: { rawValue: string }) => toGrepParsedValue({ parsed: parseBinaryFilesMode({ value: rawValue }) }) },
+    forms: [{ kind: 'long', name: "binary-files", value: { kind: 'required', missingValueName: "TYPE" } }],
+    summary: "assume TYPE is binary, text, or without-match",
+    valueName: "TYPE",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "noMessages", value: true }] },
+    forms: [
+      { kind: 'short', name: "s", value: { kind: 'none' } },
+      { kind: 'long', name: "no-messages", value: { kind: 'none' } },
+    ],
+    summary: "suppress error messages",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "quiet", value: true }] },
+    forms: [
+      { kind: 'short', name: "q", value: { kind: 'none' } },
+      { kind: 'long', name: "quiet", value: { kind: 'none' } },
+    ],
+    summary: "suppress normal output",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "quiet", value: true }] },
+    forms: [{ kind: 'long', name: "silent", value: { kind: 'none' } }],
+    summary: "same as --quiet",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "countOnly", value: true }] },
+    forms: [
+      { kind: 'short', name: "c", value: { kind: 'none' } },
+      { kind: 'long', name: "count", value: { kind: 'none' } },
+    ],
+    summary: "print only a count of matching lines",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "filesWithMatches", value: true }] },
+    forms: [
+      { kind: 'short', name: "l", value: { kind: 'none' } },
+      { kind: 'long', name: "files-with-matches", value: { kind: 'none' } },
+    ],
+    summary: "print only names of matching files",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "filesWithoutMatches", value: true }] },
+    forms: [
+      { kind: 'short', name: "L", value: { kind: 'none' } },
+      { kind: 'long', name: "files-without-match", value: { kind: 'none' } },
+    ],
+    summary: "print only names of files without matches",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "onlyMatching", value: true }] },
+    forms: [
+      { kind: 'short', name: "o", value: { kind: 'none' } },
+      { kind: 'long', name: "only-matching", value: { kind: 'none' } },
+    ],
+    summary: "print only matched text",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "noFilename", value: true }] },
+    forms: [
+      { kind: 'short', name: "h", value: { kind: 'none' } },
+      { kind: 'long', name: "no-filename", value: { kind: 'none' } },
+    ],
+    summary: "suppress file name prefixes",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "withFilename", value: true }] },
+    forms: [
+      { kind: 'short', name: "H", value: { kind: 'none' } },
+      { kind: 'long', name: "with-filename", value: { kind: 'none' } },
+    ],
+    summary: "always print file name prefixes",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "nullFilename", value: true }] },
+    forms: [
+      { kind: 'short', name: "Z", value: { kind: 'none' } },
+      { kind: 'long', name: "null", value: { kind: 'none' } },
+    ],
+    summary: "end printed file names with NUL",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "initialTab", value: true }] },
+    forms: [
+      { kind: 'short', name: "T", value: { kind: 'none' } },
+      { kind: 'long', name: "initial-tab", value: { kind: 'none' } },
+    ],
+    summary: "align line content on a tab stop",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "lineBuffered", value: true }] },
+    forms: [{ kind: 'long', name: "line-buffered", value: { kind: 'none' } }],
+    summary: "flush output after each reported line",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "recursive", value: true }] },
+    forms: [
+      { kind: 'short', name: "r", value: { kind: 'none' } },
+      { kind: 'long', name: "recursive", value: { kind: 'none' } },
+    ],
+    summary: "search directories recursively",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'required-value', key: "directories", parse: ({ rawValue }: { rawValue: string }) => toGrepParsedValue({ parsed: parseDirectoryAction({ value: rawValue }) }) },
+    forms: [
+      { kind: 'short', name: "d", value: { kind: 'required-attached-or-following', missingValueName: "action" } },
+      { kind: 'long', name: "directories", value: { kind: 'required', missingValueName: "action" } },
+    ],
+    summary: "handle directories with ACTION",
+    valueName: "ACTION",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'required-value', key: "devices", parse: ({ rawValue }: { rawValue: string }) => toGrepParsedValue({ parsed: parseDeviceAction({ value: rawValue }) }) },
+    forms: [
+      { kind: 'short', name: "D", value: { kind: 'required-attached-or-following', missingValueName: "action" } },
+      { kind: 'long', name: "devices", value: { kind: 'required', missingValueName: "action" } },
+    ],
+    summary: "handle devices with ACTION",
+    valueName: "ACTION",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "recursive", value: true }, { key: "dereferenceRecursive", value: true },] },
+    forms: [
+      { kind: 'short', name: "R", value: { kind: 'none' } },
+      { kind: 'long', name: "dereference-recursive", value: { kind: 'none' } },
+    ],
+    summary: "follow all symbolic links recursively",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'required-value', key: "afterContext", parse: ({ rawValue }: { rawValue: string }) => parseGrepCountOption({ value: rawValue, target: 'context' }) },
+    forms: [
+      { kind: 'short', name: "A", value: { kind: 'required-attached-or-following', missingValueName: "lines" } },
+      { kind: 'long', name: "after-context", value: { kind: 'required', missingValueName: "lines" } },
+    ],
+    summary: "print NUM trailing context lines",
+    valueName: "NUM",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'required-value', key: "beforeContext", parse: ({ rawValue }: { rawValue: string }) => parseGrepCountOption({ value: rawValue, target: 'context' }) },
+    forms: [
+      { kind: 'short', name: "B", value: { kind: 'required-attached-or-following', missingValueName: "lines" } },
+      { kind: 'long', name: "before-context", value: { kind: 'required', missingValueName: "lines" } },
+    ],
+    summary: "print NUM leading context lines",
+    valueName: "NUM",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'required-value', key: "context", parse: ({ rawValue }: { rawValue: string }) => parseGrepCountOption({ value: rawValue, target: 'context' }) },
+    forms: [
+      { kind: 'short', name: "C", value: { kind: 'required-attached-or-following', missingValueName: "lines" } },
+      { kind: 'long', name: "context", value: { kind: 'required', missingValueName: "lines" } },
+    ],
+    summary: "print NUM context lines",
+    valueName: "NUM",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'required-value', key: "groupSeparator", parse: undefined },
+    forms: [{ kind: 'long', name: "group-separator", value: { kind: 'required', missingValueName: "separator" } }],
+    summary: "use SEP between context groups",
+    valueName: "SEP",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: "noGroupSeparator", value: true }] },
+    forms: [{ kind: 'long', name: "no-group-separator", value: { kind: 'none' } }],
+    summary: "do not print separators between context groups",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'required-value', key: "maxCount", parse: ({ rawValue }: { rawValue: string }) => parseGrepCountOption({ value: rawValue, target: 'max-count' }) },
+    forms: [
+      { kind: 'short', name: "m", value: { kind: 'required-attached-or-following', missingValueName: "num" } },
+      { kind: 'long', name: "max-count", value: { kind: 'required', missingValueName: "num" } },
+    ],
+    summary: "stop after NUM selected lines",
+    valueName: "NUM",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'required-value', key: "regexp", parse: undefined },
+    forms: [
+      { kind: 'short', name: "e", value: { kind: 'required-attached-or-following', missingValueName: "pattern" } },
+      { kind: 'long', name: "regexp", value: { kind: 'required', missingValueName: "pattern" } },
+    ],
+    summary: "add a pattern",
+    valueName: "PATTERN",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'required-value', key: "patternFile", parse: undefined },
+    forms: [
+      { kind: 'short', name: "f", value: { kind: 'required-attached-or-following', missingValueName: "file" } },
+      { kind: 'long', name: "file", value: { kind: 'required', missingValueName: "file" } },
+    ],
+    summary: "read patterns from file",
+    valueName: "FILE",
+    category: "common",
+  },
+  {
+    semantic: { kind: 'required-value', key: "include", parse: undefined },
+    forms: [{ kind: 'long', name: "include", value: { kind: 'required', missingValueName: "glob" } }],
+    summary: "search only files matching GLOB",
+    valueName: "GLOB",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'required-value', key: "exclude", parse: undefined },
+    forms: [{ kind: 'long', name: "exclude", value: { kind: 'required', missingValueName: "glob" } }],
+    summary: "skip files matching GLOB",
+    valueName: "GLOB",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'required-value', key: "excludeFrom", parse: undefined },
+    forms: [{ kind: 'long', name: "exclude-from", value: { kind: 'required', missingValueName: "file" } }],
+    summary: "skip files matching patterns from FILE",
+    valueName: "FILE",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'required-value', key: "excludeDir", parse: undefined },
+    forms: [{ kind: 'long', name: "exclude-dir", value: { kind: 'required', missingValueName: "glob" } }],
+    summary: "skip directories matching GLOB",
+    valueName: "GLOB",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'required-value', key: "label", parse: undefined },
+    forms: [{ kind: 'long', name: "label", value: { kind: 'required', missingValueName: "label" } }],
+    summary: "use LABEL as the standard-input file name",
+    valueName: "LABEL",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'color' },
+    forms: [{ kind: 'long', name: "color", value: { kind: 'optional-inline' } }],
+    summary: "control color output",
+    valueName: "WHEN",
+    category: "advanced",
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'color' },
+    forms: [{ kind: 'long', name: "colour", value: { kind: 'optional-inline' } }],
+    summary: "control color output",
+    valueName: "WHEN",
+    category: "advanced",
+  },
+] as const;
+
+const grepArgvCatalog = defineArgvCatalog<StandardArgvAction<'color'>>({
+  definitions: grepOptions,
+  nonExecutableLongOptions: [],
+});
+const grepArgvHelp = defineArgvHelpPresentation({ catalog: grepArgvCatalog, rows: grepOptions });
+const grepArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'all',
+};
+
+function normalizeGrepContextOptions({ args }: { args: readonly string[] }): readonly string[] {
+  const isContextShorthand = ({ token }: { token: string }): boolean => /^-\d+$/u.test(token);
+  if (!args.some(token => isContextShorthand({ token }))) {
+    return args;
+  }
+
+  // Mark each unclaimed -NUM as a context occurrence. Its original digits
+  // stay in args so only a shorthand selected for output needs validation.
+  const normalized = [...args];
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]!;
+    if (token === "--") {
+      break;
+    }
+    if (isContextShorthand({ token })) {
+      normalized[index] = "--context=0";
+      continue;
+    }
+    if (token.startsWith("--")) {
+      const analysis = analyzeArgvLongForm({ token, catalog: grepArgvCatalog, longNameMatch: grepArgvPolicy.longNameMatch });
+      if (analysis.kind === "matched" && analysis.value.kind === "following-required") {
+        index += 1;
+      }
+      continue;
+    }
+    if (!token.startsWith("-")) {
+      continue;
+    }
+    shortOptions: for (let offset = 1; offset < token.length;) {
+      const analysis = analyzeArgvShortForm({ token, bodyOffset: offset, prefix: "-", catalog: grepArgvCatalog });
+      switch (analysis.kind) {
+      case "unknown":
+        break shortOptions;
+      case "matched":
+        switch (analysis.value.kind) {
+        case "following-required":
+          index += 1;
+          break;
+        case "none":
+        case "inline":
+        case "following-optional":
+          break;
+        default: {
+          const _ex: never = analysis.value;
+          throw new Error(`Unhandled grep option value claim: ${JSON.stringify(_ex)}`);
+        }
+        }
+        offset = analysis.nextBodyOffset;
+        break;
+      default: {
+        const _ex: never = analysis;
+        throw new Error(`Unhandled grep short option analysis: ${JSON.stringify(_ex)}`);
+      }
+      }
+    }
+  }
+  return normalized;
+}
+
 export const grepCommandImplementation: WeshCommandImplementation = {
   fn: async ({
     context,
   }: {
     context: WeshCommandContext;
   }): Promise<WeshCommandResult> => {
-    const grepArgvSpec: StandardArgvParserSpec = {
-      options: [
-        {
-          kind: "flag",
-          short: "E",
-          long: "extended-regexp",
-          effects: [{ key: "extendedRegexp", value: true }],
-          help: {
-            summary: "use extended regular expressions",
-            category: "common",
-          },
-        },
-        {
-          kind: "flag",
-          short: "G",
-          long: "basic-regexp",
-          effects: [{ key: "basicRegexp", value: true }],
-          help: {
-            summary: "use basic regular expressions",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "P",
-          long: "perl-regexp",
-          effects: [{ key: "perlRegexp", value: true }],
-          help: {
-            summary: "use Perl-compatible regular expressions",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: undefined,
-          long: "help",
-          effects: [{ key: "help", value: true }],
-          help: { summary: "display this help and exit", category: "common" },
-        },
-        {
-          kind: "flag",
-          short: "i",
-          long: "ignore-case",
-          effects: [{ key: "ignoreCase", value: true }],
-          help: { summary: "ignore case distinctions", category: "common" },
-        },
-        {
-          kind: "flag",
-          short: "y",
-          long: undefined,
-          effects: [{ key: "ignoreCase", value: true }],
-          help: { summary: "same as -i", category: "advanced" },
-        },
-        {
-          kind: "flag",
-          short: undefined,
-          long: "no-ignore-case",
-          effects: [{ key: "ignoreCase", value: false }],
-          help: {
-            summary: "do not ignore case distinctions",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "v",
-          long: "invert-match",
-          effects: [{ key: "invertMatch", value: true }],
-          help: { summary: "select non-matching lines", category: "common" },
-        },
-        {
-          kind: "flag",
-          short: "n",
-          long: "line-number",
-          effects: [{ key: "lineNumber", value: true }],
-          help: { summary: "print line numbers", category: "common" },
-        },
-        {
-          kind: "flag",
-          short: "b",
-          long: "byte-offset",
-          effects: [{ key: "byteOffset", value: true }],
-          help: { summary: "print byte offsets", category: "advanced" },
-        },
-        {
-          kind: "flag",
-          short: "w",
-          long: "word-regexp",
-          effects: [{ key: "wordRegexp", value: true }],
-          help: { summary: "match only whole words", category: "advanced" },
-        },
-        {
-          kind: "flag",
-          short: "x",
-          long: "line-regexp",
-          effects: [{ key: "exactLine", value: true }],
-          help: { summary: "match only whole lines", category: "advanced" },
-        },
-        {
-          kind: "flag",
-          short: "F",
-          long: "fixed-strings",
-          effects: [{ key: "fixedStrings", value: true }],
-          help: {
-            summary: "treat patterns as literal strings",
-            category: "common",
-          },
-        },
-        {
-          kind: "flag",
-          short: "z",
-          long: "null-data",
-          effects: [{ key: "nullData", value: true }],
-          help: {
-            summary: "end input records with NUL instead of newline",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "U",
-          long: "binary",
-          effects: [],
-          help: {
-            summary: "do not strip carriage returns at end of line",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "u",
-          long: "unix-byte-offsets",
-          effects: [{ key: "obsoleteUnixByteOffsets", value: true }],
-          help: {
-            summary: "report Unix-style byte offsets (obsolete no-op)",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "I",
-          long: undefined,
-          effects: [{ key: "binaryFilesMode", value: "without-match" }],
-          help: {
-            summary: "assume binary files contain no matches",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "a",
-          long: "text",
-          effects: [{ key: "binaryFilesMode", value: "text" }],
-          help: {
-            summary: "process binary files as text",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: undefined,
-          long: "binary-files",
-          key: "binaryFilesMode",
-          valueName: "TYPE",
-          allowAttachedValue: false,
-          parseValue: parseBinaryFilesMode,
-          help: {
-            summary: "assume TYPE is binary, text, or without-match",
-            valueName: "TYPE",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "s",
-          long: "no-messages",
-          effects: [{ key: "noMessages", value: true }],
-          help: { summary: "suppress error messages", category: "advanced" },
-        },
-        {
-          kind: "flag",
-          short: "q",
-          long: "quiet",
-          effects: [{ key: "quiet", value: true }],
-          help: { summary: "suppress normal output", category: "common" },
-        },
-        {
-          kind: "flag",
-          short: undefined,
-          long: "silent",
-          effects: [{ key: "quiet", value: true }],
-          help: { summary: "same as --quiet", category: "advanced" },
-        },
-        {
-          kind: "flag",
-          short: "c",
-          long: "count",
-          effects: [{ key: "countOnly", value: true }],
-          help: {
-            summary: "print only a count of matching lines",
-            category: "common",
-          },
-        },
-        {
-          kind: "flag",
-          short: "l",
-          long: "files-with-matches",
-          effects: [{ key: "filesWithMatches", value: true }],
-          help: {
-            summary: "print only names of matching files",
-            category: "common",
-          },
-        },
-        {
-          kind: "flag",
-          short: "L",
-          long: "files-without-match",
-          effects: [{ key: "filesWithoutMatches", value: true }],
-          help: {
-            summary: "print only names of files without matches",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "o",
-          long: "only-matching",
-          effects: [{ key: "onlyMatching", value: true }],
-          help: { summary: "print only matched text", category: "advanced" },
-        },
-        {
-          kind: "flag",
-          short: "h",
-          long: "no-filename",
-          effects: [{ key: "noFilename", value: true }],
-          help: {
-            summary: "suppress file name prefixes",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "H",
-          long: "with-filename",
-          effects: [{ key: "withFilename", value: true }],
-          help: {
-            summary: "always print file name prefixes",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "Z",
-          long: "null",
-          effects: [{ key: "nullFilename", value: true }],
-          help: {
-            summary: "end printed file names with NUL",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "T",
-          long: "initial-tab",
-          effects: [{ key: "initialTab", value: true }],
-          help: {
-            summary: "align line content on a tab stop",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: undefined,
-          long: "line-buffered",
-          effects: [{ key: "lineBuffered", value: true }],
-          help: {
-            summary: "flush output after each reported line",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "r",
-          long: "recursive",
-          effects: [{ key: "recursive", value: true }],
-          help: {
-            summary: "search directories recursively",
-            category: "common",
-          },
-        },
-        {
-          kind: "value",
-          short: "d",
-          long: "directories",
-          key: "directories",
-          valueName: "action",
-          allowAttachedValue: true,
-          parseValue: parseDirectoryAction,
-          help: {
-            summary: "handle directories with ACTION",
-            valueName: "ACTION",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: "D",
-          long: "devices",
-          key: "devices",
-          valueName: "action",
-          allowAttachedValue: true,
-          parseValue: parseDeviceAction,
-          help: {
-            summary: "handle devices with ACTION",
-            valueName: "ACTION",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: "R",
-          long: "dereference-recursive",
-          effects: [
-            { key: "recursive", value: true },
-            { key: "dereferenceRecursive", value: true },
-          ],
-          help: {
-            summary: "follow all symbolic links recursively",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: "A",
-          long: "after-context",
-          key: "afterContext",
-          valueName: "lines",
-          allowAttachedValue: true,
-          parseValue: undefined,
-          help: {
-            summary: "print NUM trailing context lines",
-            valueName: "NUM",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: "B",
-          long: "before-context",
-          key: "beforeContext",
-          valueName: "lines",
-          allowAttachedValue: true,
-          parseValue: undefined,
-          help: {
-            summary: "print NUM leading context lines",
-            valueName: "NUM",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: "C",
-          long: "context",
-          key: "context",
-          valueName: "lines",
-          allowAttachedValue: true,
-          parseValue: undefined,
-          help: {
-            summary: "print NUM context lines",
-            valueName: "NUM",
-            category: "common",
-          },
-        },
-        {
-          kind: "value",
-          short: undefined,
-          long: "group-separator",
-          key: "groupSeparator",
-          valueName: "separator",
-          allowAttachedValue: false,
-          parseValue: undefined,
-          help: {
-            summary: "use SEP between context groups",
-            valueName: "SEP",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "flag",
-          short: undefined,
-          long: "no-group-separator",
-          effects: [{ key: "noGroupSeparator", value: true }],
-          help: {
-            summary: "do not print separators between context groups",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: "m",
-          long: "max-count",
-          key: "maxCount",
-          valueName: "num",
-          allowAttachedValue: true,
-          parseValue: undefined,
-          help: {
-            summary: "stop after NUM selected lines",
-            valueName: "NUM",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: "e",
-          long: "regexp",
-          key: "regexp",
-          valueName: "pattern",
-          allowAttachedValue: true,
-          parseValue: undefined,
-          help: {
-            summary: "add a pattern",
-            valueName: "PATTERN",
-            category: "common",
-          },
-        },
-        {
-          kind: "value",
-          short: "f",
-          long: "file",
-          key: "patternFile",
-          valueName: "file",
-          allowAttachedValue: true,
-          parseValue: undefined,
-          help: {
-            summary: "read patterns from file",
-            valueName: "FILE",
-            category: "common",
-          },
-        },
-        {
-          kind: "value",
-          short: undefined,
-          long: "include",
-          key: "include",
-          valueName: "glob",
-          allowAttachedValue: false,
-          parseValue: undefined,
-          help: {
-            summary: "search only files matching GLOB",
-            valueName: "GLOB",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: undefined,
-          long: "exclude",
-          key: "exclude",
-          valueName: "glob",
-          allowAttachedValue: false,
-          parseValue: undefined,
-          help: {
-            summary: "skip files matching GLOB",
-            valueName: "GLOB",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: undefined,
-          long: "exclude-from",
-          key: "excludeFrom",
-          valueName: "file",
-          allowAttachedValue: false,
-          parseValue: undefined,
-          help: {
-            summary: "skip files matching patterns from FILE",
-            valueName: "FILE",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: undefined,
-          long: "exclude-dir",
-          key: "excludeDir",
-          valueName: "glob",
-          allowAttachedValue: false,
-          parseValue: undefined,
-          help: {
-            summary: "skip directories matching GLOB",
-            valueName: "GLOB",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: undefined,
-          long: "label",
-          key: "label",
-          valueName: "label",
-          allowAttachedValue: false,
-          parseValue: undefined,
-          help: {
-            summary: "use LABEL as the standard-input file name",
-            valueName: "LABEL",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: undefined,
-          long: "color",
-          key: "color",
-          valueName: "when",
-          allowAttachedValue: false,
-          parseValue: undefined,
-          help: {
-            summary: "control color output",
-            valueName: "WHEN",
-            category: "advanced",
-          },
-        },
-        {
-          kind: "value",
-          short: undefined,
-          long: "colour",
-          key: "color",
-          valueName: "when",
-          allowAttachedValue: false,
-          parseValue: undefined,
-          help: {
-            summary: "control color output",
-            valueName: "WHEN",
-            category: "advanced",
-          },
-        },
-      ],
-      allowShortFlagBundles: true,
-      stopAtDoubleDash: true,
-      treatSingleDashAsPositional: true,
-      specialTokenParsers: [parseOptionalColorToken, parseNumericContextToken],
-    };
-
-    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
-      args: context.args,
-      spec: grepArgvSpec,
-      earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+    const originalArgs = context.args;
+    const args = normalizeGrepContextOptions({ args: originalArgs });
+    const parsedArgs = stopArgvAtFirstEarlyExit({
+      args,
+      catalog: grepArgvCatalog,
+      policy: grepArgvPolicy,
+      earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
     });
-    const parsed = parseStandardArgv({ args: parsedArgs, spec: grepArgvSpec });
-    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
-      args: parsedArgs,
-      spec: grepArgvSpec,
-      parsed,
-      findSemanticIssue: ({ parsed: candidate }) => {
-        for (const occurrence of candidate.occurrences) {
-          if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') {
-            continue;
-          }
-          if (
-            (occurrence.key === 'maxCount'
-              || occurrence.key === 'beforeContext'
-              || occurrence.key === 'afterContext'
-              || occurrence.key === 'context')
-            && parseNonNegativeInteger({ value: occurrence.value }) === undefined
-          ) {
-            return occurrence.value;
-          }
-        }
-        return undefined;
-      },
-    });
-
-    if (parsed.diagnostics.length > 0 && !semanticIssuePrecedesDiagnostic) {
-      await writeCommandUsageError({
-        context,
-        command: "grep",
-        message: `grep: ${parsed.diagnostics[0]!.message}`,
-        argvSpec: grepArgvSpec,
-      });
+    const parsed = parseStandardArgv({ args: parsedArgs, catalog: grepArgvCatalog, policy: grepArgvPolicy });
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      if (diagnostic.kind === "invalid_option_value" &&
+        (diagnostic.message === "invalid max count" || diagnostic.message.endsWith(": invalid context length argument"))) {
+        await context.text().error({ text: `grep: ${diagnostic.message}\n` });
+      } else {
+        await writeCommandUsageError({
+          context,
+          command: "grep",
+          message: `grep: ${diagnostic.message}`,
+          usageSummary: formatArgvUsageSummary({ presentation: grepArgvHelp }),
+        });
+      }
       return { exitCode: 2 };
     }
 
-    for (const occurrence of parsed.occurrences) {
-      if (occurrence.kind !== "value" || typeof occurrence.value !== "string") {
-        continue;
-      }
-      switch (occurrence.key) {
-      case "maxCount":
-        if (parseNonNegativeInteger({ value: occurrence.value }) === undefined) {
-          await context.text().error({ text: "grep: invalid max count\n" });
-          return { exitCode: 2 };
-        }
-        break;
-      case "beforeContext":
-      case "afterContext":
-      case "context":
-        if (parseNonNegativeInteger({ value: occurrence.value }) === undefined) {
-          await context.text().error({
-            text: `grep: ${occurrence.value}: invalid context length argument\n`,
-          });
-          return { exitCode: 2 };
-        }
-        break;
-      default:
-        break;
-      }
-    }
-
+    const occurrences = parsed.occurrences ?? [];
     if (parsed.optionValues.help === true) {
       await writeCommandHelp({
         context,
         command: "grep",
-        argvSpec: grepArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: grepArgvHelp }),
       });
       return { exitCode: 0 };
     }
 
     const text = context.text();
-    const maxCountRaw = parsed.optionValues.maxCount;
-    const maxCount =
-      maxCountRaw === undefined
-        ? Number.POSITIVE_INFINITY
-        : parseNonNegativeInteger({ value: maxCountRaw })!;
+    const maxCount = (parsed.optionValues.maxCount as number | undefined) ?? Number.POSITIVE_INFINITY;
     const characterLocaleMode = resolveCharacterLocaleMode({
       env: context.env,
     });
@@ -2604,25 +2500,25 @@ export const grepCommandImplementation: WeshCommandImplementation = {
     const excludeDirPatterns: RegExp[] = [];
     let hasExplicitPatternSource = false;
 
-    for (const occurrence of parsed.occurrences) {
-      if (occurrence.kind !== "value" || typeof occurrence.value !== "string") {
+    for (const { semantic, value } of occurrences) {
+      if (semantic.kind !== "required-value" || value.kind === "none") {
         continue;
       }
 
       try {
-        switch (occurrence.key) {
+        switch (semantic.key) {
         case "regexp":
           hasExplicitPatternSource = true;
           appendNewlineSeparatedPatterns({
             patterns,
-            value: occurrence.value,
+            value: value.rawValue,
           });
           break;
         case "patternFile": {
           hasExplicitPatternSource = true;
           const filePatterns = await readLineFile({
             context,
-            path: occurrence.value,
+            path: value.rawValue,
             stripTrailingCarriageReturn: false,
           });
           for (const pattern of filePatterns) {
@@ -2633,9 +2529,9 @@ export const grepCommandImplementation: WeshCommandImplementation = {
         case "include":
         case "exclude":
           fileSelectionRules.push({
-            include: occurrence.key === "include",
+            include: semantic.key === "include",
             pattern: globToRegExp({
-              pattern: occurrence.value,
+              pattern: value.rawValue,
               characterLocaleMode,
             }),
           });
@@ -2643,7 +2539,7 @@ export const grepCommandImplementation: WeshCommandImplementation = {
         case "excludeFrom": {
           const excludeGlobs = await readLineFile({
             context,
-            path: occurrence.value,
+            path: value.rawValue,
             stripTrailingCarriageReturn: true,
           });
           for (const pattern of excludeGlobs) {
@@ -2657,7 +2553,7 @@ export const grepCommandImplementation: WeshCommandImplementation = {
         case "excludeDir":
           excludeDirPatterns.push(
             globToRegExp({
-              pattern: occurrence.value,
+              pattern: value.rawValue,
               characterLocaleMode,
             }),
           );
@@ -2667,7 +2563,7 @@ export const grepCommandImplementation: WeshCommandImplementation = {
         }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        await text.error({ text: `grep: ${occurrence.value}: ${message}\n` });
+        await text.error({ text: `grep: ${value.rawValue}: ${message}\n` });
         return { exitCode: 2 };
       }
     }
@@ -2680,7 +2576,7 @@ export const grepCommandImplementation: WeshCommandImplementation = {
           context,
           command: "grep",
           message: "grep: missing pattern operand",
-          argvSpec: grepArgvSpec,
+          usageSummary: formatArgvUsageSummary({ presentation: grepArgvHelp }),
         });
         return { exitCode: 1 };
       }
@@ -2696,16 +2592,16 @@ export const grepCommandImplementation: WeshCommandImplementation = {
     const invertMatch = parsed.optionValues.invertMatch === true;
     const noSelectedRecordIsPossible =
       invertMatch && !exactLine && !wordRegexp && patterns.includes("");
-    const rawColorMode = parsed.optionValues.color;
-    const parsedColorMode = typeof rawColorMode === "string"
-      ? parseColorMode({ value: rawColorMode })
+    const colorValue = parsed.deferred.at(-1)?.value;
+    const parsedColorMode = colorValue !== undefined && colorValue.kind !== "none"
+      ? parseColorMode({ value: colorValue.rawValue })
       : { ok: true as const, value: "never" as const };
     if (!parsedColorMode.ok) {
       await writeCommandUsageError({
         context,
         command: "grep",
         message: `grep: ${parsedColorMode.message}`,
-        argvSpec: grepArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: grepArgvHelp }),
       });
       return { exitCode: 2 };
     }
@@ -2735,7 +2631,7 @@ export const grepCommandImplementation: WeshCommandImplementation = {
     let syntax: GrepPatternSyntax;
     try {
       syntax = resolveGrepPatternSyntax({
-        occurrences: parsed.occurrences,
+        occurrences,
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -2845,47 +2741,31 @@ export const grepCommandImplementation: WeshCommandImplementation = {
       }
     };
 
-    const beforeRaw =
-      parsed.optionValues.beforeContext ?? parsed.optionValues.context;
-    const afterRaw =
-      parsed.optionValues.afterContext ?? parsed.optionValues.context;
-    const before =
-      beforeRaw === undefined
-        ? 0
-        : parseNonNegativeInteger({ value: beforeRaw });
-    const after =
-      afterRaw === undefined ? 0 : parseNonNegativeInteger({ value: afterRaw });
-    if (before === undefined || after === undefined) {
-      const invalidValue = before === undefined ? beforeRaw : afterRaw;
-      await text.error({
-        text: `grep: ${String(invalidValue)}: invalid context length argument\n`,
-      });
-      return { exitCode: 2 };
-    }
-    const contextRequested = beforeRaw !== undefined || afterRaw !== undefined;
-    let groupSeparator: string | undefined = "--";
-    for (const occurrence of parsed.occurrences) {
-      switch (occurrence.kind) {
-      case "value":
-        if (isValueOccurrenceForKey(occurrence, "groupSeparator")) {
-          groupSeparator = occurrence.value;
+    const beforeContext = parsed.optionValues.beforeContext as number | undefined;
+    const afterContext = parsed.optionValues.afterContext as number | undefined;
+    let bothContext = parsed.optionValues.context as number | undefined;
+    if (args !== originalArgs && (beforeContext === undefined || afterContext === undefined)) {
+      const contextOption = occurrences.findLast(({ semantic }) => semantic.kind === "required-value" && semantic.key === "context");
+      if (contextOption !== undefined && originalArgs[contextOption.argvIndex] !== args[contextOption.argvIndex]) {
+        const rawValue = originalArgs[contextOption.argvIndex]!.slice(1);
+        const value = parseNonNegativeInteger({ value: rawValue });
+        if (value === undefined) {
+          await text.error({ text: `grep: ${rawValue}: invalid context length argument\n` });
+          return { exitCode: 2 };
         }
-        break;
-      case "flag":
-        if (
-          occurrence.effects.some(
-            (effect) => effect.key === "noGroupSeparator",
-          )
-        ) {
-          groupSeparator = undefined;
-        }
-        break;
-      case "special":
-        break;
-      default: {
-        const _ex: never = occurrence;
-        throw new Error(`Unhandled occurrence kind: ${_ex}`);
+        bothContext = value;
       }
+    }
+    const before = beforeContext ?? bothContext ?? 0;
+    const after = afterContext ?? bothContext ?? 0;
+    const contextRequested = beforeContext !== undefined || afterContext !== undefined || bothContext !== undefined;
+    let groupSeparator: string | undefined = "--";
+    for (const { semantic, value } of occurrences) {
+      if (semantic.kind === "required-value" && semantic.key === "groupSeparator" && value.kind !== "none") {
+        groupSeparator = value.rawValue;
+      }
+      if (grepOptionEffects({ action: semantic }).some(effect => effect.key === "noGroupSeparator")) {
+        groupSeparator = undefined;
       }
     }
     const inputRecordDelimiterByte = nullData ? 0x00 : 0x0a;
@@ -2896,17 +2776,11 @@ export const grepCommandImplementation: WeshCommandImplementation = {
     const quiet = parsed.optionValues.quiet === true;
     const noMessages = parsed.optionValues.noMessages === true;
     let directoryAction: GrepDirectoryAction = "read";
-    for (const occurrence of parsed.occurrences) {
-      if (occurrence.kind === "value" && occurrence.key === "directories") {
-        directoryAction = occurrence.value as GrepDirectoryAction;
-        continue;
+    for (const { semantic, value } of occurrences) {
+      if (semantic.kind === "required-value" && semantic.key === "directories" && value.kind !== "none") {
+        directoryAction = value.rawValue as GrepDirectoryAction;
       }
-      if (
-        occurrence.kind === "flag" &&
-        occurrence.effects.some(
-          (effect) => effect.key === "recursive" && effect.value === true,
-        )
-      ) {
+      if (grepOptionEffects({ action: semantic }).some(effect => effect.key === "recursive" && effect.value === true)) {
         directoryAction = "recurse";
       }
     }
@@ -2930,19 +2804,8 @@ export const grepCommandImplementation: WeshCommandImplementation = {
     let countOnly = false;
     let onlyMatching = false;
     let filenameMode: "auto" | "always" | "never" = "auto";
-    for (const occurrence of parsed.occurrences) {
-      switch (occurrence.kind) {
-      case "flag":
-        break;
-      case "value":
-      case "special":
-        continue;
-      default: {
-        const _ex: never = occurrence;
-        throw new Error(`Unhandled occurrence kind: ${_ex}`);
-      }
-      }
-      for (const effect of occurrence.effects) {
+    for (const { semantic } of occurrences) {
+      for (const effect of grepOptionEffects({ action: semantic })) {
         if (effect.key === "countOnly") {
           countOnly = true;
         }

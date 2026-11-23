@@ -1,12 +1,15 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import {
-  findFirstStandardSemanticIssue,
-  STANDARD_HELP_EARLY_EXIT_OPTIONS,
-  standardSemanticIssuePrecedesDiagnostic,
-  stopStandardArgvAtFirstEarlyExit,
-} from '@/features/wesh/commands/_shared/argv';
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  parseStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+  type StandardArgvRawValue,
+} from '@/features/wesh/argv';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
 import type {
   WeshCommandContext,
@@ -261,177 +264,187 @@ async function openOutputHandle({
   };
 }
 
-const shufArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'e', long: 'echo', effects: [{ key: 'echo', value: true }], help: { summary: 'treat each ARG as an input line', category: 'common' } },
-    { kind: 'flag', short: 'r', long: 'repeat', effects: [{ key: 'repeat', value: true }], help: { summary: 'output lines can be repeated', category: 'common' } },
-    {
-      kind: 'value',
-      short: 'i',
-      long: 'input-range',
-      key: 'inputRange',
-      valueName: 'LO-HI',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'treat each number LO through HI as an input line', valueName: 'LO-HI', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'n',
-      long: 'head-count',
-      key: 'count',
-      valueName: 'COUNT',
-      allowAttachedValue: true,
-      parseValue: ({ value }) => parseCount({ value }),
-      help: { summary: 'output at most COUNT lines', valueName: 'COUNT', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'o',
-      long: 'output',
-      key: 'outputPath',
-      valueName: 'FILE',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'write result to FILE instead of standard output', valueName: 'FILE', category: 'common' },
-    },
-    { kind: 'flag', short: 'z', long: 'zero-terminated', effects: [{ key: 'zeroTerminated', value: true }], help: { summary: 'line delimiter is NUL, not newline', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const shufOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'echo', value: true }] },
+    forms: [
+      { kind: 'short', name: 'e', value: { kind: 'none' } },
+      { kind: 'long', name: 'echo', value: { kind: 'none' } },
+    ],
+    summary: 'treat each ARG as an input line',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'repeat', value: true }] },
+    forms: [
+      { kind: 'short', name: 'r', value: { kind: 'none' } },
+      { kind: 'long', name: 'repeat', value: { kind: 'none' } },
+    ],
+    summary: 'output lines can be repeated',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'inputRange' },
+    forms: [
+      { kind: 'short', name: 'i', value: { kind: 'required-attached-or-following', missingValueName: 'LO-HI' } },
+      { kind: 'long', name: 'input-range', value: { kind: 'required', missingValueName: 'LO-HI' } },
+    ],
+    summary: 'treat each number LO through HI as an input line',
+    valueName: 'LO-HI',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'count' },
+    forms: [
+      { kind: 'short', name: 'n', value: { kind: 'required-attached-or-following', missingValueName: 'COUNT' } },
+      { kind: 'long', name: 'head-count', value: { kind: 'required', missingValueName: 'COUNT' } },
+    ],
+    summary: 'output at most COUNT lines',
+    valueName: 'COUNT',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'outputPath' },
+    forms: [
+      { kind: 'short', name: 'o', value: { kind: 'required-attached-or-following', missingValueName: 'FILE' } },
+      { kind: 'long', name: 'output', value: { kind: 'required', missingValueName: 'FILE' } },
+    ],
+    summary: 'write result to FILE instead of standard output',
+    valueName: 'FILE',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'zeroTerminated', value: true }] },
+    forms: [
+      { kind: 'short', name: 'z', value: { kind: 'none' } },
+      { kind: 'long', name: 'zero-terminated', value: { kind: 'none' } },
+    ],
+    summary: 'line delimiter is NUL, not newline',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'help' },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
+
+type ShufArgvTag = Extract<(typeof shufOptions)[number]['semantic'], { kind: 'deferred' }>['tag'];
+
+const shufArgvCatalog = defineArgvCatalog<StandardArgvAction<ShufArgvTag>>({
+  definitions: shufOptions,
+  nonExecutableLongOptions: ['random-source', 'version'],
+});
+const shufArgvHelp = defineArgvHelpPresentation({ catalog: shufArgvCatalog, rows: shufOptions });
+const shufArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
-type ShufPreHelpSemanticIssue =
-  | { readonly kind: 'multiple-output' }
-  | { readonly kind: 'input-range', readonly message: string };
+function readShufOptionValue({ value }: { value: StandardArgvRawValue }): string {
+  if (!('rawValue' in value)) {
+    throw new Error('Missing parsed shuf option value');
+  }
+  return value.rawValue;
+}
 
-function findShufPreHelpSemanticIssue({
-  parsed,
+async function writeShufUsageError({
+  context,
+  message,
 }: {
-  parsed: ReturnType<typeof parseStandardArgv>,
-}): ShufPreHelpSemanticIssue | undefined {
-  const outputPaths = new Set(parsed.occurrences.flatMap((occurrence) => (
-    occurrence.kind === 'value' && occurrence.key === 'outputPath' && typeof occurrence.value === 'string'
-      ? [occurrence.value]
-      : []
-  )));
-  if (outputPaths.size > 1) {
-    return { kind: 'multiple-output' };
-  }
-
-  const inputRangeCount = parsed.occurrences.filter((occurrence) => (
-    occurrence.kind === 'value' && occurrence.key === 'inputRange'
-  )).length;
-  if (inputRangeCount > 1) {
-    return { kind: 'input-range', message: 'multiple -i options specified' };
-  }
-
-  const range = parsed.optionValues.inputRange;
-  if (typeof range !== 'string') {
-    return undefined;
-  }
-  const result = parseInputRange({ value: range });
-  return result.ok ? undefined : { kind: 'input-range', message: result.message };
+  context: WeshCommandContext,
+  message: string,
+}): Promise<WeshCommandResult> {
+  await writeCommandUsageError({
+    context,
+    command: 'shuf',
+    message: `shuf: ${message}`,
+    usageSummary: formatArgvUsageSummary({ presentation: shufArgvHelp }),
+  });
+  return { exitCode: 1 };
 }
 
 export const shufCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
+    const parsed = parseStandardArgv({
       args: context.args,
-      spec: shufArgvSpec,
-      earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+      catalog: shufArgvCatalog,
+      policy: shufArgvPolicy,
     });
-    const parsed = parseStandardArgv({ args: parsedArgs, spec: shufArgvSpec });
-
     const diagnostic = parsed.diagnostics[0];
-    const firstPreHelpSemanticIssue = findFirstStandardSemanticIssue({
-      args: parsedArgs,
-      spec: shufArgvSpec,
-      parsed,
-      findSemanticIssue: findShufPreHelpSemanticIssue,
-    });
-    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
-      args: parsedArgs,
-      spec: shufArgvSpec,
-      parsed,
-      findSemanticIssue: findShufPreHelpSemanticIssue,
-    });
-    if (diagnostic !== undefined && !semanticIssuePrecedesDiagnostic) {
-      await writeCommandUsageError({
-        context,
-        command: 'shuf',
-        message: `shuf: ${diagnostic.message}`,
-        argvSpec: shufArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
+    let inputRange: ShufInputRange | undefined;
+    let count: bigint | undefined;
+    let outputPath: string | undefined;
 
-    if (firstPreHelpSemanticIssue !== undefined) {
-      switch (firstPreHelpSemanticIssue.kind) {
-      case 'multiple-output':
-        await context.text().error({ text: 'shuf: multiple output files specified\n' });
-        return { exitCode: 1 };
-      case 'input-range':
-        await writeCommandUsageError({
+    for (const occurrence of parsed.deferred) {
+      if (diagnostic !== undefined && diagnostic.argvIndex <= occurrence.argvIndex) {
+        break;
+      }
+      const tag = occurrence.semantic.tag;
+      switch (tag) {
+      case 'inputRange': {
+        if (inputRange !== undefined) {
+          return writeShufUsageError({ context, message: 'multiple -i options specified' });
+        }
+        const range = parseInputRange({ value: readShufOptionValue({ value: occurrence.value }) });
+        if (!range.ok) {
+          return writeShufUsageError({ context, message: range.message });
+        }
+        inputRange = range.value;
+        break;
+      }
+      case 'count': {
+        const parsedCount = parseCount({ value: readShufOptionValue({ value: occurrence.value }) });
+        if (!parsedCount.ok) {
+          return writeShufUsageError({ context, message: parsedCount.message });
+        }
+        const candidateCount = BigInt(parsedCount.value);
+        if (count === undefined || candidateCount < count) {
+          count = candidateCount;
+        }
+        break;
+      }
+      case 'outputPath': {
+        const path = readShufOptionValue({ value: occurrence.value });
+        if (outputPath !== undefined && outputPath !== path) {
+          await context.text().error({ text: 'shuf: multiple output files specified\n' });
+          return { exitCode: 1 };
+        }
+        outputPath = path;
+        break;
+      }
+      case 'help':
+        await writeCommandHelp({
           context,
           command: 'shuf',
-          message: `shuf: ${firstPreHelpSemanticIssue.message}`,
-          argvSpec: shufArgvSpec,
+          optionLines: formatArgvOptionHelp({ presentation: shufArgvHelp }),
         });
-        return { exitCode: 1 };
+        return { exitCode: 0 };
       default: {
-        const _ex: never = firstPreHelpSemanticIssue;
-        throw new Error(`Unhandled shuf pre-help semantic issue: ${JSON.stringify(_ex)}`);
+        const _ex: never = tag;
+        throw new Error(`Unhandled shuf option: ${_ex}`);
       }
       }
     }
 
-    const inputRangeValue = parsed.optionValues.inputRange;
-    const parsedInputRange = typeof inputRangeValue === 'string'
-      ? parseInputRange({ value: inputRangeValue })
-      : undefined;
-    if (parsedInputRange !== undefined && !parsedInputRange.ok) {
-      throw new Error(`shuf pre-help validation missed input range: ${parsedInputRange.message}`);
-    }
-    const inputRange = parsedInputRange?.ok === true
-      ? parsedInputRange.value
-      : undefined;
-
-    if (parsed.optionValues.help === true) {
-      await writeCommandHelp({
-        context,
-        command: 'shuf',
-        argvSpec: shufArgvSpec,
-      });
-      return { exitCode: 0 };
+    if (diagnostic !== undefined) {
+      return writeShufUsageError({ context, message: diagnostic.message });
     }
 
     const echoArguments = parsed.optionValues.echo === true;
-    if (!echoArguments && parsed.positionals.length > 1) {
-      await writeCommandUsageError({
-        context,
-        command: 'shuf',
-        message: `shuf: extra operand '${parsed.positionals[1] ?? ''}'`,
-        argvSpec: shufArgvSpec,
-      });
-      return { exitCode: 1 };
+    if (echoArguments && inputRange !== undefined) {
+      return writeShufUsageError({ context, message: 'cannot combine -e and -i options' });
+    }
+    if (!echoArguments) {
+      const extraOperand = parsed.positionals[inputRange === undefined ? 1 : 0];
+      if (extraOperand !== undefined) {
+        return writeShufUsageError({ context, message: `extra operand '${extraOperand}'` });
+      }
     }
 
-    const countValue = parsed.optionValues.count;
-    const count = typeof countValue === 'string' ? BigInt(countValue) : undefined;
     const repeat = parsed.optionValues.repeat === true;
-    if (inputRange !== undefined && parsed.positionals.length > 0) {
-      await writeCommandUsageError({
-        context,
-        command: 'shuf',
-        message: `shuf: extra operand '${parsed.positionals[0] ?? ''}'`,
-        argvSpec: shufArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
 
     if (repeat && count === undefined) {
       await context.text().error({ text: 'shuf: unbounded repeat is not supported; specify -n\n' });
@@ -495,8 +508,6 @@ export const shufCommandImplementation: WeshCommandImplementation = {
       shuffleInPlace({ items: records });
     }
 
-    const outputPathValue = parsed.optionValues.outputPath;
-    const outputPath = typeof outputPathValue === 'string' ? outputPathValue : undefined;
     let output: Awaited<ReturnType<typeof openOutputHandle>>;
     try {
       output = await openOutputHandle({ context, outputPath });

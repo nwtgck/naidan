@@ -1,8 +1,11 @@
+import type { WeshPreparedRename } from '@/features/wesh/types';
 import type { GitFiles } from './files';
-import { pathExists, readFileText, replaceTextViaLock } from './files';
+import { readFileText, resolveOptionalEntry, withFileLock } from './files';
 import type { GitRepository } from './repository';
 import { sortByGitUtf8StringKey } from './utf8-order';
 import { joinPath } from './repository';
+
+const textEncoder = new TextEncoder();
 
 export interface GitPackedRef {
   refName: string,
@@ -16,17 +19,29 @@ function assertPackedObjectId({ objectId }: { objectId: string }): void {
   }
 }
 
-export async function readPackedRefs({ files, repository }: {
+async function readPackedRefFile({ files, path }: {
   files: GitFiles,
-  repository: GitRepository,
-}): Promise<GitPackedRef[]> {
-  const path = joinPath({ base: repository.commonDirPath, child: 'packed-refs' });
-  if (!await pathExists({ files, path })) {
-    return [];
+  path: string,
+}) {
+  const entry = await resolveOptionalEntry({ files, path });
+  switch (entry?.type) {
+  case undefined:
+    return { entry: undefined, entries: [] };
+  case 'file':
+    break;
+  case 'directory':
+  case 'fifo':
+  case 'chardev':
+  case 'symlink':
+    throw new Error(`Not a regular packed-refs file: ${path}`);
+  default: {
+    const _ex: never = entry;
+    throw new Error(`Unhandled packed-refs entry: ${String(_ex)}`);
+  }
   }
   const result: GitPackedRef[] = [];
   let previous: GitPackedRef | undefined;
-  for (const line of (await readFileText({ files, path })).split(/\r?\n/u)) {
+  for (const line of (await readFileText({ files, entry })).split(/\r?\n/u)) {
     if (line.length === 0 || line.startsWith('#')) {
       continue;
     }
@@ -47,14 +62,19 @@ export async function readPackedRefs({ files, repository }: {
     previous = { refName: match[2]!, objectId: match[1]!, peeledObjectId: undefined };
     result.push(previous);
   }
-  return result;
+  return { entry, entries: result };
 }
 
-async function writePackedRefs({ files, repository, entries }: {
+export async function readPackedRefs({ files, repository }: {
   files: GitFiles,
   repository: GitRepository,
+}): Promise<GitPackedRef[]> {
+  return (await readPackedRefFile({ files, path: joinPath({ base: repository.commonDirPath, child: 'packed-refs' }) })).entries;
+}
+
+function serializePackedRefs({ entries }: {
   entries: readonly GitPackedRef[],
-}): Promise<void> {
+}): Uint8Array {
   const sorted = sortByGitUtf8StringKey({ values: entries, key: ({ value }) => value.refName });
   const lines = ['# pack-refs with: peeled fully-peeled sorted '];
   for (const entry of sorted) {
@@ -63,25 +83,37 @@ async function writePackedRefs({ files, repository, entries }: {
       lines.push(`^${entry.peeledObjectId}`);
     }
   }
-  await replaceTextViaLock({
-    files,
-    path: joinPath({ base: repository.commonDirPath, child: 'packed-refs' }),
-    text: `${lines.join('\n')}\n`,
-  });
+  return textEncoder.encode(`${lines.join('\n')}\n`);
 }
 
-export async function removePackedRef({ files, repository, refName }: {
+export async function withPackedRefRemoval({ files, repository, refName, publish }: {
   files: GitFiles,
   repository: GitRepository,
   refName: string,
+  publish: ({ rename }: { rename: WeshPreparedRename | undefined }) => Promise<void>,
 }): Promise<boolean> {
-  const entries = await readPackedRefs({ files, repository });
-  const filtered = entries.filter(entry => entry.refName !== refName);
-  if (filtered.length === entries.length) {
-    return false;
-  }
-  await writePackedRefs({ files, repository, entries: filtered });
-  return true;
+  const path = joinPath({ base: repository.commonDirPath, child: 'packed-refs' });
+  return withFileLock({
+    files,
+    path,
+    operation: async ({ replace, verify }) => {
+      const { entry, entries } = await readPackedRefFile({ files, path });
+      const filtered = entries.filter(packed => packed.refName !== refName);
+      if (filtered.length === entries.length) {
+        await verify();
+        await publish({ rename: undefined });
+        return false;
+      }
+      await replace({
+        replacement: {
+          bytes: serializePackedRefs({ entries: filtered }),
+          expectedDestination: { entry },
+          publish,
+        },
+      });
+      return true;
+    },
+  });
 }
 
 export const TEST_ONLY = {

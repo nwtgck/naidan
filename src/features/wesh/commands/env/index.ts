@@ -1,21 +1,57 @@
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction } from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 
-const envArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'flag', short: 'i', long: 'ignore-environment', effects: [{ key: 'ignoreEnvironment', value: true }], help: { summary: 'start with an empty environment', category: 'common' } },
-    { kind: 'flag', short: '0', long: 'null', effects: [{ key: 'nullOutput', value: true }], help: { summary: 'end each output line with NUL, not newline', category: 'common' } },
-    { kind: 'value', short: 'u', long: 'unset', key: 'unset', valueName: 'NAME', allowAttachedValue: true, parseValue: undefined, help: { summary: 'remove variable from the environment', valueName: 'NAME', category: 'common' } },
-    { kind: 'value', short: 'C', long: 'chdir', key: 'chdir', valueName: 'DIR', allowAttachedValue: true, parseValue: undefined, help: { summary: 'change working directory to DIR', valueName: 'DIR', category: 'common' } },
-  ],
-  allowShortFlagBundles: false,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
-};
+const envOptions = [
+  {
+    forms: [
+      { kind: 'long', name: 'help', value: { kind: 'none' } },
+    ],
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    forms: [
+      { kind: 'short', name: 'i', value: { kind: 'none' } },
+      { kind: 'long', name: 'ignore-environment', value: { kind: 'none' } },
+    ],
+    semantic: { kind: 'effects', effects: [{ key: 'ignoreEnvironment', value: true }] },
+    summary: 'start with an empty environment',
+    category: 'common',
+  },
+  {
+    forms: [
+      { kind: 'short', name: '0', value: { kind: 'none' } },
+      { kind: 'long', name: 'null', value: { kind: 'none' } },
+    ],
+    semantic: { kind: 'effects', effects: [{ key: 'nullOutput', value: true }] },
+    summary: 'end each output line with NUL, not newline',
+    category: 'common',
+  },
+  {
+    forms: [
+      { kind: 'short', name: 'u', value: { kind: 'required-attached-or-following', missingValueName: 'NAME' } },
+      { kind: 'long', name: 'unset', value: { kind: 'required', missingValueName: 'NAME' } },
+    ],
+    semantic: { kind: 'required-value', key: 'unset', parse: undefined },
+    summary: 'remove variable from the environment',
+    category: 'common',
+  },
+  {
+    forms: [
+      { kind: 'short', name: 'C', value: { kind: 'required-attached-or-following', missingValueName: 'DIR' } },
+      { kind: 'long', name: 'chdir', value: { kind: 'required', missingValueName: 'DIR' } },
+    ],
+    semantic: { kind: 'required-value', key: 'chdir', parse: undefined },
+    summary: 'change working directory to DIR',
+    category: 'common',
+  },
+] as const;
+
+const envArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({ definitions: envOptions, nonExecutableLongOptions: [] });
+const envArgvHelp = defineArgvHelpPresentation({ catalog: envArgvCatalog, rows: envOptions });
 
 type ParsedEnvArguments =
   | {
@@ -38,142 +74,57 @@ type ParsedEnvArguments =
     };
 
 function parseEnvArguments({ args }: { args: string[] }): ParsedEnvArguments {
-  let ignoreEnvironment = false;
-  let nullOutput = false;
-  const unsetNames: string[] = [];
-  let changeDirectory: string | undefined;
-  let index = 0;
-  let parseOptions = true;
-
-  while (index < args.length && parseOptions) {
-    const argument = args[index]!;
-    if (argument === '--') {
-      parseOptions = false;
-      index += 1;
-      break;
-    }
-    if (argument === '-') {
-      ignoreEnvironment = true;
-      parseOptions = false;
-      index += 1;
-      break;
-    }
-    if (argument === '--help') {
-      return { kind: 'help' };
-    }
-    if (argument === '--ignore-environment') {
-      ignoreEnvironment = true;
-      index += 1;
-      continue;
-    }
-    if (argument === '--null') {
-      nullOutput = true;
-      index += 1;
-      continue;
-    }
-    if (argument === '--unset') {
-      const name = args[index + 1];
-      if (name === undefined) {
-        return {
-          kind: 'error',
-          message: `env: option '${argument}' requires an argument`,
-          showUsage: true,
-        };
+  const parsed = parseStandardArgv({
+    args,
+    catalog: envArgvCatalog,
+    policy: { longNameMatch: 'exact', optionBoundary: 'first-positional', occurrenceRetention: 'all' },
+  });
+  const occurrences = parsed.occurrences ?? [];
+  const diagnostic = parsed.diagnostics[0];
+  const help = occurrences.find(occurrence => args[occurrence.argvIndex] === '--help');
+  if (help !== undefined && (diagnostic === undefined || help.argvIndex < diagnostic.argvIndex)) {
+    return { kind: 'help' };
+  }
+  if (diagnostic !== undefined) {
+    const message = (() => {
+      switch (diagnostic.kind) {
+      case 'missing_option_value':
+        return `option '${diagnostic.option}' requires an argument`;
+      case 'unexpected_option_value':
+        return `unrecognized option '${args[diagnostic.argvIndex]}'`;
+      case 'unknown_long_option':
+      case 'unknown_short_option':
+      case 'ambiguous_long_option':
+      case 'invalid_option_value':
+        return diagnostic.message;
+      default: {
+        const _ex: never = diagnostic;
+        throw new Error(`Unhandled env argument diagnostic: ${JSON.stringify(_ex)}`);
       }
-      unsetNames.push(name);
-      index += 2;
-      continue;
-    }
-    if (argument.startsWith('--unset=')) {
-      unsetNames.push(argument.slice('--unset='.length));
-      index += 1;
-      continue;
-    }
-    if (argument === '--chdir') {
-      const directory = args[index + 1];
-      if (directory === undefined) {
-        return {
-          kind: 'error',
-          message: `env: option '${argument}' requires an argument`,
-          showUsage: true,
-        };
       }
-      changeDirectory = directory;
-      index += 2;
-      continue;
-    }
-    if (argument.startsWith('--chdir=')) {
-      changeDirectory = argument.slice('--chdir='.length);
-      index += 1;
-      continue;
-    }
-    if (argument.startsWith('-') && !argument.startsWith('--')) {
-      let optionIndex = 1;
-      let consumedFollowingArgument = false;
-      while (optionIndex < argument.length) {
-        const option = argument[optionIndex]!;
-        switch (option) {
-        case 'i':
-          ignoreEnvironment = true;
-          optionIndex += 1;
-          break;
-        case '0':
-          nullOutput = true;
-          optionIndex += 1;
-          break;
-        case 'u':
-        case 'C': {
-          const attachedValue = argument.slice(optionIndex + 1);
-          const value = attachedValue.length > 0
-            ? attachedValue
-            : args[index + 1];
-          if (value === undefined) {
-            return {
-              kind: 'error',
-              message: `env: option '-${option}' requires an argument`,
-              showUsage: true,
-            };
-          }
-          switch (option) {
-          case 'u':
-            unsetNames.push(value);
-            break;
-          case 'C':
-            changeDirectory = value;
-            break;
-          default: {
-            const _ex: never = option;
-            throw new Error(`Unhandled env value option: ${_ex}`);
-          }
-          }
-          consumedFollowingArgument = attachedValue.length === 0;
-          optionIndex = argument.length;
-          break;
-        }
-        default:
-          return {
-            kind: 'error',
-            message: `env: invalid option -- '${option}'`,
-            showUsage: true,
-          };
-        }
-      }
-      index += consumedFollowingArgument ? 2 : 1;
-      continue;
-    }
-    if (argument.startsWith('-')) {
-      return {
-        kind: 'error',
-        message: `env: unrecognized option '${argument}'`,
-        showUsage: true,
-      };
-    }
-    parseOptions = false;
+    })();
+    return { kind: 'error', message: `env: ${message}`, showUsage: true };
   }
 
+  const unsetNames: string[] = [];
+  for (const { semantic, value } of occurrences) {
+    if (semantic.kind === 'required-value' && semantic.key === 'unset' && value.kind !== 'none') {
+      unsetNames.push(value.rawValue);
+    }
+  }
+
+  const operands = parsed.positionals;
+  // The operand suffix omits the option delimiter. An option can also consume '--' as its value.
+  const beforeOperands = args.length - operands.length - 1;
+  const usesSingleDash = operands[0] === '-' && (
+    args[beforeOperands] !== '--'
+    || occurrences.some(({ value }) => value.kind === 'next-argv' && value.argvIndex === beforeOperands)
+  );
+  let index = usesSingleDash ? 1 : 0;
+
   const assignments: Array<{ name: string, value: string }> = [];
-  while (index < args.length) {
-    const argument = args[index]!;
+  while (index < operands.length) {
+    const argument = operands[index]!;
     const equalsIndex = argument.indexOf('=');
     if (equalsIndex < 0) {
       break;
@@ -194,16 +145,16 @@ function parseEnvArguments({ args }: { args: string[] }): ParsedEnvArguments {
     };
   }
 
-  const command = args[index];
+  const command = operands[index];
   return {
     kind: 'run',
-    ignoreEnvironment,
-    nullOutput,
+    ignoreEnvironment: parsed.optionValues.ignoreEnvironment === true || usesSingleDash,
+    nullOutput: parsed.optionValues.nullOutput === true,
     unsetNames,
-    changeDirectory,
+    changeDirectory: typeof parsed.optionValues.chdir === 'string' ? parsed.optionValues.chdir : undefined,
     assignments,
     command,
-    commandArgs: command === undefined ? [] : args.slice(index + 1),
+    commandArgs: command === undefined ? [] : operands.slice(index + 1),
   };
 }
 
@@ -215,7 +166,7 @@ export const envCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'env',
-        argvSpec: envArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: envArgvHelp }),
       });
       return { exitCode: 0 };
     case 'error':
@@ -224,7 +175,7 @@ export const envCommandImplementation: WeshCommandImplementation = {
           context,
           command: 'env',
           message: parsed.message,
-          argvSpec: envArgvSpec,
+          usageSummary: formatArgvUsageSummary({ presentation: envArgvHelp }),
         });
       } else {
         await context.text().error({ text: `${parsed.message}\n` });
@@ -243,108 +194,83 @@ export const envCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'env',
         message: 'env: cannot specify --null (-0) with command',
-        argvSpec: envArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: envArgvHelp }),
       });
       return { exitCode: 125 };
     }
 
-    const previousEnvironment = new Map(context.env);
-    const previousCwd = context.cwd;
+    const env = new Map(parsed.ignoreEnvironment ? undefined : context.env);
+    for (const name of parsed.unsetNames) {
+      env.delete(name);
+    }
+    for (const { name, value } of parsed.assignments) {
+      env.set(name, value);
+    }
+
     const text = context.text();
+    let cwd = context.cwd;
 
-    try {
-      if (parsed.ignoreEnvironment) {
-        const names = new Set<string>(context.env.keys());
-        for (const name of names) {
-          context.unsetEnv({ key: name });
-        }
-      }
-
-      for (const name of parsed.unsetNames) {
-        context.unsetEnv({ key: name });
-      }
-      for (const assignment of parsed.assignments) {
-        context.setEnv({
-          key: assignment.name,
-          value: assignment.value,
-        });
-      }
-
-      if (parsed.changeDirectory !== undefined) {
-        try {
-          if (parsed.changeDirectory.length === 0) {
-            throw new Error('No such file or directory');
-          }
-          const target = resolvePath({
-            cwd: context.cwd,
-            path: parsed.changeDirectory,
-          });
-          const resolved = await context.files.resolve({ path: target });
-          switch (resolved.stat.type) {
-          case 'directory':
-            break;
-          case 'file':
-          case 'fifo':
-          case 'chardev':
-          case 'symlink':
-            throw new Error('Not a directory');
-          default: {
-            const _ex: never = resolved.stat.type;
-            throw new Error(`Unhandled file type: ${_ex}`);
-          }
-          }
-          context.setCwd({ path: resolved.fullPath });
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : String(error);
-          await text.error({
-            text: `env: cannot change directory to '${parsed.changeDirectory}': ${message}\n`,
-          });
-          return { exitCode: 125 };
-        }
-      }
-
-      if (parsed.command === undefined) {
-        for (const [key, value] of context.env) {
-          await text.print({ text: `${key}=${value}${parsed.nullOutput ? '\0' : '\n'}` });
-        }
-        return { exitCode: 0 };
-      }
-
-      const isBuiltinCommand = !parsed.command.includes('/')
-        && context.getWeshCommandMeta({ name: parsed.command }) !== undefined;
-      const isShellEntrypoint = parsed.command === 'sh' || parsed.command === 'bash';
-      const commandForExecution = !parsed.command.includes('/')
-        && (isShellEntrypoint || (!context.env.has('PATH') && !isBuiltinCommand))
-        ? `/bin/${parsed.command}`
-        : parsed.command;
+    if (parsed.changeDirectory !== undefined) {
       try {
-        return await context.executeCommand({
-          command: commandForExecution,
-          args: parsed.commandArgs,
-          stdin: context.stdin,
-          stdout: context.stdout,
-          stderr: context.stderr,
-        });
+        if (parsed.changeDirectory.length === 0) {
+          throw new Error('No such file or directory');
+        }
+        const target = resolvePath({ cwd, path: parsed.changeDirectory });
+        const resolved = await context.files.resolve({ path: target });
+        switch (resolved.stat.type) {
+        case 'directory':
+          break;
+        case 'file':
+        case 'fifo':
+        case 'chardev':
+        case 'symlink':
+          throw new Error('Not a directory');
+        default: {
+          const _ex: never = resolved.stat.type;
+          throw new Error(`Unhandled file type: ${_ex}`);
+        }
+        }
+        cwd = resolved.fullPath;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        if (message !== `Command not found: ${commandForExecution}`) {
-          throw error;
-        }
         await text.error({
-          text: `env: '${parsed.command}': No such file or directory\n`,
+          text: `env: cannot change directory to '${parsed.changeDirectory}': ${message}\n`,
         });
-        return { exitCode: 127 };
+        return { exitCode: 125 };
       }
-    } finally {
-      if (parsed.changeDirectory !== undefined) {
-        context.setCwd({ path: previousCwd });
+    }
+
+    if (parsed.command === undefined) {
+      for (const [key, value] of env) {
+        await text.print({ text: `${key}=${value}${parsed.nullOutput ? '\0' : '\n'}` });
       }
-      for (const key of [...context.env.keys()]) {
-        context.unsetEnv({ key });
+      return { exitCode: 0 };
+    }
+
+    const isBuiltinCommand = !parsed.command.includes('/')
+      && context.getWeshCommandMeta({ name: parsed.command }) !== undefined;
+    const isShellEntrypoint = parsed.command === 'sh' || parsed.command === 'bash';
+    const commandForExecution = !parsed.command.includes('/')
+      && (isShellEntrypoint || (!env.has('PATH') && !isBuiltinCommand))
+      ? `/bin/${parsed.command}`
+      : parsed.command;
+    try {
+      return await context.executeCommand({
+        command: commandForExecution,
+        args: parsed.commandArgs,
+        stdin: context.stdin,
+        cwd,
+        env,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message !== `Command not found: ${commandForExecution}`) {
+        throw error;
       }
-      for (const [key, value] of previousEnvironment) {
-        context.setEnv({ key, value });
-      }
+      await text.error({
+        text: `env: '${parsed.command}': No such file or directory\n`,
+      });
+      return { exitCode: 127 };
     }
   },
 };

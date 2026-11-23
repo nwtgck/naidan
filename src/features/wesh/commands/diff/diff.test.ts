@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -7,6 +7,11 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+import { diffCommandDefinition } from './definition';
+
+beforeAll(async () => {
+  await diffCommandDefinition.load();
+});
 
 describe('wesh diff', () => {
   let wesh: Wesh;
@@ -135,6 +140,54 @@ describe('wesh diff', () => {
       expect(execution.stderr.text).toContain('invalid numeric value');
       expect(execution.result.exitCode).toBe(2);
     }
+  });
+
+  it.each([
+    ['--help --brief=x', "option '--brief' doesn't allow an argument"],
+    ['--unified=nope --help', "invalid context length 'nope'"],
+    ['--unified=nope --unknown --help', "unrecognized option '--unknown'"],
+    ['--unif=0 --help', "unrecognized option '--unif'"],
+  ])('keeps diagnostics and early exits in order for %s', async (options, message) => {
+    const { result, stdout, stderr } = await execute({ script: `diff ${options}` });
+    expect(result.exitCode).toBe(2);
+    expect(stdout.text).toBe('');
+    expect(stderr.text.split('\n')[0]).toBe(`diff: ${message}`);
+  });
+
+  it('accepts long optional context counts, option-like label values, and double-dash operands', async () => {
+    await writeFile({
+      path: '--left',
+      data: `\
+same
+old
+`,
+    });
+    await writeFile({
+      path: '--right',
+      data: `\
+same
+new
+`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'diff --label --help --label=right --unified=0 -- --left --right',
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+--- --help
++++ right
+@@ -2 +2 @@
+-old
++new
+`);
+
+    const delimiterAsLabel = await execute({ script: 'diff --label -- --brief=x -- --left --right' });
+    expect(delimiterAsLabel.result.exitCode).toBe(1);
+    expect(delimiterAsLabel.stderr.text).toBe('');
+    expect(delimiterAsLabel.stdout.text).toBe('Files --left and --right differ\n');
   });
 
   it('emits normal diffs and reports identical files', async () => {

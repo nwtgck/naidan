@@ -1,11 +1,10 @@
-import { parseStandardArgv, type ArgvValue, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, HELP_EARLY_EXIT_OPTIONS, parseStandardArgv, stopArgvAtFirstEarlyExit, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import { decodeCommandDataBytes, decodeCommandDataBytesAsSingleByte } from '@/features/wesh/commands/_shared/data-codec';
 import { compileBasicRegularExpression } from '@/features/wesh/commands/_shared/posix-regexp';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { writeAllStreamToFile } from '@/features/wesh/utils/fs';
@@ -98,98 +97,102 @@ function parseNonNegativeInteger({
 }
 
 function parseDigitsOption({
-  value,
+  rawValue,
 }: {
-  value: string,
-}): { ok: true, value: ArgvValue } | { ok: false, message: string } {
-  return parseNonNegativeInteger({ value, description: 'number of digits' });
+  rawValue: string,
+}): { kind: 'parsed', value: number } | { kind: 'invalid', message: string } {
+  const parsed = parseNonNegativeInteger({ value: rawValue, description: 'number of digits' });
+  return parsed.ok ? { kind: 'parsed', value: parsed.value } : { kind: 'invalid', message: parsed.message };
 }
 
-const csplitArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'value',
-      short: 'f',
-      long: 'prefix',
-      key: 'prefix',
-      valueName: 'prefix',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'use PREFIX instead of xx', valueName: 'PREFIX', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'b',
-      long: 'suffix-format',
-      key: 'suffixFormat',
-      valueName: 'format',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'use printf-style FORMAT instead of %02d', valueName: 'FORMAT', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'n',
-      long: 'digits',
-      key: 'digits',
-      valueName: 'digits',
-      allowAttachedValue: true,
-      parseValue: parseDigitsOption,
-      help: { summary: 'use DIGITS digits in numeric suffixes', valueName: 'DIGITS', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'k',
-      long: 'keep-files',
-      effects: [{ key: 'keepFiles', value: true }],
-      help: { summary: 'do not remove output files on errors', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 's',
-      long: 'silent',
-      effects: [{ key: 'silent', value: true }],
-      help: { summary: 'do not print output file sizes', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'q',
-      long: 'quiet',
-      effects: [{ key: 'silent', value: true }],
-      help: { summary: 'do not print output file sizes', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'z',
-      long: 'elide-empty-files',
-      effects: [{ key: 'elideEmptyFiles', value: true }],
-      help: { summary: 'remove empty output files', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'suppress-matched',
-      effects: [{ key: 'suppressMatched', value: true }],
-      help: { summary: 'suppress the lines matching PATTERN', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const csplitArgvOptions = [
+  {
+    semantic: { kind: 'required-value', key: 'prefix', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'required-attached-or-following', missingValueName: 'prefix' } },
+      { kind: 'long', name: 'prefix', value: { kind: 'required', missingValueName: 'prefix' } },
+    ],
+    help: { summary: 'use PREFIX instead of xx', valueName: 'PREFIX', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'suffixFormat', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'b', value: { kind: 'required-attached-or-following', missingValueName: 'format' } },
+      { kind: 'long', name: 'suffix-format', value: { kind: 'required', missingValueName: 'format' } },
+    ],
+    help: { summary: 'use printf-style FORMAT instead of %02d', valueName: 'FORMAT', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'digits', parse: parseDigitsOption },
+    forms: [
+      { kind: 'short', name: 'n', value: { kind: 'required-attached-or-following', missingValueName: 'digits' } },
+      { kind: 'long', name: 'digits', value: { kind: 'required', missingValueName: 'digits' } },
+    ],
+    help: { summary: 'use DIGITS digits in numeric suffixes', valueName: 'DIGITS', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'keepFiles', value: true }] },
+    forms: [
+      { kind: 'short', name: 'k', value: { kind: 'none' } },
+      { kind: 'long', name: 'keep-files', value: { kind: 'none' } },
+    ],
+    help: { summary: 'do not remove output files on errors', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'silent', value: true }] },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'none' } },
+      { kind: 'long', name: 'silent', value: { kind: 'none' } },
+    ],
+    help: { summary: 'do not print output file sizes', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'silent', value: true }] },
+    forms: [
+      { kind: 'short', name: 'q', value: { kind: 'none' } },
+      { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+    ],
+    help: { summary: 'do not print output file sizes', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'elideEmptyFiles', value: true }] },
+    forms: [
+      { kind: 'short', name: 'z', value: { kind: 'none' } },
+      { kind: 'long', name: 'elide-empty-files', value: { kind: 'none' } },
+    ],
+    help: { summary: 'remove empty output files', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'suppressMatched', value: true }] },
+    forms: [
+      { kind: 'long', name: 'suppress-matched', value: { kind: 'none' } },
+    ],
+    help: { summary: 'suppress the lines matching PATTERN', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [
+      { kind: 'long', name: 'help', value: { kind: 'none' } },
+    ],
+    help: { summary: 'display this help and exit', category: 'common' },
+  },
+] as const;
+
+const csplitArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({ definitions: csplitArgvOptions, nonExecutableLongOptions: [] });
+const csplitArgvHelp = defineArgvHelpPresentation({
+  catalog: csplitArgvCatalog,
+  rows: csplitArgvOptions.map(({ forms, help }) => ({ forms, ...help })),
+});
+const csplitArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 function parseOptions({
   values,
 }: {
-  values: Record<string, ArgvValue>,
+  values: Record<string, boolean | string | number>,
 }): CsplitOptions {
   return {
     prefix: typeof values.prefix === 'string' ? values.prefix : 'xx',
@@ -1076,12 +1079,14 @@ async function writeSections({
 export const csplitCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: context.args,
-        spec: csplitArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: csplitArgvCatalog,
+        policy: csplitArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: csplitArgvSpec,
+      catalog: csplitArgvCatalog,
+      policy: csplitArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -1090,7 +1095,7 @@ export const csplitCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'csplit',
         message: `csplit: ${diagnostic.message}`,
-        argvSpec: csplitArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: csplitArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -1099,7 +1104,7 @@ export const csplitCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'csplit',
-        argvSpec: csplitArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: csplitArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -1109,7 +1114,7 @@ export const csplitCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'csplit',
         message: 'csplit: missing file operand',
-        argvSpec: csplitArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: csplitArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -1119,7 +1124,7 @@ export const csplitCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'csplit',
         message: 'csplit: missing pattern operand',
-        argvSpec: csplitArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: csplitArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -1141,7 +1146,7 @@ export const csplitCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'csplit',
         message: `csplit: ${message}`,
-        argvSpec: csplitArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: csplitArgvHelp }),
       });
       return { exitCode: 1 };
     }

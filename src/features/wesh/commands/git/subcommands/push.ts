@@ -5,7 +5,7 @@ import { getConfigValue, readEffectiveConfig, setLocalConfigValue } from "@/feat
 import { deleteLocalRemoteBranch, pushLocalBranch } from "@/features/wesh/commands/git/local-transport";
 import { branchNameFromHead, readHead } from "@/features/wesh/commands/git/refs";
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
-import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv';
 
 const PUSH_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
   nonExecutableLongOptions: [

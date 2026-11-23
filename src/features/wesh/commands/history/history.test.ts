@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -6,6 +6,11 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+import { historyCommandDefinition } from './definition';
+
+beforeAll(async () => {
+  await historyCommandDefinition.loadShellBuiltin();
+});
 
 describe('wesh history', () => {
   let wesh: Wesh;
@@ -49,6 +54,14 @@ describe('wesh history', () => {
     expect(invalid.stderr.text).toContain('usage: history');
     expect(invalid.stderr.text).toContain('--help');
     expect(invalid.result.exitCode).toBe(1);
+  });
+
+  it('treats --help after -- as a count operand', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'history -- --help' });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('history: --help: numeric argument required\n');
+    expect(result.exitCode).toBe(1);
   });
 
   it('keeps history output stable', async () => {

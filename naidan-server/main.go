@@ -1,17 +1,18 @@
 package main
 
 import (
-	"embed"
+	_ "embed"
 	"flag"
 	"fmt"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
+
+	"naidan-server/internal/packedfs"
 )
 
-//go:embed all:public
-var embeddedFiles embed.FS
+//go:embed packed/assets.pack
+var embeddedPack string
 
 var version = "dev"
 
@@ -44,14 +45,13 @@ func main() {
 		return
 	}
 
-	// Strip the "public" prefix from the embedded filesystem
-	publicFS, err := fs.Sub(embeddedFiles, "public")
+	publicFS, err := packedfs.New(embeddedPack)
 	if err != nil {
-		logger.Fatalf("Critical error: Could not access embedded 'public' directory: %v\nEnsure 'public' exists inside 'naidan-server' directory when building.", err)
+		logger.Fatalf("Critical error: Could not open embedded assets: %v", err)
 	}
 
 	// Handle all requests with the static file server
-	http.Handle("/", http.FileServer(http.FS(publicFS)))
+	http.Handle("/", publicFS.Handler())
 
 	addr := fmt.Sprintf("localhost:%d", port)
 	logger.Printf("Server starting at http://%s\n", addr)

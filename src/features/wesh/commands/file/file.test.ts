@@ -94,6 +94,17 @@ describe('wesh file', () => {
     expect(invalidValueThenHelp.result.exitCode).not.toBe(0);
   });
 
+  it('treats a help-shaped value as a separator and keeps dash-prefixed operands after --', async () => {
+    await writeFile({ path: '-letter.txt', data: 'alpha\n' });
+    const { result, stdout, stderr } = await execute({
+      script: 'file -F --help -- -letter.txt',
+    });
+
+    expect(stdout.text).toBe('-letter.txt--help ASCII text\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('classifies directories and symlinks', async () => {
     await rootHandle.getDirectoryHandle('docs', { create: true });
     await writeFile({

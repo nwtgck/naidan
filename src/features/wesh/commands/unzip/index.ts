@@ -1,5 +1,13 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  formatArgvOptionHelp,
+  formatArgvUsageSummary,
+  parseStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { createTextInputLineReader } from '@/features/wesh/commands/_shared/confirmation';
 import {
   isPathNotFoundError,
@@ -18,10 +26,14 @@ import type {
   WeshCommandContext,
   WeshCommandImplementation,
   WeshCommandResult,
+  WeshEntryLookup,
+  WeshEntryRef,
+  WeshFileHandle,
+  WeshTemporaryEntry,
 } from '@/features/wesh/types';
+import { WeshCommandInterruptedError, WeshEntryChangedError, WeshNotDirectoryError, WeshRenameIncompleteError } from '@/features/wesh/types';
 import {
   openHandleReadStream,
-  writeAllStreamToFile,
   writeAllStreamToHandle,
 } from '@/features/wesh/utils/fs';
 import {
@@ -29,41 +41,73 @@ import {
   decodeCommandDataBytes,
 } from '@/features/wesh/commands/_shared/data-codec';
 
-const unzipArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'l', long: undefined, effects: [{ key: 'list', value: true }], help: { summary: 'list archive files', category: 'common' } },
-    { kind: 'flag', short: 't', long: undefined, effects: [{ key: 'test', value: true }], help: { summary: 'test compressed archive data', category: 'common' } },
-    { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'pipeToStdout', value: true }], help: { summary: 'extract files to stdout', category: 'common' } },
-    { kind: 'flag', short: 'j', long: undefined, effects: [{ key: 'junkPaths', value: true }], help: { summary: 'junk paths', category: 'common' } },
-    { kind: 'flag', short: 'n', long: undefined, effects: [{ key: 'neverOverwrite', value: true }], help: { summary: 'never overwrite existing files', category: 'common' } },
-    { kind: 'flag', short: 'o', long: undefined, effects: [{ key: 'overwrite', value: true }], help: { summary: 'overwrite files without prompting', category: 'common' } },
-    { kind: 'flag', short: 'q', long: 'quiet', effects: [{ key: 'quiet', value: true }], help: { summary: 'perform operations quietly', category: 'common' } },
-    {
-      kind: 'value',
-      short: 'd',
-      long: undefined,
-      key: 'destination',
-      valueName: 'DIR',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'extract into exdir', valueName: 'DIR', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'x',
-      long: undefined,
-      key: 'excludePattern',
-      valueName: 'PATTERN',
-      allowAttachedValue: false,
-      parseValue: undefined,
-      help: { summary: 'exclude files that match a pattern', valueName: 'PATTERN', category: 'common' },
-    },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const unzipOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'list', value: true }] },
+    forms: [{ kind: 'short', name: 'l', value: { kind: 'none' } }],
+    help: { summary: 'list archive files', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'test', value: true }] },
+    forms: [{ kind: 'short', name: 't', value: { kind: 'none' } }],
+    help: { summary: 'test compressed archive data', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'pipeToStdout', value: true }] },
+    forms: [{ kind: 'short', name: 'p', value: { kind: 'none' } }],
+    help: { summary: 'extract files to stdout', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'junkPaths', value: true }] },
+    forms: [{ kind: 'short', name: 'j', value: { kind: 'none' } }],
+    help: { summary: 'junk paths', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'neverOverwrite', value: true }] },
+    forms: [{ kind: 'short', name: 'n', value: { kind: 'none' } }],
+    help: { summary: 'never overwrite existing files', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'overwrite', value: true }] },
+    forms: [{ kind: 'short', name: 'o', value: { kind: 'none' } }],
+    help: { summary: 'overwrite files without prompting', category: 'common' },
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'quiet' },
+    forms: [
+      { kind: 'short', name: 'q', value: { kind: 'none' } },
+      { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+    ],
+    help: { summary: 'perform operations quietly', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'destination', parse: undefined },
+    forms: [{ kind: 'short', name: 'd', value: { kind: 'required-attached-or-following', missingValueName: 'DIR' } }],
+    help: { summary: 'extract into exdir', valueName: 'DIR', category: 'common' },
+  },
+  {
+    semantic: { kind: 'required-value', key: 'excludePattern', parse: undefined },
+    forms: [{ kind: 'short', name: 'x', value: { kind: 'required-attached-or-following', missingValueName: 'PATTERN' } }],
+    help: { summary: 'exclude files that match a pattern', valueName: 'PATTERN', category: 'common' },
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    help: { summary: 'display this help and exit', category: 'common' },
+  },
+] as const;
+const unzipArgvCatalog = defineArgvCatalog<StandardArgvAction<'quiet'>>({
+  definitions: unzipOptions.map(({ semantic, forms }) => ({ semantic, forms })),
+  nonExecutableLongOptions: [],
+});
+const unzipArgvHelp = defineArgvHelpPresentation({
+  catalog: unzipArgvCatalog,
+  rows: unzipOptions.map(({ forms, help }) => ({ forms, ...help })),
+});
+const unzipArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 interface SplitUnzipArgsResult {
@@ -95,9 +139,6 @@ class UnzipArchiveCandidatesExhaustedError extends Error {
     this.name = 'UnzipArchiveCandidatesExhaustedError';
     this.rejectedCandidates = rejectedCandidates;
   }
-}
-
-class UnzipParentPathConflictError extends Error {
 }
 
 class UnzipReplacementConflictError extends Error {
@@ -258,13 +299,11 @@ function globToRegExp({ pattern }: { pattern: string }): RegExp {
 interface UnzipPreArchiveOptionState {
   readonly archiveIndex: number | undefined,
   readonly destinationSelectionCount: number,
-  readonly quietCount: number,
   readonly ignoredSingleDashIndices: readonly number[],
 }
 
 function analyzeOptionsBeforeArchive({ args }: { args: readonly string[] }): UnzipPreArchiveOptionState {
   let destinationSelectionCount = 0;
-  let quietCount = 0;
   const ignoredSingleDashIndices: number[] = [];
   let sawOptionToken = false;
 
@@ -278,7 +317,6 @@ function analyzeOptionsBeforeArchive({ args }: { args: readonly string[] }): Unz
       return {
         archiveIndex: index + 1 < args.length ? index + 1 : undefined,
         destinationSelectionCount,
-        quietCount,
         ignoredSingleDashIndices,
       };
     }
@@ -287,7 +325,6 @@ function analyzeOptionsBeforeArchive({ args }: { args: readonly string[] }): Unz
         return {
           archiveIndex: index,
           destinationSelectionCount,
-          quietCount,
           ignoredSingleDashIndices,
         };
       }
@@ -298,7 +335,6 @@ function analyzeOptionsBeforeArchive({ args }: { args: readonly string[] }): Unz
       return {
         archiveIndex: index,
         destinationSelectionCount,
-        quietCount,
         ignoredSingleDashIndices,
       };
     }
@@ -307,10 +343,6 @@ function analyzeOptionsBeforeArchive({ args }: { args: readonly string[] }): Unz
     const shortBody = token.slice(1);
     for (let shortIndex = 0; shortIndex < shortBody.length; shortIndex += 1) {
       const short = shortBody[shortIndex];
-      if (short === 'q') {
-        quietCount += 1;
-        continue;
-      }
       if (short !== 'd') {
         continue;
       }
@@ -327,7 +359,6 @@ function analyzeOptionsBeforeArchive({ args }: { args: readonly string[] }): Unz
   return {
     archiveIndex: undefined,
     destinationSelectionCount,
-    quietCount,
     ignoredSingleDashIndices,
   };
 }
@@ -773,28 +804,20 @@ async function ensureAbsoluteDirectoryPath({
 }: {
   context: WeshCommandContext,
   path: string,
-}): Promise<void> {
+}): Promise<string> {
   let currentPath = '/';
   for (const segment of path.split('/').filter(Boolean)) {
+    if (segment === '.') {
+      continue;
+    }
+    if (segment === '..') {
+      currentPath = currentPath.slice(0, currentPath.lastIndexOf('/')) || '/';
+      continue;
+    }
     currentPath = appendPathSegment({ path: currentPath, segment });
-    const existingType = await getPathType({ context, path: currentPath });
-    switch (existingType) {
-    case undefined:
-      await context.files.mkdir({ path: currentPath, recursive: false });
-      break;
-    case 'directory':
-      break;
-    case 'file':
-    case 'symlink':
-    case 'fifo':
-    case 'chardev':
-      throw new UnzipParentPathConflictError(`${currentPath} exists but is not a directory`);
-    default: {
-      const _exhaustiveCheck: never = existingType;
-      throw new Error(`Unhandled path type: ${String(_exhaustiveCheck)}`);
-    }
-    }
+    await context.files.mkdir({ path: currentPath, recursive: false, symlinkTreatment: 'no-follow' });
   }
+  return currentPath;
 }
 
 async function ensureArchiveDirectoryPath({
@@ -806,28 +829,8 @@ async function ensureArchiveDirectoryPath({
   destinationRoot: string,
   relativeDirectoryPath: string,
 }): Promise<void> {
-  await ensureAbsoluteDirectoryPath({ context, path: destinationRoot });
-  let currentPath = destinationRoot;
-  for (const segment of relativeDirectoryPath.split('/').filter(Boolean)) {
-    currentPath = appendPathSegment({ path: currentPath, segment });
-    const existingType = await getPathType({ context, path: currentPath });
-    switch (existingType) {
-    case undefined:
-      await context.files.mkdir({ path: currentPath, recursive: false });
-      break;
-    case 'directory':
-      break;
-    case 'file':
-    case 'symlink':
-    case 'fifo':
-    case 'chardev':
-      throw new UnzipParentPathConflictError(`${currentPath} exists but is not a directory`);
-    default: {
-      const _exhaustiveCheck: never = existingType;
-      throw new Error(`Unhandled path type: ${String(_exhaustiveCheck)}`);
-    }
-    }
-  }
+  const path = relativeDirectoryPath === '' ? destinationRoot : appendPathSegment({ path: destinationRoot, segment: relativeDirectoryPath });
+  await context.files.mkdir({ path, recursive: true, symlinkTreatment: 'no-follow' });
 }
 
 async function ensureArchiveEntryParent({
@@ -848,17 +851,20 @@ async function ensureArchiveEntryParent({
   });
 }
 
-async function getPathType({
+async function getPathEntry({
   context,
   path,
 }: {
   context: WeshCommandContext,
   path: string,
-}): Promise<'directory' | 'file' | 'symlink' | 'fifo' | 'chardev' | undefined> {
+}): Promise<WeshEntryRef | undefined> {
   try {
-    return (await context.files.lstat({ path })).type;
-  } catch {
-    return undefined;
+    return await context.files.resolveEntry({ path, finalSymlinkTreatment: 'no-follow' });
+  } catch (error: unknown) {
+    if (isPathNotFoundError({ error })) {
+      return undefined;
+    }
+    throw error;
   }
 }
 
@@ -896,17 +902,13 @@ async function readEntryBytes({
   return output;
 }
 
-async function writeSymbolicLinkEntry({
-  context,
+async function readSymbolicLinkTarget({
   reader,
   entry,
-  destinationPath,
 }: {
-  context: WeshCommandContext,
   reader: StreamingZipReader,
   entry: ZipArchiveEntry,
-  destinationPath: string,
-}): Promise<void> {
+}): Promise<string> {
   const targetBytes = await readEntryBytes({ reader, entry });
   const nullByteIndex = targetBytes.indexOf(0);
   const effectiveTargetBytes = nullByteIndex < 0
@@ -915,31 +917,114 @@ async function writeSymbolicLinkEntry({
   if (effectiveTargetBytes.byteLength === 0) {
     throw new Error(`ZIP symbolic-link target is empty: ${entry.name}`);
   }
-  const targetPath = decodeCommandDataBytes({ bytes: effectiveTargetBytes });
-  await context.files.symlink({
-    path: destinationPath,
-    targetPath,
-    mode: entry.unixMode === undefined ? undefined : entry.unixMode & 0o777,
-  });
+  return decodeCommandDataBytes({ bytes: effectiveTargetBytes });
 }
 
-async function writeEntryToFile({
+async function writeEntryFile({
   context,
   reader,
   entry,
-  destinationPath,
+  lookup,
 }: {
   context: WeshCommandContext,
   reader: StreamingZipReader,
   entry: ZipArchiveEntry,
-  destinationPath: string,
+  lookup: WeshEntryLookup,
 }): Promise<void> {
-  await writeAllStreamToFile({
-    files: context.files,
-    path: destinationPath,
-    stream: await reader.openEntry({ entry }),
-    mode: 'truncate',
+  const stream = await reader.openEntry({ entry });
+  const result = await context.files.tryCreateFileWriterEfficiently({ lookup, mode: 'truncate' }).catch(async (error: unknown) => {
+    await stream.cancel(error).catch(() => undefined);
+    throw error;
   });
+  switch (result.kind) {
+  case 'writer':
+    break;
+  case 'fallback_required':
+    await stream.cancel();
+    throw new Error(`Read-only filesystem: ${lookup.path}`);
+  default: {
+    const _ex: never = result;
+    throw new Error(`Unhandled efficient writer result: ${JSON.stringify(_ex)}`);
+  }
+  }
+  const { writer } = result;
+  const streamReader = stream.getReader();
+  try {
+    // The ZIP reader validates size and CRC before ending the stream.
+    while (true) {
+      const chunk = await streamReader.read();
+      if (chunk.done) {
+        break;
+      }
+      await writer.write({ chunk: chunk.value });
+    }
+    await writer.close();
+  } catch (error: unknown) {
+    await Promise.allSettled([streamReader.cancel(error), writer.abort({ reason: error })]);
+    throw error;
+  } finally {
+    streamReader.releaseLock();
+  }
+}
+
+async function replaceArchiveEntry({ context, lookup, reader, entry, symbolicLinkTarget }: {
+  context: WeshCommandContext,
+  lookup: WeshEntryLookup,
+  reader: StreamingZipReader,
+  entry: ZipArchiveEntry,
+  symbolicLinkTarget: string | undefined,
+}): Promise<void> {
+  const { files } = context;
+  const path = `${lookup.path.slice(0, lookup.path.lastIndexOf('/'))}/.wesh-unzip-${crypto.randomUUID()}`;
+  let temporary: WeshTemporaryEntry;
+  let handle: WeshFileHandle | undefined;
+  if (symbolicLinkTarget === undefined) {
+    const file = await files.createTemporaryFile({ path, siblingOf: lookup });
+    temporary = file;
+    handle = file.handle;
+  } else {
+    temporary = await files.createTemporarySymlink({
+      path,
+      siblingOf: lookup,
+      targetPath: symbolicLinkTarget,
+      mode: entry.unixMode === undefined ? undefined : entry.unixMode & 0o777,
+    });
+  }
+  try {
+    if (handle !== undefined) {
+      try {
+        const stream = await reader.openEntry({ entry });
+        try {
+          await writeAllStreamToHandle({
+            stream,
+            handle,
+            closeHandle: false,
+            checkActive: () => {
+              if (context.process.getWaitStatus() !== undefined) {
+                throw new WeshCommandInterruptedError();
+              }
+            },
+          });
+        } catch (error: unknown) {
+          await stream.cancel(error).catch(() => undefined);
+          throw error;
+        }
+      } finally {
+        await handle.close();
+      }
+    }
+    await files.replaceEntry({ entry: temporary.entry, path: lookup.path, expected: lookup, backupPath: undefined });
+  } catch (error: unknown) {
+    if (!(error instanceof WeshRenameIncompleteError)) {
+      await temporary.discard().catch(() => undefined);
+    }
+    if (error instanceof WeshEntryChangedError && error.path === path) {
+      throw new WeshEntryChangedError({ path: lookup.path, cause: error });
+    }
+    throw error;
+  } finally {
+    temporary.release?.();
+  }
 }
 
 async function listEntries({
@@ -1300,11 +1385,18 @@ async function extractEntries({
   matchedIncludeIndexes: Set<number>,
   matchedExcludeIndexes: Set<number>,
 }): Promise<number> {
+  let outputRoot: string;
   try {
-    await ensureAbsoluteDirectoryPath({ context, path: destinationRoot });
+    outputRoot = await ensureAbsoluteDirectoryPath({ context, path: destinationRoot });
   } catch (error: unknown) {
-    await context.text().error({ text: `unzip: ${error instanceof Error ? error.message : String(error)}\n` });
-    return error instanceof UnzipParentPathConflictError ? 2 : 1;
+    if (error instanceof WeshCommandInterruptedError) {
+      throw error;
+    }
+    const message = error instanceof WeshNotDirectoryError
+      ? `${error.path} exists but is not a directory`
+      : error instanceof Error ? error.message : String(error);
+    await context.text().error({ text: `unzip: ${message}\n` });
+    return error instanceof WeshNotDirectoryError ? 2 : 1;
   }
   let exitCode = 0;
   const extractedSymbolicLinkPaths = new Set<string>();
@@ -1322,6 +1414,7 @@ async function extractEntries({
     })) {
       continue;
     }
+    let destination: WeshEntryLookup | undefined;
     try {
       if (junkPaths && entry.isDirectory) {
         continue;
@@ -1334,17 +1427,26 @@ async function extractEntries({
       if (entry.isDirectory) {
         await ensureArchiveDirectoryPath({
           context,
-          destinationRoot,
+          destinationRoot: outputRoot,
           relativeDirectoryPath: relativePath,
         });
         continue;
       }
 
-      let destinationPath = resolvePath({ cwd: destinationRoot, path: relativePath });
+      let destinationPath = resolvePath({ cwd: outputRoot, path: relativePath });
+      const extractAsSymbolicLink = entry.isSymbolicLink && entry.uncompressedSize > 0;
+      let replaceExisting = false;
       let skipEntry = false;
       while (true) {
-        await ensureArchiveEntryParent({ context, destinationRoot, relativePath });
-        const existingType = await getPathType({ context, path: destinationPath });
+        destination?.release();
+        destination = await context.files.tryLookupEntryWithoutFollowingSymlinks({ path: destinationPath });
+        if (destination === undefined) {
+          await ensureArchiveEntryParent({ context, destinationRoot: outputRoot, relativePath });
+          destination = await context.files.tryLookupEntryWithoutFollowingSymlinks({ path: destinationPath });
+        }
+        const existingType = (destination === undefined
+          ? await getPathEntry({ context, path: destinationPath })
+          : destination.entry)?.type;
         if (existingType === undefined) {
           break;
         }
@@ -1373,7 +1475,7 @@ async function extractEntries({
               skipEntry = true;
               break;
             }
-            destinationPath = resolvePath({ cwd: destinationRoot, path: relativePath });
+            destinationPath = resolvePath({ cwd: outputRoot, path: relativePath });
             continue;
           }
           case 'overwrite':
@@ -1388,6 +1490,7 @@ async function extractEntries({
           }
         }
 
+        replaceExisting = true;
         switch (existingType) {
         case 'directory':
           throw new UnzipReplacementConflictError(`cannot replace directory with ZIP entry: ${entry.name}`);
@@ -1399,6 +1502,8 @@ async function extractEntries({
           }
           break;
         case 'file':
+          replaceExisting = extractAsSymbolicLink;
+          break;
         case 'fifo':
         case 'chardev':
           break;
@@ -1407,29 +1512,55 @@ async function extractEntries({
           throw new Error(`Unhandled path type: ${String(_exhaustiveCheck)}`);
         }
         }
-        await context.files.unlink({ path: destinationPath });
-        extractedSymbolicLinkPaths.delete(destinationPath);
         break;
       }
 
       if (skipEntry) {
         continue;
       }
-      if (entry.isSymbolicLink && entry.uncompressedSize > 0) {
-        await writeSymbolicLinkEntry({ context, reader, entry, destinationPath });
+      if (destination === undefined) {
+        throw new WeshEntryChangedError({ path: destinationPath });
+      }
+      const symbolicLinkTarget = extractAsSymbolicLink
+        ? await readSymbolicLinkTarget({ reader, entry })
+        : undefined;
+
+      if (replaceExisting) {
+        await replaceArchiveEntry({ context, lookup: destination, reader, entry, symbolicLinkTarget });
+      } else if (symbolicLinkTarget === undefined) {
+        await writeEntryFile({ context, reader, entry, lookup: destination });
+      } else {
+        await context.files.symlink({
+          path: destinationPath,
+          expected: destination,
+          targetPath: symbolicLinkTarget,
+          mode: entry.unixMode === undefined ? undefined : entry.unixMode & 0o777,
+        });
+      }
+
+      if (symbolicLinkTarget !== undefined) {
         extractedSymbolicLinkPaths.add(destinationPath);
       } else {
-        await writeEntryToFile({ context, reader, entry, destinationPath });
+        extractedSymbolicLinkPaths.delete(destinationPath);
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      if (error instanceof WeshCommandInterruptedError) {
+        throw error;
+      }
+      const message = error instanceof WeshEntryChangedError
+        ? `extraction path changed: ${error.path}`
+        : error instanceof WeshNotDirectoryError
+          ? `${error.path} exists but is not a directory`
+          : error instanceof Error ? error.message : String(error);
       await context.text().error({ text: `unzip: ${message}\n` });
       const entryExitCode = error instanceof UnzipReplacementConflictError
         ? 50
-        : error instanceof UnzipParentPathConflictError
+        : error instanceof WeshNotDirectoryError
           ? 2
           : 1;
       exitCode = Math.max(exitCode, entryExitCode);
+    } finally {
+      destination?.release();
     }
   }
   return exitCode;
@@ -1444,35 +1575,35 @@ export const unzipCommandImplementation: WeshCommandImplementation = {
       args: context.args,
       preArchiveOptions,
     });
-    const parsed = parseStandardArgv({ args: splitArgs.mainArgs, spec: unzipArgvSpec });
+    const parsed = parseStandardArgv({
+      args: splitArgs.mainArgs,
+      catalog: unzipArgvCatalog,
+      policy: unzipArgvPolicy,
+    });
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
       await writeCommandUsageError({
         context,
         command: 'unzip',
         message: `unzip: ${diagnostic.message}`,
-        argvSpec: unzipArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: unzipArgvHelp }),
       });
       return { exitCode: 2 };
     }
-    const quietCount = parsed.occurrences.reduce((count, occurrence) => {
-      switch (occurrence.kind) {
-      case 'flag':
-      case 'special':
-        return count + (occurrence.effects.some(effect =>
-          effect.key === 'quiet' && effect.value === true,
-        ) ? 1 : 0);
-      case 'value':
-        return count;
-      default: {
-        const _ex: never = occurrence;
-        throw new Error(`Unhandled unzip option occurrence: ${String(_ex)}`);
-      }
-      }
-    }, 0);
+    // The member-selection phase already consumes valid -x occurrences after the archive.
+    if (parsed.optionValues.excludePattern !== undefined) {
+      await context.text().error({ text: 'error:  -x must follow the archive operand\n' });
+      return { exitCode: 10 };
+    }
+    // The archive phase has already separated member patterns from command options.
+    const quietCount = parsed.deferred.length;
 
     if (parsed.optionValues.help === true) {
-      await writeCommandHelp({ context, command: 'unzip', argvSpec: unzipArgvSpec });
+      await writeCommandHelp({
+        context,
+        command: 'unzip',
+        optionLines: formatArgvOptionHelp({ presentation: unzipArgvHelp }),
+      });
       return { exitCode: 0 };
     }
 
@@ -1493,7 +1624,7 @@ export const unzipCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'unzip',
         message: 'unzip: missing archive operand',
-        argvSpec: unzipArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: unzipArgvHelp }),
       });
       return { exitCode: 2 };
     }
@@ -1618,13 +1749,16 @@ export const unzipCommandImplementation: WeshCommandImplementation = {
       });
       return { exitCode: extractionExitCode !== 0 ? extractionExitCode : hadUnmatchedPattern ? 11 : 0 };
     } catch (error: unknown) {
+      if (error instanceof WeshCommandInterruptedError) {
+        throw error;
+      }
       if (error instanceof UnzipArchiveCandidatesExhaustedError) {
         await reportRejectedArchiveCandidates({
           context,
           rejectedCandidates: error.rejectedCandidates,
           useStdout: parsed.optionValues.test === true || parsed.optionValues.list === true,
         });
-        if (preArchiveOptions.quietCount < 3) {
+        if (quietCount < 3) {
           await context.text().error({
             text: `unzip:  cannot find or open ${archiveOperand}, ${archiveOperand}.zip or ${archiveOperand}.ZIP.\n`,
           });
@@ -1633,7 +1767,7 @@ export const unzipCommandImplementation: WeshCommandImplementation = {
       }
       const message = error instanceof Error ? error.message : String(error);
       if (isPathNotFoundError({ error })) {
-        if (preArchiveOptions.quietCount < 3) {
+        if (quietCount < 3) {
           await context.text().error({
             text: `unzip:  cannot find or open ${archiveOperand}, ${archiveOperand}.zip or ${archiveOperand}.ZIP.\n`,
           });

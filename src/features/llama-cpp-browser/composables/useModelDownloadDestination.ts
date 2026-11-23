@@ -1,4 +1,4 @@
-import { hostModelDirectoryLabel } from '@/logic/host-model-directories';
+import { hostModelDirectoryLabel, hostModelDirectoryRegistrationChangeEvent } from '@/logic/host-model-directories';
 export { hostModelDirectoryLabel } from '@/logic/host-model-directories';
 import { validateLinkedModelDirectory } from '@/features/llama-cpp-browser/runtime/linked-directory-input';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
@@ -10,8 +10,6 @@ import { getDownloadQueue } from '@/features/llama-cpp-browser/hugging-face/down
 import { isHostDestination, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 
 export type AuthorizedModelDestination = { destination: ModelDestination, expectedRoot: FileSystemDirectoryHandle | undefined };
-
-const registrationChangeEvent = 'naidan-host-model-directories-changed';
 
 // One accepted intent is shared by the GGUF download entry points. It overlays
 // stored settings only until its guarded write completes, without changing jobs
@@ -50,7 +48,7 @@ export function useModelDownloadDestination({ blocked, changed, folderLinked }: 
       registrationFailure.value = false;
       revision.value++;
       changed();
-      window.dispatchEvent(new Event(registrationChangeEvent));
+      window.dispatchEvent(new Event(hostModelDirectoryRegistrationChangeEvent));
     },
     failed: () => {
       registrationFailure.value = true;
@@ -251,12 +249,12 @@ export function useModelDownloadDestination({ blocked, changed, folderLinked }: 
   });
   onMounted(() => {
     window.addEventListener('focus', refreshOnFocus);
-    window.addEventListener(registrationChangeEvent, registrationsChanged);
+    window.addEventListener(hostModelDirectoryRegistrationChangeEvent, registrationsChanged);
     void refresh();
   });
   onUnmounted(() => {
     window.removeEventListener('focus', refreshOnFocus);
-    window.removeEventListener(registrationChangeEvent, registrationsChanged);
+    window.removeEventListener(hostModelDirectoryRegistrationChangeEvent, registrationsChanged);
   });
   return {
     view: { ...host.view, destination: selectedId, destinationKind: computed(() => destination.value.kind), selectDestination, add, addDroppedDirectory },

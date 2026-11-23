@@ -1,6 +1,6 @@
 import { shallowRef } from 'vue';
 
-export type TranslationNavigation = { openWorkspace: () => void, openModels: () => void };
+export type TranslationNavigation = { openWorkspace: () => void };
 const active = shallowRef<TranslationNavigation>();
 
 export function useTranslationNavigation() {

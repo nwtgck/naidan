@@ -1,31 +1,37 @@
-import { parseStandardArgv } from '@/features/wesh/argv';
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { getOptionalCoreMethod } from '@/features/wesh/commands/_shared/core-capability';
-import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
-import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
-import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type StandardArgvAction } from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import { WeshReadonlyVariableError } from '@/features/wesh/shell/variables';
+import type { WeshShellBuiltinFunction, WeshCommandResult } from '@/features/wesh/types';
 
-const unsetArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'v', long: undefined, effects: [{ key: 'variables', value: true }], help: { summary: 'unset shell variables' } },
-    { kind: 'flag', short: 'f', long: undefined, effects: [{ key: 'functions', value: true }], help: { summary: 'unset shell functions' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
-};
+const unsetOptions = [
+  {
+    forms: [{ kind: 'short', name: 'v', value: { kind: 'none' } }],
+    semantic: { kind: 'effects', effects: [{ key: 'variables', value: true }] },
+    summary: 'unset shell variables',
+  },
+  {
+    forms: [{ kind: 'short', name: 'f', value: { kind: 'none' } }],
+    semantic: { kind: 'effects', effects: [{ key: 'functions', value: true }] },
+    summary: 'unset shell functions',
+  },
+  {
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+] as const;
 
-export const unsetCommandImplementation: WeshCommandImplementation = {
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+const unsetArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({ definitions: unsetOptions, nonExecutableLongOptions: [] });
+const unsetArgvHelp = defineArgvHelpPresentation({ catalog: unsetArgvCatalog, rows: unsetOptions });
+
+export const unsetCommandImplementation = {
+  fn: async ({ context, shell }): Promise<WeshCommandResult> => {
+    const { variables } = shell;
     const parsed = parseStandardArgv({
-      args: stopStandardOptionParsingAtFirstPositional({
-        args: context.args,
-        spec: unsetArgvSpec,
-      }),
-      spec: unsetArgvSpec,
+      args: context.args,
+      catalog: unsetArgvCatalog,
+      policy: { longNameMatch: 'exact', optionBoundary: 'first-positional', occurrenceRetention: 'none' },
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -34,7 +40,7 @@ export const unsetCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'unset',
         message: `unset: ${diagnostic.message}`,
-        argvSpec: unsetArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: unsetArgvHelp }),
       });
       return { exitCode: 2 };
     }
@@ -43,7 +49,7 @@ export const unsetCommandImplementation: WeshCommandImplementation = {
       await writeCommandHelp({
         context,
         command: 'unset',
-        argvSpec: unsetArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: unsetArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -57,30 +63,29 @@ export const unsetCommandImplementation: WeshCommandImplementation = {
       return { exitCode: 1 };
     }
 
-    const unsetFunction = unsetFunctions
-      ? getOptionalCoreMethod<({ name }: { name: string }) => void>({
-        object: context,
-        name: 'unsetFunction',
-      })
-      : undefined;
-    if (unsetFunctions && unsetFunction === undefined) {
+    if (unsetFunctions) {
       await context.text().error({
         text: 'unset: -f requires Wesh core function-state support\n',
       });
       return { exitCode: 1 };
     }
 
+    let exitCode = 0;
     for (const name of parsed.positionals) {
-      if (unsetFunction !== undefined) {
-        unsetFunction({ name });
-      } else {
-        context.unsetEnv({ key: name });
+      try {
+        variables.unset({ name });
+      } catch (error: unknown) {
+        if (!(error instanceof WeshReadonlyVariableError)) {
+          throw error;
+        }
+        await context.text().error({ text: `unset: ${name}: cannot unset: readonly variable\n` });
+        exitCode = 1;
       }
     }
 
-    return { exitCode: 0 };
+    return { exitCode };
   },
-};
+} satisfies { readonly fn: WeshShellBuiltinFunction<'variables'> };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

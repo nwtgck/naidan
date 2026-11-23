@@ -35,10 +35,7 @@ export async function executeSedShellCommand({
   await context.executeCommand({
     command: 'sh',
     args: ['-c', command],
-    stdin: context.stdin,
     stdout,
-    stderr: context.stderr,
-    ignoreAliases: true,
   });
 }
 
@@ -64,10 +61,7 @@ export async function captureSedShellCommandOutput({
     await context.executeCommand({
       command: 'sh',
       args: ['-c', command],
-      stdin: context.stdin,
       stdout: captureHandle,
-      stderr: context.stderr,
-      ignoreAliases: true,
     });
   } finally {
     await captureHandle.close();

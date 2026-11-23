@@ -1,12 +1,14 @@
 import type { WeshCommandContext } from '@/features/wesh/types';
 
+export type WeshCommandUsageContext = Pick<WeshCommandContext, 'getWeshCommandMeta' | 'text'>;
+
 export async function writeCommandUsageError({
   context,
   command,
   message,
   usageSummary,
 }: {
-  context: WeshCommandContext,
+  context: WeshCommandUsageContext,
   command: string,
   message: string,
   usageSummary: string | undefined,
@@ -22,7 +24,7 @@ export async function writeCommandHelp({
   command,
   optionLines,
 }: {
-  context: WeshCommandContext,
+  context: WeshCommandUsageContext,
   command: string,
   optionLines: readonly string[],
 }): Promise<void> {
@@ -36,6 +38,22 @@ export async function writeCommandHelp({
     ...optionLines,
   ].filter((line) => line !== undefined).join('\n') + '\n';
   await context.text().print({ text });
+}
+
+export function isStandaloneCommandHelpRequest({
+  args,
+  acceptedForms,
+}: {
+  args: string[],
+  acceptedForms: string[][],
+}): boolean {
+  return acceptedForms.some((acceptedForm) => {
+    if (args.length !== acceptedForm.length) {
+      return false;
+    }
+
+    return acceptedForm.every((token, index) => args[index] === token);
+  });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

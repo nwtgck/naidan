@@ -1,13 +1,16 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
 import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
+import { createWriteHandleFromStream } from '@/features/wesh/utils/stream';
+import type { WeshFileHandle } from '@/features/wesh/types';
 import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
 import { objectIdFor } from './objects';
+import { replaceTextViaLock } from './files';
 
 const textEncoder = new TextEncoder();
 
@@ -17,21 +20,23 @@ beforeAll(async () => {
 
 describe('wesh git core lifecycle', () => {
   let wesh: Wesh;
+  let rootHandle: MockFileSystemDirectoryHandle;
 
   beforeEach(async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
   });
 
-  async function execute({ script }: { script: string }) {
+  async function execute({ script, signal, output }: { script: string, signal?: AbortSignal, output?: WeshFileHandle }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
       source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
-      stdout: stdout.handle,
+      stdout: output ?? stdout.handle,
       stderr: stderr.handle,
+      signal,
     });
     return { result, stdout, stderr };
   }
@@ -43,6 +48,432 @@ describe('wesh git core lifecycle', () => {
         body: textEncoder.encode('hello\n'),
       },
     })).toBe('ce013625030ba8dba906f756967f9e9ca394464a');
+  });
+
+  const initialCommit = `\
+git init -q repo
+cd /repo
+git config user.name Tester
+git config user.email tester@example.com
+git commit --allow-empty -m initial`;
+
+  it('keeps an independently created branch when storing its reflog fails', async () => {
+    const setup = await execute({ script: initialCommit });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const git = await (await rootHandle.getDirectoryHandle('repo')).getDirectoryHandle('.git');
+    const heads = await (await git.getDirectoryHandle('refs')).getDirectoryHandle('heads');
+    const logs = await (await (await git.getDirectoryHandle('logs')).getDirectoryHandle('refs')).getDirectoryHandle('heads');
+    const getFileHandle = logs.getFileHandle.bind(logs);
+    const foreignId = '1'.repeat(40);
+    using _failLog = vi.spyOn(logs, 'getFileHandle').mockImplementation(async (name, options) => {
+      if (name === 'topic.lock' && options?.create === true) {
+        await heads.removeEntry('topic').catch(() => {});
+        const foreignRef = await heads.getFileHandle('topic', { create: true });
+        foreignRef.content = textEncoder.encode(`${foreignId}\n`);
+        throw new DOMException('Reflog write denied', 'NoModificationAllowedError');
+      }
+      return getFileHandle(name, options);
+    });
+
+    const branch = await execute({ script: 'git branch topic' });
+    expect(branch.result.exitCode).toBe(128);
+    expect(branch.stderr.text).toContain('Reflog write denied');
+    expect(await (await (await heads.getFileHandle('topic')).getFile()).text()).toBe(`${foreignId}\n`);
+    await expect(heads.getFileHandle('topic.lock')).rejects.toMatchObject({ name: 'NotFoundError' });
+  });
+
+  it('rejects a commit when its parent ref changed before the commit could lock it', async () => {
+    const setup = await execute({ script: initialCommit });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const git = await (await rootHandle.getDirectoryHandle('repo')).getDirectoryHandle('.git');
+    const heads = await (await git.getDirectoryHandle('refs')).getDirectoryHandle('heads');
+    const head = (await (await (await git.getFileHandle('HEAD')).getFile()).text()).trim();
+    const name = head.slice('ref: refs/heads/'.length);
+    const headLog = await (await git.getDirectoryHandle('logs')).getFileHandle('HEAD');
+    const previousLog = await (await headLog.getFile()).text();
+    const branch = await heads.getFileHandle(name);
+    const acquire = wesh.vfs.createTemporaryFile.bind(wesh.vfs);
+    const newerId = '2'.repeat(40);
+    using _concurrentUpdate = vi.spyOn(wesh.vfs, 'createTemporaryFile').mockImplementation(async args => {
+      if (args.path === `/repo/.git/refs/heads/${name}.lock`) {
+        branch.content = textEncoder.encode(`${newerId}\n`);
+      }
+      return acquire(args);
+    });
+
+    const commit = await execute({ script: 'git commit --allow-empty -m next' });
+    expect(commit.result.exitCode).toBe(128);
+    expect(commit.stderr.text).toContain('HEAD changed while preparing the update');
+    expect(await (await branch.getFile()).text()).toBe(`${newerId}\n`);
+    expect(await (await headLog.getFile()).text()).toBe(previousLog);
+    await expect(git.getFileHandle('HEAD.lock')).rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect(heads.getFileHandle(`${name}.lock`)).rejects.toMatchObject({ name: 'NotFoundError' });
+  });
+
+  it('settles branch and reflog publication after Stop once the reflog write was accepted', async () => {
+    const setup = await execute({ script: initialCommit });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const git = await (await rootHandle.getDirectoryHandle('repo')).getDirectoryHandle('.git');
+    const heads = await (await git.getDirectoryHandle('refs')).getDirectoryHandle('heads');
+    const logs = await (await (await git.getDirectoryHandle('logs')).getDirectoryHandle('refs')).getDirectoryHandle('heads');
+    const readLog = logs.getFileHandle.bind(logs);
+    const accepted = Promise.withResolvers<void>();
+    const proceed = Promise.withResolvers<void>();
+    using _release = {
+      [Symbol.dispose]() {
+        proceed.resolve();
+      },
+    };
+    using _log = vi.spyOn(logs, 'getFileHandle').mockImplementation(async (name, options) => {
+      const file = await readLog(name, options);
+      if (name === 'topic' && options?.create === true) {
+        const writer = await file.createWritable();
+        const close = writer.close.bind(writer);
+        vi.spyOn(writer, 'close').mockImplementationOnce(async () => {
+          await close();
+          accepted.resolve();
+          await proceed.promise;
+        });
+        vi.spyOn(file, 'createWritable').mockResolvedValueOnce(writer);
+      }
+      return file;
+    });
+    const controller = new AbortController();
+    const branching = execute({ script: 'git branch topic', signal: controller.signal });
+    await accepted.promise;
+    controller.abort();
+    expect(wesh.vfs.hasPendingFilePublications()).toBe(true);
+    await expect(heads.getFileHandle('topic')).rejects.toMatchObject({ name: 'NotFoundError' });
+    proceed.resolve();
+
+    const branch = await branching;
+    expect(branch.result.exitCode).toBe(130);
+    const objectId = (await (await (await heads.getFileHandle('topic')).getFile()).text()).trim();
+    const log = await (await (await readLog('topic')).getFile()).text();
+    expect(log).toContain(`${'0'.repeat(40)} ${objectId} `);
+    expect(wesh.vfs.hasPendingFilePublications()).toBe(false);
+  });
+
+  it('does not list a first stash when only its reflog was published', async () => {
+    const setup = await execute({ script: initialCommit });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const git = await (await rootHandle.getDirectoryHandle('repo')).getDirectoryHandle('.git');
+    const refs = await git.getDirectoryHandle('refs');
+    const getRef = refs.getFileHandle.bind(refs);
+    using _ref = vi.spyOn(refs, 'getFileHandle').mockImplementation(async (name, options) => {
+      if (name === 'stash' && options?.create === true) {
+        throw new DOMException('Ref creation denied', 'NoModificationAllowedError');
+      }
+      return getRef(name, options);
+    });
+    const stash = await execute({
+      script: `\
+printf 'staged' > file
+git add file
+git stash push`,
+    });
+    expect(stash.result.exitCode).toBe(128);
+    expect(stash.stderr.text).toContain("Could not publish '/repo/.git/refs/stash'");
+    await expect(refs.getFileHandle('stash')).rejects.toMatchObject({ name: 'NotFoundError' });
+    const recovery = await refs.getFileHandle('stash.lock');
+    expect((await (await recovery.getFile()).text()).trim()).toMatch(/^[0-9a-f]{40}$/u);
+    const listed = await execute({ script: 'git stash list' });
+    expect(listed.result.exitCode).toBe(0);
+    expect(listed.stdout.text).toBe('');
+  });
+
+  it.each(['clear', 'drop'])('finishes stash %s after Stop once the ref unlink was accepted', async subcommand => {
+    const setup = await execute({ script: `${initialCommit}\nprintf 'staged' > file\ngit add file\ngit stash push` });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const git = await (await rootHandle.getDirectoryHandle('repo')).getDirectoryHandle('.git');
+    const refs = await git.getDirectoryHandle('refs');
+    const logs = await (await git.getDirectoryHandle('logs')).getDirectoryHandle('refs');
+    const removeEntry = refs.removeEntry.bind(refs);
+    const accepted = Promise.withResolvers<void>();
+    const proceed = Promise.withResolvers<void>();
+    using _release = {
+      [Symbol.dispose]() {
+        proceed.resolve();
+      },
+    };
+    using _remove = vi.spyOn(refs, 'removeEntry').mockImplementation(async (name, options) => {
+      await removeEntry(name, options);
+      if (name === 'stash') {
+        accepted.resolve();
+        await proceed.promise;
+      }
+    });
+    const controller = new AbortController();
+    const removing = execute({ script: `git stash ${subcommand}`, signal: controller.signal });
+    await accepted.promise;
+    controller.abort();
+    expect(wesh.vfs.hasPendingFilePublications()).toBe(true);
+    await expect(refs.getFileHandle('stash.lock')).resolves.toBeDefined();
+    await expect(logs.getFileHandle('stash')).resolves.toBeDefined();
+    proceed.resolve();
+
+    const removed = await removing;
+    expect(removed.result.exitCode).toBe(130);
+    await expect(refs.getFileHandle('stash')).rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect(logs.getFileHandle('stash')).rejects.toMatchObject({ name: 'NotFoundError' });
+    expect(wesh.vfs.hasPendingFilePublications()).toBe(false);
+  });
+
+  it('keeps a detached stash log for recovery without reviving its entries on push', async () => {
+    const setup = await execute({ script: `${initialCommit}\nprintf 'old' > file\ngit add file\ngit stash push -m old` });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const git = await (await rootHandle.getDirectoryHandle('repo')).getDirectoryHandle('.git');
+    const logs = await (await git.getDirectoryHandle('logs')).getDirectoryHandle('refs');
+    const oldLog = await (await (await logs.getFileHandle('stash')).getFile()).text();
+    {
+      using _remove = vi.spyOn(logs, 'removeEntry').mockRejectedValueOnce(new DOMException('Log removal denied', 'NotAllowedError'));
+      const failed = await execute({ script: 'git stash clear' });
+      expect(failed.result.exitCode).toBe(128);
+      expect(failed.stderr.text).toContain('Log removal denied');
+    }
+
+    const pushed = await execute({
+      script: `printf 'new' > file\ngit add file\ngit stash push -m new >/dev/null && git stash list`,
+    });
+    expect(pushed.result.exitCode, pushed.stderr.text).toBe(0);
+    expect(pushed.stdout.text).toBe('stash@{0}: On master: new\n');
+    const currentLog = await (await (await logs.getFileHandle('stash')).getFile()).text();
+    expect(currentLog.startsWith(oldLog)).toBe(true);
+    const old = await execute({ script: "git stash drop 'stash@{1}'" });
+    expect(old.result.exitCode).toBe(128);
+    expect(await (await (await logs.getFileHandle('stash')).getFile()).text()).toBe(currentLog);
+  });
+
+  it('preserves the live stash and recovery log when publishing its replacement fails', async () => {
+    const setup = await execute({ script: `${initialCommit}\nprintf 'first' > file\ngit add file\ngit stash push -m first` });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const git = await (await rootHandle.getDirectoryHandle('repo')).getDirectoryHandle('.git');
+    const refs = await git.getDirectoryHandle('refs');
+    const ref = await refs.getFileHandle('stash');
+    const logs = await (await git.getDirectoryHandle('logs')).getDirectoryHandle('refs');
+    {
+      using _write = vi.spyOn(ref, 'createWritable').mockRejectedValueOnce(new DOMException('Ref replacement denied', 'NotAllowedError'));
+      const failed = await execute({ script: `printf 'failed' > file\ngit add file\ngit stash push -m failed` });
+      expect(failed.result.exitCode).toBe(128);
+      expect(failed.stderr.text).toContain('Ref replacement denied');
+    }
+    const log = await logs.getFileHandle('stash');
+    const recoveryLine = (await (await log.getFile()).text()).split('\n').find(line => line.endsWith('On master: failed'));
+    expect(recoveryLine).toBeDefined();
+    const listed = await execute({ script: 'git stash list' });
+    expect(listed.stdout.text).toBe('stash@{0}: On master: first\n');
+    await refs.removeEntry('stash.lock');
+    const pushed = await execute({
+      script: `printf 'latest' > file\ngit add file\ngit stash push -m latest >/dev/null && git stash list`,
+    });
+    expect(pushed.result.exitCode, pushed.stderr.text).toBe(0);
+    expect(pushed.stdout.text).toBe(`\
+stash@{0}: On master: latest
+stash@{1}: On master: first
+`);
+
+    const dropped = await execute({ script: 'git stash drop >/dev/null && git stash list' });
+    expect(dropped.result.exitCode, dropped.stderr.text).toBe(0);
+    expect(dropped.stdout.text).toBe('stash@{0}: On master: first\n');
+    const last = await execute({ script: 'git stash drop >/dev/null && git stash list' });
+    expect(last.result.exitCode, last.stderr.text).toBe(0);
+    expect(last.stdout.text).toBe('');
+    const keptLog = await logs.getFileHandle('stash');
+    expect((await (await keptLog.getFile()).text()).split('\n')).toContain(recoveryLine);
+  });
+
+  it.each([
+    { destination: 'ref', remaining: ['latest', 'first'] },
+    { destination: 'reflog', remaining: ['first'] },
+  ])('preserves stash history when dropping the latest entry cannot publish the $destination', async ({ destination, remaining }) => {
+    const setup = await execute({
+      script: `\
+${initialCommit}
+for message in first latest; do
+  printf '%s' "$message" > file
+  git add file
+  git stash push -m "$message" >/dev/null
+done`,
+    });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const git = await (await rootHandle.getDirectoryHandle('repo')).getDirectoryHandle('.git');
+    const refs = await git.getDirectoryHandle('refs');
+    const logs = await (await git.getDirectoryHandle('logs')).getDirectoryHandle('refs');
+    const log = await logs.getFileHandle('stash');
+    const originalLog = await (await log.getFile()).text();
+    const failing = destination === 'ref' ? await refs.getFileHandle('stash') : log;
+    using _write = vi.spyOn(failing, 'createWritable').mockRejectedValueOnce(new DOMException('Replacement denied', 'NotAllowedError'));
+
+    const dropped = await execute({ script: 'git stash drop' });
+    expect(dropped.result.exitCode).toBe(128);
+    expect(dropped.stderr.text).toContain('Replacement denied');
+    const after = await execute({ script: 'git stash list' });
+    expect(after.stdout.text).toBe(remaining.map((message, index) => `stash@{${index}}: On master: ${message}\n`).join(''));
+    expect(await (await (await logs.getFileHandle('stash')).getFile()).text()).toBe(originalLog);
+  });
+
+  it('does not pop a different stash with the same object ID after the list changes', async () => {
+    const setup = await execute({
+      script: `\
+${initialCommit} >/dev/null
+export GIT_AUTHOR_DATE='981173106 +0000'
+export GIT_COMMITTER_DATE='981173106 +0000'
+for repeat in one two; do
+  printf 'same change' > file
+  git add file
+  git stash push -m same >/dev/null
+done
+cat .git/logs/refs/stash`,
+    });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const [first, second] = setup.stdout.text.trimEnd().split('\n');
+    expect(first?.split(' ')[1]).toMatch(/^[0-9a-f]{40}$/u);
+    expect(second?.split(' ')[1]).toBe(first?.split(' ')[1]);
+
+    const applied = Promise.withResolvers<void>();
+    const proceed = Promise.withResolvers<void>();
+    using _release = {
+      [Symbol.dispose]() {
+        proceed.resolve();
+      },
+    };
+    const output = createWriteHandleFromStream({
+      target: new WritableStream<Uint8Array>({
+        async write() {
+          applied.resolve();
+          await proceed.promise;
+        },
+      }),
+    });
+    const popping = execute({ script: 'git stash pop', output });
+    await applied.promise;
+    const competing = await execute({ script: 'git stash drop' });
+    expect(competing.result.exitCode, competing.stderr.text).toBe(0);
+    proceed.resolve();
+
+    const result = await popping;
+    expect(result.result.exitCode).toBe(1);
+    expect(result.stderr.text).toContain('stash changed after apply, skipped drop');
+    const retained = await execute({ script: 'git stash list && cat file' });
+    expect(retained.result.exitCode, retained.stderr.text).toBe(0);
+    expect(retained.stdout.text).toBe(`\
+stash@{0}: On master: same
+same change`);
+  });
+
+  it('preserves the publication error and leaves the lock alone when source cleanup fails', async () => {
+    const destination = await rootHandle.getFileHandle('ref', { create: true });
+    const removeEntry = rootHandle.removeEntry.bind(rootHandle);
+    const remove = vi.spyOn(rootHandle, 'removeEntry').mockImplementation(async (name, options) => {
+      if (name === 'ref.lock') {
+        throw new DOMException('lock removal denied', 'NotAllowedError');
+      }
+      await removeEntry(name, options);
+    });
+
+    await expect(replaceTextViaLock({ files: wesh.kernel, path: '/ref', text: 'new ref' })).rejects.toMatchObject({
+      name: 'WeshRenameIncompleteError',
+      cause: expect.objectContaining({ message: 'lock removal denied' }),
+    });
+    expect(remove.mock.calls.filter(([name]) => name === 'ref.lock')).toHaveLength(1);
+    expect(await (await destination.getFile()).text()).toBe('new ref');
+    expect(await (await (await rootHandle.getFileHandle('ref.lock')).getFile()).text()).toBe('new ref');
+  });
+
+  it.each(['verified', 'unverifiable'] as const)('keeps a new lock acquired after native publication is %s', async verification => {
+    const getFile = rootHandle.getFileHandle.bind(rootHandle);
+    let installed = false;
+    vi.spyOn(rootHandle, 'getFileHandle').mockImplementation(async (name, options) => {
+      const file = await getFile(name, options);
+      if (!installed && name === 'ref.lock' && options?.create) {
+        installed = true;
+        Object.assign(file, {
+          async move() {
+            const nextRef = await getFile('ref', { create: true });
+            const writer = await nextRef.createWritable();
+            await writer.write(await file.getFile());
+            await writer.close();
+            await rootHandle.removeEntry('ref.lock');
+            const nextLock = await getFile('ref.lock', { create: true });
+            const lockWriter = await nextLock.createWritable();
+            await lockWriter.write('next lock');
+            await lockWriter.close();
+            vi.spyOn(file, 'isSameEntry').mockResolvedValueOnce(verification === 'verified');
+          },
+        });
+      }
+      return file;
+    });
+
+    const publication = replaceTextViaLock({ files: wesh.kernel, path: '/ref', text: 'first lock' });
+    if (verification === 'verified') {
+      await expect(publication).resolves.toBeUndefined();
+    } else {
+      await expect(publication).rejects.toMatchObject({ name: 'WeshRenameIncompleteError' });
+    }
+    expect(await (await (await getFile('ref')).getFile()).text()).toBe('first lock');
+    expect(await (await (await getFile('ref.lock')).getFile()).text()).toBe('next lock');
+  });
+
+  it.each([
+    { stop: true, replaced: false, exitCode: 130 },
+    { stop: false, replaced: true, exitCode: 1 },
+    { stop: true, replaced: true, exitCode: 130 },
+  ])('preserves the destination and cleans only its own lock (stop=$stop, replaced=$replaced)', async ({ stop, replaced, exitCode }) => {
+    const destination = await rootHandle.getFileHandle('ref', { create: true });
+    destination.content = textEncoder.encode('old ref');
+    const ready = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const finished = Promise.withResolvers<void>();
+    using _resume = {
+      [Symbol.dispose]() {
+        resume.resolve();
+      },
+    };
+    wesh.registerCommand({
+      definition: {
+        meta: { name: 'replace-git-lock', description: 'Replace a Git file through a lock', usage: 'replace-git-lock' },
+        load: async () => async ({ context }) => {
+          const rename = context.files.rename;
+          using _rename = vi.spyOn(context.files, 'rename').mockImplementation(async args => {
+            ready.resolve();
+            await resume.promise;
+            return rename(args);
+          });
+          try {
+            await replaceTextViaLock({ files: context.files, path: '/ref', text: 'new ref' });
+            return { exitCode: 0 };
+          } finally {
+            finished.resolve();
+          }
+        },
+      },
+    });
+
+    const controller = new AbortController();
+    const execution = execute({ script: 'replace-git-lock', signal: controller.signal });
+    await ready.promise;
+    if (replaced) {
+      await rootHandle.removeEntry('ref.lock');
+      const nextLock = await rootHandle.getFileHandle('ref.lock', { create: true });
+      nextLock.content = textEncoder.encode('another writer');
+    }
+    if (stop) {
+      controller.abort();
+      await wesh.interruptForeground({ foregroundSignal: controller.signal });
+    }
+    resume.resolve();
+
+    await finished.promise;
+    const result = await execution;
+    expect(result.result.exitCode).toBe(exitCode);
+    expect(await (await destination.getFile()).text()).toBe('old ref');
+    if (replaced) {
+      const nextLock = await rootHandle.getFileHandle('ref.lock');
+      expect(await (await nextLock.getFile()).text()).toBe('another writer');
+    } else {
+      await expect(rootHandle.getFileHandle('ref.lock')).rejects.toMatchObject({ name: 'NotFoundError' });
+    }
   });
 
   it('initializes, stages, commits, reports status, and reads history through shared primitives', async () => {
@@ -616,6 +1047,124 @@ refs/heads/main
 `);
   });
 
+  it('preserves the current branch when its rename cannot lock HEAD', async () => {
+    const setup = await execute({ script: `${initialCommit}\ngit config branch.master.remote origin` });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const git = await (await rootHandle.getDirectoryHandle('repo')).getDirectoryHandle('.git');
+    const heads = await (await git.getDirectoryHandle('refs')).getDirectoryHandle('heads');
+    const logs = await git.getDirectoryHandle('logs');
+    const branchLogs = await (await logs.getDirectoryHandle('refs')).getDirectoryHandle('heads');
+    const oldObjectId = await (await (await heads.getFileHandle('master')).getFile()).text();
+    const oldBranchLog = await (await (await branchLogs.getFileHandle('master')).getFile()).text();
+    const oldHeadLog = await (await (await logs.getFileHandle('HEAD')).getFile()).text();
+    const oldConfig = await (await (await git.getFileHandle('config')).getFile()).text();
+    const lock = await git.getFileHandle('HEAD.lock', { create: true });
+    lock.content = textEncoder.encode('other writer\n');
+
+    const rename = await execute({ script: 'git branch -m renamed' });
+
+    expect(rename.result.exitCode).toBe(128);
+    expect(rename.stderr.text).toContain('HEAD.lock');
+    expect(await (await (await git.getFileHandle('HEAD')).getFile()).text()).toBe('ref: refs/heads/master\n');
+    expect(await (await (await heads.getFileHandle('master')).getFile()).text()).toBe(oldObjectId);
+    expect(await (await (await branchLogs.getFileHandle('master')).getFile()).text()).toBe(oldBranchLog);
+    expect(await (await (await logs.getFileHandle('HEAD')).getFile()).text()).toBe(oldHeadLog);
+    expect(await (await (await git.getFileHandle('config')).getFile()).text()).toBe(oldConfig);
+    expect(await (await (await git.getFileHandle('HEAD.lock')).getFile()).text()).toBe('other writer\n');
+    await expect(heads.getFileHandle('renamed')).rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect(branchLogs.getFileHandle('renamed')).rejects.toMatchObject({ name: 'NotFoundError' });
+  });
+
+  it('finishes the branch rename after Stop once the new ref creation was accepted', async () => {
+    const setup = await execute({ script: `${initialCommit}\ngit config branch.master.remote origin` });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const git = await (await rootHandle.getDirectoryHandle('repo')).getDirectoryHandle('.git');
+    const heads = await (await git.getDirectoryHandle('refs')).getDirectoryHandle('heads');
+    const logs = await git.getDirectoryHandle('logs');
+    const branchLogs = await (await logs.getDirectoryHandle('refs')).getDirectoryHandle('heads');
+    const oldObjectId = await (await (await heads.getFileHandle('master')).getFile()).text();
+    const oldBranchLog = await (await (await branchLogs.getFileHandle('master')).getFile()).text();
+    const getRef = heads.getFileHandle.bind(heads);
+    const accepted = Promise.withResolvers<void>();
+    const proceed = Promise.withResolvers<void>();
+    using _release = {
+      [Symbol.dispose]() {
+        proceed.resolve();
+      },
+    };
+    using _ref = vi.spyOn(heads, 'getFileHandle').mockImplementation(async (name, options) => {
+      const file = await getRef(name, options);
+      if (name === 'renamed' && options?.create === true) {
+        accepted.resolve();
+        await proceed.promise;
+      }
+      return file;
+    });
+    const controller = new AbortController();
+    const renaming = execute({ script: 'git branch -m renamed', signal: controller.signal });
+    const reached = await Promise.race([accepted.promise.then(() => true), renaming.then(() => false)]);
+    expect(reached).toBe(true);
+    controller.abort();
+    expect(wesh.vfs.hasPendingFilePublications()).toBe(true);
+    expect(await (await (await getRef('master')).getFile()).text()).toBe(oldObjectId);
+    proceed.resolve();
+
+    const rename = await renaming;
+    expect(rename.result.exitCode).toBe(130);
+    expect(await (await (await getRef('renamed')).getFile()).text()).toBe(oldObjectId);
+    expect(await (await (await git.getFileHandle('HEAD')).getFile()).text()).toBe('ref: refs/heads/renamed\n');
+    const newBranchLog = await (await (await branchLogs.getFileHandle('renamed')).getFile()).text();
+    const message = 'Branch: renamed refs/heads/master to refs/heads/renamed';
+    expect(newBranchLog.startsWith(oldBranchLog)).toBe(true);
+    expect(newBranchLog).toContain(message);
+    const headLog = await (await (await logs.getFileHandle('HEAD')).getFile()).text();
+    expect(headLog.split('\n').filter(line => line.endsWith(message))).toHaveLength(2);
+    const config = await (await (await git.getFileHandle('config')).getFile()).text();
+    expect(config).toContain('[branch "renamed"]');
+    expect(config).not.toContain('[branch "master"]');
+    await expect(getRef('master')).rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect(branchLogs.getFileHandle('master')).rejects.toMatchObject({ name: 'NotFoundError' });
+    expect(wesh.vfs.hasPendingFilePublications()).toBe(false);
+  });
+
+  it('excludes a concurrent commit while preparing to rename the current branch', async () => {
+    const setup = await execute({ script: `${initialCommit}\nprintf 'staged' > file\ngit add file` });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const git = await (await rootHandle.getDirectoryHandle('repo')).getDirectoryHandle('.git');
+    const heads = await (await git.getDirectoryHandle('refs')).getDirectoryHandle('heads');
+    const oldObjectId = await (await (await heads.getFileHandle('master')).getFile()).text();
+    const acquire = wesh.vfs.createTemporaryFile.bind(wesh.vfs);
+    const preparing = Promise.withResolvers<void>();
+    const proceed = Promise.withResolvers<void>();
+    using _release = {
+      [Symbol.dispose]() {
+        proceed.resolve();
+      },
+    };
+    using _lock = vi.spyOn(wesh.vfs, 'createTemporaryFile').mockImplementation(async args => {
+      if (args.path === '/repo/.git/refs/heads/renamed.lock') {
+        preparing.resolve();
+        await proceed.promise;
+      }
+      return acquire(args);
+    });
+    const renaming = execute({ script: 'git branch -m renamed' });
+    const reached = await Promise.race([preparing.promise.then(() => true), renaming.then(() => false)]);
+    expect(reached).toBe(true);
+    const commit = await execute({ script: 'git commit -m concurrent' });
+    proceed.resolve();
+
+    const rename = await renaming;
+    expect(commit.result.exitCode).toBe(128);
+    expect(commit.stderr.text).toContain('HEAD.lock');
+    expect(rename.result.exitCode, rename.stderr.text).toBe(0);
+    expect(await (await (await heads.getFileHandle('renamed')).getFile()).text()).toBe(oldObjectId);
+    expect(await (await (await git.getFileHandle('HEAD')).getFile()).text()).toBe('ref: refs/heads/renamed\n');
+    await expect(heads.getFileHandle('master')).rejects.toMatchObject({ name: 'NotFoundError' });
+    const status = await execute({ script: 'git status --short' });
+    expect(status.stdout.text).toBe('A  file\n');
+  });
+
   it('updates existing branch and HEAD reflogs when renaming with core.logallrefupdates=false', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -655,6 +1204,57 @@ test ! -e .git/logs/refs/heads/main`,
     expect(stdout.text).toBe(`\
 main
 ref: refs/heads/main
+`);
+  });
+
+  it('keeps a branch that is checked out in another linked worktree', async () => {
+    const setup = await execute({
+      script: `\
+${initialCommit}
+git branch topic
+mkdir -p .git/worktrees/linked /linked
+printf 'gitdir: /repo/.git/worktrees/linked\\n' > /linked/.git
+printf '../..\\n' > .git/worktrees/linked/commondir
+printf 'ref: refs/heads/topic\\n' > .git/worktrees/linked/HEAD`,
+    });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const renamed = await execute({ script: 'git branch -m topic renamed' });
+    expect(renamed.result.exitCode).toBe(128);
+    expect(renamed.stderr.text).toContain("Cannot rename 'refs/heads/topic' while it is checked out in another worktree");
+    const after = await execute({
+      script: `\
+git -C /linked rev-parse --verify HEAD &&
+test ! -e .git/refs/heads/renamed &&
+cat .git/refs/heads/topic`,
+    });
+    expect(after.result.exitCode, after.stderr.text).toBe(0);
+    const [head, topic] = after.stdout.text.trimEnd().split('\n');
+    expect(head).toMatch(/^[0-9a-f]{40}$/u);
+    expect(topic).toBe(head);
+  });
+
+  it('renames the current linked branch when its git directory is reached through a symlink', async () => {
+    const setup = await execute({
+      script: `\
+${initialCommit}
+git branch topic
+mkdir -p .git/worktrees/linked /linked
+ln -s /repo/.git /metadata
+printf 'gitdir: /metadata/worktrees/linked\\n' > /linked/.git
+printf '/repo/.git\\n' > .git/worktrees/linked/commondir
+printf 'ref: refs/heads/topic\\n' > .git/worktrees/linked/HEAD`,
+    });
+    expect(setup.result.exitCode, setup.stderr.text).toBe(0);
+    const renamed = await execute({
+      script: `\
+git -C /linked branch -m renamed &&
+git -C /linked branch --show-current &&
+git branch --show-current`,
+    });
+    expect(renamed.result.exitCode, renamed.stderr.text).toBe(0);
+    expect(renamed.stdout.text).toBe(`\
+renamed
+master
 `);
   });
 

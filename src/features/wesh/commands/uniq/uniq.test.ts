@@ -257,6 +257,26 @@ beta
 `);
   });
 
+  it('treats option-shaped names after double dash as input and output files', async () => {
+    await writeFile({
+      path: '--group',
+      data: `\
+a
+a
+b
+`,
+    });
+    const { result, stdout, stderr } = await execute({ script: 'uniq -- --group --all-repeated' });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+    expect(await readFileText({ path: '--all-repeated' })).toBe(`\
+a
+b
+`);
+  });
+
   it('supports root-relative input and output paths from /', async () => {
     await writeFile({
       path: 'input.txt',
@@ -397,6 +417,23 @@ beta
     expect(result.exitCode).toBe(0);
   });
 
+  it('accepts abbreviated long names and rejects ambiguous or valued flags', async () => {
+    const help = await execute({ script: 'uniq --he --unknown' });
+    const ambiguous = await execute({ script: 'uniq --s --help' });
+    const unexpectedValue = await execute({ script: 'uniq --count=yes --help' });
+
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).toContain('usage: uniq');
+    expect(ambiguous.result.exitCode).toBe(1);
+    expect(ambiguous.stdout.text).toBe('');
+    expect(ambiguous.stderr.text).toContain("option '--s' is ambiguous");
+    expect(ambiguous.stderr.text).toContain("'--skip-fields'");
+    expect(ambiguous.stderr.text).toContain("'--skip-chars'");
+    expect(unexpectedValue.result.exitCode).toBe(1);
+    expect(unexpectedValue.stdout.text).toBe('');
+    expect(unexpectedValue.stderr.text).toContain("option '--count' doesn't allow an argument");
+  });
+
   it('prints usage for extra operands', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'uniq a b c',
@@ -503,6 +540,11 @@ c
 `);
     expect(prepend.stderr.text).toBe('');
     expect(prepend.result.exitCode).toBe(0);
+
+    const reset = await execute({ script: 'uniq --all-repeated=p -D', stdinText: input });
+    expect(reset.result.exitCode).toBe(0);
+    expect(reset.stderr.text).toBe('');
+    expect(reset.stdout.text).toBe(allRepeated.stdout.text);
   });
 
   it('preserves GNU category composition when -u is combined with -D', async () => {
@@ -548,6 +590,52 @@ b
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('claims a group method only when attached and leaves numeric options in control of their values', async () => {
+    await writeFile({
+      path: 'both',
+      data: `\
+a
+a
+b
+`,
+    });
+    const operand = await execute({ script: 'uniq --group=both --group both' });
+    const claimedHelp = await execute({ script: 'uniq -f --help' });
+
+    expect(operand.result.exitCode).toBe(0);
+    expect(operand.stdout.text).toBe(`\
+a
+a
+
+b
+`);
+    expect(operand.stderr.text).toBe('');
+    expect(claimedHelp.result.exitCode).toBe(1);
+    expect(claimedHelp.stdout.text).toBe('');
+    expect(claimedHelp.stderr.text).toContain('invalid argument to skip-fields: --help');
+  });
+
+  it('diagnoses invalid grouping methods in argument order before later help or errors', async () => {
+    const groupFirst = await execute({ script: 'uniq --group=bad --all-repeated=bad --help' });
+    const emptyMethod = await execute({ script: 'uniq --all-repeated= --unknown' });
+    const syntaxFirst = await execute({ script: 'uniq --unknown --group=bad' });
+    const helpFirst = await execute({ script: 'uniq --help --group=bad' });
+    const helpOverridesConflict = await execute({ script: 'uniq --group -u --help' });
+
+    for (const execution of [groupFirst, emptyMethod, syntaxFirst]) {
+      expect(execution.result.exitCode).toBe(1);
+      expect(execution.stdout.text).toBe('');
+    }
+    expect(groupFirst.stderr.text).toContain("invalid argument 'bad' for '--group'");
+    expect(emptyMethod.stderr.text).toContain("ambiguous argument '' for '--all-repeated'");
+    expect(syntaxFirst.stderr.text).toContain("unrecognized option '--unknown'");
+    for (const execution of [helpFirst, helpOverridesConflict]) {
+      expect(execution.result.exitCode).toBe(0);
+      expect(execution.stdout.text).toContain('usage: uniq');
+      expect(execution.stderr.text).toBe('');
+    }
   });
 
   it('rejects repeat counts with -D and selection modes with --group', async () => {

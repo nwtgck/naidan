@@ -1,104 +1,356 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import {
+  defineArgvCatalog,
+  defineArgvHelpPresentation,
+  parseStandardArgv,
+  type StandardArgvAction,
+  type StandardArgvPolicy,
+} from '@/features/wesh/argv';
 import { compileTreePattern } from './pattern';
 import type { TreeCharset, TreeGroupingMode, TreeOptions, TreeSortMode } from './types';
 
-function parsePositiveInteger({ value }: { value: string }) {
+type TreePatternOption = 'includePattern' | 'excludePattern';
+
+function parsePositiveInteger({ rawValue: value }: { rawValue: string }) {
   if (!/^\d+$/.test(value)) {
-    return { ok: false as const, message: `invalid integer '${value}'` };
+    return { kind: 'invalid' as const, message: `invalid integer '${value}'` };
   }
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1) {
-    return { ok: false as const, message: `invalid level '${value}'` };
+    return { kind: 'invalid' as const, message: `invalid level '${value}'` };
   }
-  return { ok: true as const, value: parsed };
+  return { kind: 'parsed' as const, value: parsed };
 }
 
-function parseNonNegativeInteger({ value }: { value: string }) {
+function parseNonNegativeInteger({ rawValue: value }: { rawValue: string }) {
   if (!/^\d+$/.test(value)) {
-    return { ok: false as const, message: `invalid integer '${value}'` };
+    return { kind: 'invalid' as const, message: `invalid integer '${value}'` };
   }
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    return { ok: false as const, message: `invalid count '${value}'` };
+    return { kind: 'invalid' as const, message: `invalid count '${value}'` };
   }
-  return { ok: true as const, value: parsed };
+  return { kind: 'parsed' as const, value: parsed };
 }
 
-function parseSortMode({ value }: { value: string }) {
+function parseSortMode({ rawValue: value }: { rawValue: string }) {
   switch (value) {
   case 'name':
   case 'version':
   case 'mtime':
   case 'size':
   case 'none':
-    return { ok: true as const, value };
+    return { kind: 'parsed' as const, value };
   default:
-    return { ok: false as const, message: `invalid sort mode '${value}'` };
+    return { kind: 'invalid' as const, message: `invalid sort mode '${value}'` };
   }
 }
 
-function parseCharset({ value }: { value: string }) {
+function parseCharset({ rawValue: value }: { rawValue: string }) {
   switch (value.toUpperCase()) {
   case 'UTF-8':
   case 'UTF8':
-    return { ok: true as const, value: 'utf8' };
+    return { kind: 'parsed' as const, value: 'utf8' };
   case 'ASCII':
-    return { ok: true as const, value: 'ascii' };
+    return { kind: 'parsed' as const, value: 'ascii' };
   default:
-    return { ok: false as const, message: `unsupported charset '${value}'` };
+    return { kind: 'invalid' as const, message: `unsupported charset '${value}'` };
   }
 }
 
-export const treeArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'a', long: 'all', effects: [{ key: 'all', value: true }], help: { summary: 'list all files', category: 'common' } },
-    { kind: 'flag', short: 'd', long: 'dirs-only', effects: [{ key: 'dirsOnly', value: true }], help: { summary: 'list directories only', category: 'common' } },
-    { kind: 'flag', short: 'f', long: 'full-path', effects: [{ key: 'fullPath', value: true }], help: { summary: 'print the full path prefix for each file', category: 'common' } },
-    { kind: 'flag', short: 'l', long: 'follow-links', effects: [{ key: 'followLinks', value: true }], help: { summary: 'follow symbolic links to directories', category: 'common' } },
-    { kind: 'value', short: 'L', long: 'level', key: 'maxDepth', valueName: 'LEVEL', allowAttachedValue: true, parseValue: parsePositiveInteger, help: { summary: 'descend only LEVEL directories deep', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'noreport', effects: [{ key: 'noreport', value: true }], help: { summary: 'omit the file and directory report', category: 'common' } },
-    { kind: 'value', short: undefined, long: 'filelimit', key: 'fileLimit', valueName: 'N', allowAttachedValue: false, parseValue: parseNonNegativeInteger, help: { summary: 'do not descend directories with more than N entries', category: 'advanced' } },
-    { kind: 'value', short: 'P', long: 'pattern', key: 'includePattern', valueName: 'PATTERN', allowAttachedValue: true, parseValue: undefined, help: { summary: 'list only files that match PATTERN', category: 'common' } },
-    { kind: 'value', short: 'I', long: 'ignore-pattern', key: 'excludePattern', valueName: 'PATTERN', allowAttachedValue: true, parseValue: undefined, help: { summary: 'exclude files that match PATTERN', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'ignore-case', effects: [{ key: 'ignoreCase', value: true }], help: { summary: 'ignore case when matching patterns', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'matchdirs', effects: [{ key: 'matchDirectories', value: true }], help: { summary: 'include matching directory names and their contents', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'prune', effects: [{ key: 'prune', value: true }], help: { summary: 'prune empty directories from the output', category: 'advanced' } },
-    { kind: 'flag', short: 'r', long: 'reverse', effects: [{ key: 'reverse', value: true }], help: { summary: 'reverse the sort order', category: 'advanced' } },
-    { kind: 'flag', short: 'U', long: undefined, effects: [{ key: 'sortMode', value: 'none' }], help: { summary: 'leave entries unsorted', category: 'advanced' } },
-    { kind: 'flag', short: 'v', long: undefined, effects: [{ key: 'sortMode', value: 'version' }], help: { summary: 'sort by version', category: 'advanced' } },
-    { kind: 'flag', short: 't', long: undefined, effects: [{ key: 'sortMode', value: 'mtime' }], help: { summary: 'sort by modification time', category: 'advanced' } },
-    { kind: 'value', short: undefined, long: 'sort', key: 'sortMode', valueName: 'MODE', allowAttachedValue: false, parseValue: parseSortMode, help: { summary: 'sort by name, version, size, mtime, or none', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'dirsfirst', effects: [{ key: 'groupingMode', value: 'directories-first' }], help: { summary: 'list directories before files', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'filesfirst', effects: [{ key: 'groupingMode', value: 'files-first' }], help: { summary: 'list files before directories', category: 'advanced' } },
-    { kind: 'value', short: undefined, long: 'charset', key: 'charset', valueName: 'CHARSET', allowAttachedValue: false, parseValue: parseCharset, help: { summary: 'use UTF-8 or ASCII line drawing characters', category: 'advanced' } },
-    { kind: 'flag', short: 'i', long: undefined, effects: [{ key: 'indentMode', value: 'none' }], help: { summary: 'do not print indentation lines', category: 'advanced' } },
-    { kind: 'flag', short: 'Q', long: 'quote-filenames', effects: [{ key: 'quoteNames', value: true }], help: { summary: 'quote file names in double quotes', category: 'advanced' } },
-    { kind: 'flag', short: 'q', long: undefined, effects: [{ key: 'nameDisplayMode', value: 'question' }], help: { summary: 'print non-printable characters as question marks', category: 'advanced' } },
-    { kind: 'flag', short: 'N', long: 'literal', effects: [{ key: 'nameDisplayMode', value: 'literal' }], help: { summary: 'print file names without escaping', category: 'advanced' } },
-    { kind: 'flag', short: 'F', long: 'classify', effects: [{ key: 'classify', value: true }], help: { summary: 'append a type indicator to entries', category: 'common' } },
-    { kind: 'flag', short: 'p', long: 'permissions', effects: [{ key: 'showPermissions', value: true }], help: { summary: 'print type and permission bits', category: 'advanced' } },
-    { kind: 'flag', short: 'u', long: 'user', effects: [{ key: 'showUid', value: true }], help: { summary: 'print numeric user id', category: 'advanced' } },
-    { kind: 'flag', short: 'g', long: 'group', effects: [{ key: 'showGid', value: true }], help: { summary: 'print numeric group id', category: 'advanced' } },
-    { kind: 'flag', short: 's', long: 'size', effects: [{ key: 'showSize', value: 'bytes' }], help: { summary: 'print file sizes in bytes', category: 'advanced' } },
-    { kind: 'flag', short: 'h', long: 'human-readable', effects: [{ key: 'showSize', value: 'human-1024' }], help: { summary: 'print sizes in human readable 1024-byte units', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'si', effects: [{ key: 'showSize', value: 'human-1000' }], help: { summary: 'print sizes in human readable 1000-byte units', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'du', effects: [{ key: 'showDiskUsage', value: true }, { key: 'showSize', value: 'bytes' }], help: { summary: 'print cumulative directory sizes', category: 'advanced' } },
-    { kind: 'flag', short: 'D', long: 'date', effects: [{ key: 'showDate', value: true }], help: { summary: 'print modification time', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'inodes', effects: [{ key: 'showInodes', value: true }], help: { summary: 'print inode numbers', category: 'advanced' } },
-    { kind: 'value', short: 'o', long: 'output', key: 'outputPath', valueName: 'FILE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'send output to FILE', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'version', effects: [{ key: 'version', value: true }], help: { summary: 'display version information and exit', category: 'advanced' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const treeOptions = [
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'all', value: true }] },
+    forms: [
+      { kind: 'short', name: 'a', value: { kind: 'none' } },
+      { kind: 'long', name: 'all', value: { kind: 'none' } },
+    ],
+    summary: 'list all files',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'dirsOnly', value: true }] },
+    forms: [
+      { kind: 'short', name: 'd', value: { kind: 'none' } },
+      { kind: 'long', name: 'dirs-only', value: { kind: 'none' } },
+    ],
+    summary: 'list directories only',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'fullPath', value: true }] },
+    forms: [
+      { kind: 'short', name: 'f', value: { kind: 'none' } },
+      { kind: 'long', name: 'full-path', value: { kind: 'none' } },
+    ],
+    summary: 'print the full path prefix for each file',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'followLinks', value: true }] },
+    forms: [
+      { kind: 'short', name: 'l', value: { kind: 'none' } },
+      { kind: 'long', name: 'follow-links', value: { kind: 'none' } },
+    ],
+    summary: 'follow symbolic links to directories',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'maxDepth', parse: parsePositiveInteger },
+    forms: [
+      { kind: 'short', name: 'L', value: { kind: 'required-attached-or-following', missingValueName: 'LEVEL' } },
+      { kind: 'long', name: 'level', value: { kind: 'required', missingValueName: 'LEVEL' } },
+    ],
+    summary: 'descend only LEVEL directories deep',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'noreport', value: true }] },
+    forms: [{ kind: 'long', name: 'noreport', value: { kind: 'none' } }],
+    summary: 'omit the file and directory report',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'fileLimit', parse: parseNonNegativeInteger },
+    forms: [{ kind: 'long', name: 'filelimit', value: { kind: 'required', missingValueName: 'N' } }],
+    summary: 'do not descend directories with more than N entries',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'includePattern' },
+    forms: [
+      { kind: 'short', name: 'P', value: { kind: 'required-attached-or-following', missingValueName: 'PATTERN' } },
+      { kind: 'long', name: 'pattern', value: { kind: 'required', missingValueName: 'PATTERN' } },
+    ],
+    summary: 'list only files that match PATTERN',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'deferred', tag: 'excludePattern' },
+    forms: [
+      { kind: 'short', name: 'I', value: { kind: 'required-attached-or-following', missingValueName: 'PATTERN' } },
+      { kind: 'long', name: 'ignore-pattern', value: { kind: 'required', missingValueName: 'PATTERN' } },
+    ],
+    summary: 'exclude files that match PATTERN',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'ignoreCase', value: true }] },
+    forms: [{ kind: 'long', name: 'ignore-case', value: { kind: 'none' } }],
+    summary: 'ignore case when matching patterns',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'matchDirectories', value: true }] },
+    forms: [{ kind: 'long', name: 'matchdirs', value: { kind: 'none' } }],
+    summary: 'include matching directory names and their contents',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'prune', value: true }] },
+    forms: [{ kind: 'long', name: 'prune', value: { kind: 'none' } }],
+    summary: 'prune empty directories from the output',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'reverse', value: true }] },
+    forms: [
+      { kind: 'short', name: 'r', value: { kind: 'none' } },
+      { kind: 'long', name: 'reverse', value: { kind: 'none' } },
+    ],
+    summary: 'reverse the sort order',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'sortMode', value: 'none' }] },
+    forms: [{ kind: 'short', name: 'U', value: { kind: 'none' } }],
+    summary: 'leave entries unsorted',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'sortMode', value: 'version' }] },
+    forms: [{ kind: 'short', name: 'v', value: { kind: 'none' } }],
+    summary: 'sort by version',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'sortMode', value: 'mtime' }] },
+    forms: [{ kind: 'short', name: 't', value: { kind: 'none' } }],
+    summary: 'sort by modification time',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'sortMode', parse: parseSortMode },
+    forms: [{ kind: 'long', name: 'sort', value: { kind: 'required', missingValueName: 'MODE' } }],
+    summary: 'sort by name, version, size, mtime, or none',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'groupingMode', value: 'directories-first' }] },
+    forms: [{ kind: 'long', name: 'dirsfirst', value: { kind: 'none' } }],
+    summary: 'list directories before files',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'groupingMode', value: 'files-first' }] },
+    forms: [{ kind: 'long', name: 'filesfirst', value: { kind: 'none' } }],
+    summary: 'list files before directories',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'charset', parse: parseCharset },
+    forms: [{ kind: 'long', name: 'charset', value: { kind: 'required', missingValueName: 'CHARSET' } }],
+    summary: 'use UTF-8 or ASCII line drawing characters',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'indentMode', value: 'none' }] },
+    forms: [{ kind: 'short', name: 'i', value: { kind: 'none' } }],
+    summary: 'do not print indentation lines',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'quoteNames', value: true }] },
+    forms: [
+      { kind: 'short', name: 'Q', value: { kind: 'none' } },
+      { kind: 'long', name: 'quote-filenames', value: { kind: 'none' } },
+    ],
+    summary: 'quote file names in double quotes',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'nameDisplayMode', value: 'question' }] },
+    forms: [{ kind: 'short', name: 'q', value: { kind: 'none' } }],
+    summary: 'print non-printable characters as question marks',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'nameDisplayMode', value: 'literal' }] },
+    forms: [
+      { kind: 'short', name: 'N', value: { kind: 'none' } },
+      { kind: 'long', name: 'literal', value: { kind: 'none' } },
+    ],
+    summary: 'print file names without escaping',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'classify', value: true }] },
+    forms: [
+      { kind: 'short', name: 'F', value: { kind: 'none' } },
+      { kind: 'long', name: 'classify', value: { kind: 'none' } },
+    ],
+    summary: 'append a type indicator to entries',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showPermissions', value: true }] },
+    forms: [
+      { kind: 'short', name: 'p', value: { kind: 'none' } },
+      { kind: 'long', name: 'permissions', value: { kind: 'none' } },
+    ],
+    summary: 'print type and permission bits',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showUid', value: true }] },
+    forms: [
+      { kind: 'short', name: 'u', value: { kind: 'none' } },
+      { kind: 'long', name: 'user', value: { kind: 'none' } },
+    ],
+    summary: 'print numeric user id',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showGid', value: true }] },
+    forms: [
+      { kind: 'short', name: 'g', value: { kind: 'none' } },
+      { kind: 'long', name: 'group', value: { kind: 'none' } },
+    ],
+    summary: 'print numeric group id',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showSize', value: 'bytes' }] },
+    forms: [
+      { kind: 'short', name: 's', value: { kind: 'none' } },
+      { kind: 'long', name: 'size', value: { kind: 'none' } },
+    ],
+    summary: 'print file sizes in bytes',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showSize', value: 'human-1024' }] },
+    forms: [
+      { kind: 'short', name: 'h', value: { kind: 'none' } },
+      { kind: 'long', name: 'human-readable', value: { kind: 'none' } },
+    ],
+    summary: 'print sizes in human readable 1024-byte units',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showSize', value: 'human-1000' }] },
+    forms: [{ kind: 'long', name: 'si', value: { kind: 'none' } }],
+    summary: 'print sizes in human readable 1000-byte units',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showDiskUsage', value: true }, { key: 'showSize', value: 'bytes' }] },
+    forms: [{ kind: 'long', name: 'du', value: { kind: 'none' } }],
+    summary: 'print cumulative directory sizes',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showDate', value: true }] },
+    forms: [
+      { kind: 'short', name: 'D', value: { kind: 'none' } },
+      { kind: 'long', name: 'date', value: { kind: 'none' } },
+    ],
+    summary: 'print modification time',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'showInodes', value: true }] },
+    forms: [{ kind: 'long', name: 'inodes', value: { kind: 'none' } }],
+    summary: 'print inode numbers',
+    category: 'advanced',
+  },
+  {
+    semantic: { kind: 'required-value', key: 'outputPath', parse: undefined },
+    forms: [
+      { kind: 'short', name: 'o', value: { kind: 'required-attached-or-following', missingValueName: 'FILE' } },
+      { kind: 'long', name: 'output', value: { kind: 'required', missingValueName: 'FILE' } },
+    ],
+    summary: 'send output to FILE',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+    forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+    summary: 'display this help and exit',
+    category: 'common',
+  },
+  {
+    semantic: { kind: 'effects', effects: [{ key: 'version', value: true }] },
+    forms: [{ kind: 'long', name: 'version', value: { kind: 'none' } }],
+    summary: 'display version information and exit',
+    category: 'advanced',
+  },
+] as const;
+
+const treeArgvCatalog = defineArgvCatalog<StandardArgvAction<TreePatternOption>>({
+  definitions: treeOptions,
+  nonExecutableLongOptions: [],
+});
+export const treeArgvHelp = defineArgvHelpPresentation({ catalog: treeArgvCatalog, rows: treeOptions });
+const treeArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 export interface ParsedTreeArgv {
   kind: 'run',
   options: TreeOptions,
-  paths: string[],
+  paths: readonly string[],
 }
 
 export type TreeArgvResult =
@@ -116,7 +368,7 @@ function optionNumber({ value }: { value: unknown }): number | undefined {
 }
 
 export function parseTreeArgv({ args }: { args: string[] }): TreeArgvResult {
-  const parsed = parseStandardArgv({ args, spec: treeArgvSpec });
+  const parsed = parseStandardArgv({ args, catalog: treeArgvCatalog, policy: treeArgvPolicy });
   const diagnostic = parsed.diagnostics[0];
   if (diagnostic !== undefined) {
     return { kind: 'error', message: `tree: ${diagnostic.message}` };
@@ -129,36 +381,34 @@ export function parseTreeArgv({ args }: { args: string[] }): TreeArgvResult {
   }
 
   const ignoreCase = parsed.optionValues.ignoreCase === true;
-  const includePatterns = parsed.occurrences.flatMap((occurrence) => {
-    switch (occurrence.kind) {
-    case 'value':
-      return occurrence.key === 'includePattern'
-        ? [compileTreePattern({ pattern: String(occurrence.value), ignoreCase })]
-        : [];
-    case 'flag':
-    case 'special':
-      return [];
+  const includePatterns: TreeOptions['includePatterns'] = [];
+  const excludePatterns: TreeOptions['excludePatterns'] = [];
+  for (const { semantic, value } of parsed.deferred) {
+    switch (value.kind) {
+    case 'none':
+      throw new Error('Missing tree pattern');
+    case 'inline':
+    case 'next-argv':
+      break;
     default: {
-      const _ex: never = occurrence;
-      throw new Error(`Unhandled option occurrence: ${JSON.stringify(_ex)}`);
+      const _ex: never = value;
+      throw new Error(`Unhandled tree pattern value: ${JSON.stringify(_ex)}`);
     }
     }
-  });
-  const excludePatterns = parsed.occurrences.flatMap((occurrence) => {
-    switch (occurrence.kind) {
-    case 'value':
-      return occurrence.key === 'excludePattern'
-        ? [compileTreePattern({ pattern: String(occurrence.value), ignoreCase })]
-        : [];
-    case 'flag':
-    case 'special':
-      return [];
+    const pattern = compileTreePattern({ pattern: value.rawValue, ignoreCase });
+    switch (semantic.tag) {
+    case 'includePattern':
+      includePatterns.push(pattern);
+      break;
+    case 'excludePattern':
+      excludePatterns.push(pattern);
+      break;
     default: {
-      const _ex: never = occurrence;
-      throw new Error(`Unhandled option occurrence: ${JSON.stringify(_ex)}`);
+      const _ex: never = semantic.tag;
+      throw new Error(`Unhandled tree pattern option: ${_ex}`);
     }
     }
-  });
+  }
   const sortMode = (optionString({ value: parsed.optionValues.sortMode }) ?? 'name') as TreeSortMode;
   const groupingMode = (() => {
     switch (sortMode) {

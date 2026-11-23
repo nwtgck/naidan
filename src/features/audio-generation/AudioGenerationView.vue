@@ -10,7 +10,8 @@ import { audioFieldLabel, audioFieldValidationMessage, audioValidationFields } f
 import LlamaCppBrowserRuntimeSettings from '@/features/llama-cpp-browser/components/LlamaCppBrowserRuntimeSettings.vue';
 import { listModelInventory } from '@/features/llama-cpp-browser/composables/model-inventory';
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
-import { findModelDownloadJob, getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
+import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
+import { useRepositoryDownloadHint } from '@/composables/useRepositoryDownloadHint';
 import { requestAppSettings } from '@/composables/useAppEntry';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { errorCode, type EngineState, type ErrorCode, type LocalModel } from '@/features/llama-cpp-browser/types';
@@ -25,9 +26,9 @@ import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import ModelSelector from '@/components/ModelSelector.vue';
 import type { ModelSelectorItem } from '@/components/model-selector-item';
 import { audioModelCatalog, defaultAudioModel } from './model-catalog';
-import { acquireRepositoryModel, repositorySearchDownloadKey, matchesRepositoryDownload } from '@/features/llama-cpp-browser/model-launch/acquire-repository-model';
+import { acquireRepositoryModel } from '@/features/llama-cpp-browser/model-launch/acquire-repository-model';
 import { preferredProjector } from '@/features/llama-cpp-browser/hugging-face/presentation';
-import { repositoryModelDownloadIdentity, type RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
+import type { RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import LlamaCppBrowserDownloadProgress from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadProgress.vue';
 import AudioReferenceInput from './components/AudioReferenceInput.vue';
@@ -131,20 +132,7 @@ const pendingModel = computed<RepositoryModelSelection | undefined>(() => {
 });
 const selectedModelId = computed(() => pendingModel.value?.modelId ?? (modelId.value || undefined));
 const downloadProgress = computed(() => downloadQueue.jobs.value.find(job => job.id === activeDownloadId.value)?.progress);
-const selectionDownloadIsActive = computed(() => {
-  const pending = pendingModel.value;
-  if (pending === undefined) {
-    return false;
-  }
-  const { key, selection } = repositoryModelDownloadIdentity({ source: pending.source });
-  const jobs = downloadQueue.jobs.value;
-  const queued = findModelDownloadJob({ jobs, key, selection, destination: pending.destination });
-  const defaultKey = repositorySearchDownloadKey({ selection: pending, usage: 'audio-generation' });
-  const defaultJob = defaultKey === undefined ? undefined
-    : findModelDownloadJob({ jobs, key: defaultKey, selection: undefined, destination: pending.destination });
-  return acquiringModel.value || jobIsBusy({ job: queued })
-    || jobIsBusy({ job: defaultJob }) && matchesRepositoryDownload({ selection: pending, files: defaultJob?.selection });
-});
+const hideFirstUseDownloadHint = useRepositoryDownloadHint({ selection: pendingModel, usage: 'audio-generation' });
 const canGenerate = computed(() => {
   if (blocked.value || referenceBusy.value || !runtimeReady.value) {
     return false;
@@ -586,7 +574,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                   trigger-size="compact"
                   :model-value="selectedModelId"
                   :selection-availability="pendingModel ? 'download_required' : undefined"
-                  :hide-first-use-download-hint="selectionDownloadIsActive"
+                  :hide-first-use-download-hint="acquiringModel || hideFirstUseDownloadHint"
                   :first-use-download-destination="pendingModel ? downloadDestination.label({ destination: pendingModel.destination }) : undefined"
                   :models="modelOptions"
                   :models-label="lazyStrings.ModelSelector__models_on_this_device()"
