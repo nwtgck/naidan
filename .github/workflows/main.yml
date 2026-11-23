@@ -168,7 +168,7 @@ jobs:
         # Use the same project-reference and PWA checks as local builds.
         env:
           NODE_OPTIONS: >-
-            --max-old-space-size=6144 --report-on-fatalerror
+            --max-old-space-size=8192 --report-on-fatalerror
             --report-exclude-env --report-exclude-network --report-directory=/typecheck-reports
         run: |
           mkdir -p "$RUNNER_TEMP/typecheck-reports"
