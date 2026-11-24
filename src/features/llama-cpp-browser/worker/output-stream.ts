@@ -1,3 +1,5 @@
+import type { ChatOutputPiece } from '@/features/llama-cpp-browser/runtime/chat-bindings';
+
 /** Incremental stop matching and Harmony channel framing. No model text is logged. */
 export function createOutputStream({ stops, harmony, initialChannel }: {
   stops: string[], harmony: boolean, initialChannel: 'analysis' | 'final',
@@ -133,6 +135,60 @@ export function createOutputStream({ stops, harmony, initialChannel }: {
       }
       return out;
     },
+  };
+}
+
+/** Keep token boundaries while the stop matcher releases a prefix of the text.
+ * A held suffix may cut through a token, so defer that whole piece until the
+ * matcher settles. Only a terminal cut can commit a partial token piece. */
+export function createChatOutput({ stops }: { stops: string[] }) {
+  const stream = createOutputStream({ stops, harmony: false, initialChannel: 'final' });
+  const pieces: ChatOutputPiece[] = [];
+  const pending: ChatOutputPiece[] = [];
+  let released = 0;
+  let length = 0;
+
+  function accept({ text, terminal }: { text: string, terminal: boolean }): void {
+    released += text.length;
+    while (pending[0] && pending[0].text.length <= released) {
+      const piece = pending.shift()!;
+      pieces.push(piece);
+      released -= piece.text.length;
+      length += piece.text.length;
+    }
+    if (terminal) {
+      if (released) {
+        const piece = pending[0]!;
+        pieces.push({ text: piece.text.slice(0, released), token: piece.token });
+        length += released;
+      }
+      pending.length = 0;
+      released = 0;
+    }
+  }
+
+  function push({ text, token }: { text: string, token: number | undefined }): boolean {
+    if (text) {
+      pending.push({ text, token });
+    }
+    const { text: emitted, done } = stream.push({ text });
+    accept({ text: emitted, terminal: done });
+    return done;
+  }
+
+  return {
+    get pieces(): readonly ChatOutputPiece[] {
+      return pieces;
+    },
+    get length() {
+      return length;
+    },
+    push,
+    finish({ text }: { text: string }): void {
+      push({ text, token: undefined });
+      accept({ text: stream.finish(), terminal: true });
+    },
+    getMatchedStop: stream.getMatchedStop,
   };
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createOutputStream } from './output-stream';
+import { createChatOutput, createOutputStream } from './output-stream';
 
 describe('llama.cpp output stream', () => {
   it('preserves ordinary text and explicit think markup without Harmony', () => {
@@ -61,5 +61,28 @@ describe('llama.cpp output stream', () => {
     const stream = createOutputStream({ stops: [], harmony: true, initialChannel: 'final' });
     expect(stream.push({ text: 'x<|unknown|>y<' }).text).toBe('x<|unknown|>y');
     expect(stream.finish()).toBe('<');
+  });
+});
+
+describe('sampled output for the native parser', () => {
+  it('preserves a token across a held stop prefix and clips the piece before a matched stop', () => {
+    const output = createChatOutput({ stops: ['STOP'] });
+    expect(output.push({ text: 'first ST', token: 10 })).toBe(false);
+    expect(output.pieces).toEqual([]);
+    expect(output.push({ text: 'ill safe', token: 11 })).toBe(false);
+    expect(output.pieces).toEqual([{ text: 'first ST', token: 10 }, { text: 'ill safe', token: 11 }]);
+    expect(output.push({ text: 'tail ST', token: 12 })).toBe(false);
+    expect(output.push({ text: 'OPignored', token: 13 })).toBe(true);
+    expect(output.getMatchedStop()).toBe('STOP');
+    expect(output.pieces.at(-1)).toEqual({ text: 'tail ', token: 12 });
+    expect(output.length).toBe('first STill safetail '.length);
+  });
+
+  it('flushes a held prefix with its original ID when generation ends', () => {
+    const output = createChatOutput({ stops: ['STOP'] });
+    output.push({ text: 'tail ST', token: 0 });
+    output.finish({ text: '' });
+    output.finish({ text: '' });
+    expect(output.pieces).toEqual([{ text: 'tail ST', token: 0 }]);
   });
 });

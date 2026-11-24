@@ -1,8 +1,8 @@
 import { createByteBpeVocabulary } from './byte-bpe-vocabulary.test-support';
 
 /** A deterministic, untrained one-layer F32 fixture. Never used by application code. */
-export function createSyntheticGguf({ chatTemplate }: { chatTemplate: string }): Uint8Array {
-  return createFixtureGguf({ chatTemplate, weights: 'constant-output', vocabulary: 'byte-spm', preTokenizer: 'gpt-2', userDefinedTokens: [] });
+export function createSyntheticGguf({ chatTemplate, userDefinedTokens }: { chatTemplate: string, userDefinedTokens?: readonly string[] }): Uint8Array {
+  return createFixtureGguf({ chatTemplate, weights: 'constant-output', vocabulary: 'byte-spm', preTokenizer: 'gpt-2', userDefinedTokens: userDefinedTokens ?? [] });
 }
 
 /** Uniform causal attention makes logits depend on the complete decoded prefix. */

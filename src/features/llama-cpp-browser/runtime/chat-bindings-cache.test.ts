@@ -31,6 +31,7 @@ function fixture() {
   const nativePrompt = { parts: nativeParts, delete: vi.fn() };
   const inputConstructed = vi.fn();
   const deleteInput = vi.fn();
+  const appendInput = vi.fn();
   const calls = { size: () => 0, get: vi.fn(), delete: vi.fn() };
   const message = { content: 'reply', reasoning_content: 'reason', tool_calls: calls, delete: vi.fn() };
   const parse = vi.fn((_input: unknown, _partial: boolean, _parser: unknown) => message);
@@ -54,8 +55,13 @@ function fixture() {
     constructor(_params: Params) {}
   }
   class Input {
-    constructor(readonly text: string) {
+    constructor(public text: string) {
       inputConstructed(text);
+    }
+
+    append(text: string, token: number) {
+      appendInput(text, token);
+      this.text += text;
     }
 
     delete = deleteInput;
@@ -99,6 +105,7 @@ function fixture() {
     common_chat_templates: Templates,
     common_chat_parser_params: Parser,
     common_chat_input: Input,
+    common_chat_input_tokenize: (_vocab: bigint, text: string) => new Input(text),
     common_chat_parse: parse,
   };
   const chat = bindNativeChat({ native: fakeNative as never });
@@ -121,6 +128,7 @@ function fixture() {
     nativeParts,
     nativePrompt,
     inputConstructed,
+    appendInput,
     deleteInput,
     parse,
     message,
@@ -334,7 +342,7 @@ describe('v0.7 native chat value ownership', () => {
     expect(f.deleteParams).toHaveBeenCalledOnce();
   });
 
-  it('passes owned UTF-8-capable inputs to partial and final native parsing', () => {
+  it('appends each sampled piece once across partial and final native parsing', () => {
     using f = fixture();
     const chat = f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: f.request });
     using _request = {
@@ -342,19 +350,23 @@ describe('v0.7 native chat value ownership', () => {
         chat.dispose();
       },
     };
-    for (const partial of [true, false]) {
-      expect(chat.parse({ text: '日本語\0😀', partial })).toEqual({ content: 'reply', reasoningContent: 'reason', toolCalls: [] });
-      expect(f.parse).toHaveBeenLastCalledWith(expect.objectContaining({ text: '日本語\0😀' }), partial, expect.anything());
-    }
-    expect(f.deleteInput).toHaveBeenCalledTimes(2);
+    const pieces = [{ text: '日本語\0😀', token: 23 }];
+    const expected = { content: 'reply', reasoningContent: 'reason', toolCalls: [] };
+    expect(chat.parse({ pieces, partial: true, vocab: 8n })).toEqual(expected);
+    pieces.push({ text: ' tail', token: 42 });
+    expect(chat.parse({ pieces, partial: false, vocab: 8n })).toEqual(expected);
+    expect(f.parse).toHaveBeenLastCalledWith(expect.objectContaining({ text: '日本語\0😀 tail' }), false, expect.anything());
+    expect(f.appendInput.mock.calls).toEqual([['日本語\0😀', 23], [' tail', 42]]);
+    expect(f.deleteInput).not.toHaveBeenCalled();
     expect(f.message.delete).toHaveBeenCalledTimes(2);
     expect(f.calls.delete).toHaveBeenCalledTimes(2);
     chat.dispose();
-    expect(() => chat.parse({ text: '', partial: false })).toThrow('disposed');
-    expect(f.inputConstructed).toHaveBeenCalledTimes(2);
+    expect(() => chat.parse({ pieces: [], partial: false, vocab: 8n })).toThrow('disposed');
+    expect(f.inputConstructed).toHaveBeenCalledOnce();
+    expect(f.deleteInput).toHaveBeenCalledOnce();
   });
 
-  it('frees an input when native parsing traps without inventing a message handle', () => {
+  it('frees the request input after native parsing traps without inventing a message handle', () => {
     using f = fixture();
     const chat = f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: f.request });
     using _request = {
@@ -366,7 +378,8 @@ describe('v0.7 native chat value ownership', () => {
     f.parse.mockImplementationOnce(() => {
       throw trap;
     });
-    expect(() => chat.parse({ text: 'input', partial: true })).toThrow(trap);
+    expect(() => chat.parse({ pieces: [{ text: 'input', token: 9 }], partial: true, vocab: 8n })).toThrow(trap);
+    chat.dispose();
     expect(f.deleteInput).toHaveBeenCalledOnce();
     expect(f.message.delete).not.toHaveBeenCalled();
   });
@@ -382,7 +395,8 @@ describe('v0.7 native chat value ownership', () => {
     f.message.delete.mockImplementationOnce(() => {
       throw new WebAssembly.RuntimeError('message cleanup');
     });
-    expect(() => chat.parse({ text: 'input', partial: false })).toThrow('message cleanup');
+    expect(() => chat.parse({ pieces: [{ text: 'input', token: 9 }], partial: false, vocab: 8n })).toThrow('message cleanup');
+    chat.dispose();
     expect(f.calls.delete).toHaveBeenCalledOnce();
     expect(f.message.delete).toHaveBeenCalledOnce();
     expect(f.deleteInput).toHaveBeenCalledOnce();

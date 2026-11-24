@@ -104,12 +104,14 @@ ordinary chat tok/s`);
       samplesTruncated: false,
       clockAnomalies: 0,
     };
+    metrics.firstLogits = { finite: 16, nan: 2, positiveInfinity: 1, negativeInfinity: 3, finiteRange: { minimum: -2, maximum: 5, secondHighest: 5 } };
     const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
     const record = JSON.parse(await zip.file('trials.jsonl')!.async('string'));
     const exported = diagnosticSchema.parse(record.summary).performance!;
     expect(exported.cacheReuse).toEqual(metrics.cacheReuse);
     expect(exported.checkpoint).toEqual(metrics.checkpoint);
     expect(exported.earlyGenerationTiming).toEqual(metrics.earlyGenerationTiming);
+    expect(exported.firstLogits).toEqual(metrics.firstLogits);
     expect(await zip.file('README.md')!.async('string')).toContain('cacheReuse records the cache decision before prefill');
     expect(await zip.file('README.md')!.async('string')).toContain('generation-overlap includes delivery and decode');
   });

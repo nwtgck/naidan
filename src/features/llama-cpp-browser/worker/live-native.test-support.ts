@@ -132,7 +132,7 @@ export function liveNativeFixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
       additionalStops: [],
       params: { generation_prompt: '<assistant>' } as ChatParams,
       dispose,
-      parse: ({ text }: { text: string, partial: boolean }) => ({ content: text, reasoningContent: '', toolCalls: [] }),
+      parse: ({ pieces }: { pieces: readonly { text: string }[] }) => ({ content: pieces.map(piece => piece.text).join(''), reasoningContent: '', toolCalls: [] }),
     };
     return result;
   });
