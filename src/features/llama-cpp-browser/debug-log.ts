@@ -127,6 +127,17 @@ export const diagnosticSchema = z.object({
       lastMs: z.number().finite().nonnegative(),
     }).strict()).max(256).optional(),
     earlyGenerationTiming: earlyGenerationTimingSchema.optional(),
+    firstLogits: z.object({
+      finite: z.number().int().nonnegative(),
+      nan: z.number().int().nonnegative(),
+      positiveInfinity: z.number().int().nonnegative(),
+      negativeInfinity: z.number().int().nonnegative(),
+      finiteRange: z.object({
+        minimum: z.number().finite(),
+        maximum: z.number().finite(),
+        secondHighest: z.number().finite().optional(),
+      }).strict().optional(),
+    }).strict().optional(),
     version: z.literal(1),
     outcome: z.enum(['completed', 'aborted', 'failed']),
     input: z.enum(['text', 'multimodal', 'unknown']),

@@ -26,7 +26,7 @@ import { createTinyByteBpeLfm2Gguf, createTinyLfm2Gguf } from './test-utils/tiny
 import type { WorkerGenerateInput } from './types';
 import type { ResolvedModel } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { profileSchema, type GenerationEvent, type GenerationResult } from '@/features/llama-cpp-browser/types';
-import { diagnosticSchema, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
+import { diagnosticSchema, subscribeDiagnostics, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { createProjectorTrace } from './projector-trace';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
 import { roundTripChatContentPersistenceSerialization } from '@/00-storage/service/chat-content-serialization';
@@ -4479,6 +4479,45 @@ describe('measurement contracts with supplied native Wasm', () => {
     expect(checkpoint).toMatchObject({ captureAttempts: 1, restoreAttempts: 0, retainedRestoredCaptures: 0 });
     expect(checkpoint?.phases.map(phase => phase.phase)).toEqual(['boundary-tokenize', 'capture-position', 'capture-size', 'capture-allocation', 'capture-prior-compute-wait', 'capture-readback']);
     expect(checkpoint?.phases.every(phase => phase.elapsedMs >= 0 && phase.visits === 1)).toBe(true);
+  }, 30000);
+
+  it('counts the first native logits row only with detailed measurement enabled', async () => {
+    host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
+    const req = { ...request({ messages: [{ role: 'user', content: 'English fixture' }] }), debug: 'off' as const };
+    const input = { signal: undefined, onEvent: () => {}, onProgress: () => {} };
+    const session = await prepareSession({ request: req, ...input });
+    const { core, vocab } = session;
+    const count = await core.api.llama_vocab_n_tokens(vocab);
+    const length = count * Float32Array.BYTES_PER_ELEMENT;
+    const pointer = core.alloc({ bytes: length });
+    try {
+      const bytes = core.bytes({ pointer, length });
+      const scores = new Float32Array(bytes.buffer, bytes.byteOffset, count);
+      scores.fill(1);
+      scores.set([NaN, Infinity, -Infinity, -Infinity, -3, 2, 4]);
+      using logits = vi.spyOn(core.api, 'llama_get_logits_ith').mockResolvedValue(pointer);
+      const ordinary = await generate({ request: req, ...input });
+      const reports: Diagnostic[] = [];
+      const onSummary = ({ diagnostic }: { diagnostic: Diagnostic }) => {
+        reports.push(diagnostic);
+      };
+      const standard = await generate({ request: { ...req, measurement: { sequence: 'fresh' } }, ...input, onSummary });
+      expectSameGenerationResult({ actual: standard, expected: ordinary });
+      expect(logits).not.toHaveBeenCalled();
+      expect(diagnosticSchema.parse(reports[0]).performance?.firstLogits).toBeUndefined();
+      const detailed = await generate({ request: { ...req, measurement: { sequence: 'fresh', observation: 'placement' } }, ...input, onSummary });
+      expectSameGenerationResult({ actual: detailed, expected: ordinary });
+      expect(logits).toHaveBeenCalledExactlyOnceWith(session.context, -1);
+      expect(diagnosticSchema.parse(reports[1]).performance?.firstLogits).toEqual({
+        finite: count - 4,
+        nan: 1,
+        positiveInfinity: 1,
+        negativeInfinity: 2,
+        finiteRange: { minimum: -3, maximum: 4, secondHighest: 2 },
+      });
+    } finally {
+      core.free({ pointer });
+    }
   }, 30000);
 
   it('retains model read counters in measured loading without per-read timers', async () => {

@@ -133,6 +133,7 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
   };
   let outcome: 'completed' | 'aborted' | 'failed' = 'failed';
   let failure: Pick<Diagnostic, 'stage' | 'failureKind'> | undefined;
+  let firstLogits: NonNullable<Diagnostic['performance']>['firstLogits'];
   const recordFailure = ({ error, stage }: { error: unknown, stage: DiagnosticStage }) => {
     if (request.measurement && !failure) {
       failure = { stage, failureKind: classifyFailure({ error }) };
@@ -154,7 +155,10 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
       const diagnostic = measurements.finish({ outcome, profile: request.options.profile });
       if (diagnostic) {
         if (request.measurement) {
-          onSummary?.({ diagnostic: { ...diagnostic, ...failure } });
+          const performance = firstLogits && diagnostic.performance
+            ? { ...diagnostic.performance, firstLogits }
+            : diagnostic.performance;
+          onSummary?.({ diagnostic: { ...diagnostic, ...failure, performance } });
         }
         switch (request.debug) {
         case 'on': logDiagnostic({ diagnostic });
@@ -837,6 +841,41 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
       }
       checkCancelled();
     };
+    if (maximum > 0 && (gpuProfile || request.measurement?.observation === 'placement')) {
+      checkCancelled();
+      const count = await api.llama_vocab_n_tokens(vocab);
+      checkCancelled();
+      const pointer = await api.llama_get_logits_ith(context, -1);
+      if (pointer !== 0n && count > 0) {
+        const bytes = core.bytes({ pointer, length: count * Float32Array.BYTES_PER_ELEMENT });
+        const scores = new Float32Array(bytes.buffer, bytes.byteOffset, count);
+        firstLogits = { finite: 0, nan: 0, positiveInfinity: 0, negativeInfinity: 0 };
+        let minimum = Infinity;
+        let highest = -Infinity;
+        let secondHighest = -Infinity;
+        for (const score of scores) {
+          if (Number.isFinite(score)) {
+            firstLogits.finite++;
+            minimum = Math.min(minimum, score);
+            if (score > highest) {
+              secondHighest = highest;
+              highest = score;
+            } else {
+              secondHighest = Math.max(secondHighest, score);
+            }
+          } else if (score === Infinity) {
+            firstLogits.positiveInfinity++;
+          } else if (score === -Infinity) {
+            firstLogits.negativeInfinity++;
+          } else {
+            firstLogits.nan++;
+          }
+        }
+        if (firstLogits.finite > 0) {
+          firstLogits.finiteRange = { minimum, maximum: highest, secondHighest: firstLogits.finite > 1 ? secondHighest : undefined };
+        }
+      }
+    }
     const speedTracker = createGenerationSpeedTracker({ onEvent });
     for (; generated < maximum; generated++) {
       checkCancelled();

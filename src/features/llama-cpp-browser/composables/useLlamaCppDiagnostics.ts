@@ -248,7 +248,7 @@ export function useLlamaCppDiagnostics() {
       control.signal.throwIfAborted();
       await downloadReadableStream({
         stream: createPerformanceArchiveStream({ snapshot: value, signal: control.signal }),
-        filename: `naidan-llama-cpp-performance-${value.plan.id}.zip`,
+        filename: `naidan-llama-cpp-browser-diagnostics-${value.plan.id}.zip`,
         size: undefined,
         signal: control.signal,
       });
