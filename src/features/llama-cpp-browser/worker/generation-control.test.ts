@@ -125,7 +125,7 @@ function fixture() {
     preparation: { projector: 'absent', releasedTextContext: false },
   } as Awaited<ReturnType<typeof prepareGenerationSession>>;
   host.session.mockResolvedValue(session);
-  const parse = vi.fn<ReturnType<typeof prepareChat>['parse']>(({ text }) => ({ content: text, reasoningContent: '', toolCalls: [] }));
+  const parse = vi.fn<ReturnType<typeof prepareChat>['parse']>(({ pieces }) => ({ content: pieces.map(piece => piece.text).join(''), reasoningContent: '', toolCalls: [] }));
   host.chat.mockReturnValue({ params: { generation_prompt: '' }, prompt: 'prompt', promptParts: [{ text: 'prompt', isInput: false }], images: [], additionalStops: [], parse, dispose: vi.fn() } as unknown as ReturnType<typeof prepareChat>);
   host.sampler.mockResolvedValue({ sample: vi.fn(async () => 7), preservedTokens: new Set<number>(), dispose: vi.fn(async () => {}) } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
   const request: WorkerGenerateInput = {
@@ -249,7 +249,8 @@ describe('generation loop performance invariants', () => {
       preservedTokens: new Set<number>(),
       dispose: vi.fn(async () => {}),
     } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
-    f.parse.mockImplementation(({ text }) => {
+    f.parse.mockImplementation(({ pieces }) => {
+      const text = pieces.map(piece => piece.text).join('');
       switch (kind) {
       case 'reasoning': return { content: '', reasoningContent: text, toolCalls: [] };
       case 'tool': return { content: '', reasoningContent: '', toolCalls: [{ id: 'call', type: 'function', function: { name: 'fixture', arguments: text } }] };

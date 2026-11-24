@@ -1,7 +1,7 @@
 {
   "name": "naidan",
   "private": true,
-  "version": "0.74.0",
+  "version": "0.75.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -36,7 +36,7 @@
     "he": "^2.0.0",
     "highlight.js": "^11.12.0",
     "katex": "0.18.10",
-    "llama-cpp-browser-core": "github:nwtgck/browser-inference-core#395b372763e9030c45ad834533b8f12ca242c2ef",
+    "llama-cpp-browser-core": "github:nwtgck/browser-inference-core#23a9f096fdab34cf7912d8fc3acd492d7122e236",
     "lucide-vue-next": "^0.577.0",
     "marked": "^18.1.2",
     "marked-highlight": "^2.2.4",

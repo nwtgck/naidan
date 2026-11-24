@@ -48,6 +48,7 @@ if ('promising' in WebAssembly && 'Suspending' in WebAssembly) {
 describe.each(profiles)('native chat on %s', profile => {
   let core: Core;
   let model = 0n;
+  let fixtureVocab = 0n;
 
   beforeAll(async () => {
     const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles') + '/');
@@ -66,6 +67,7 @@ describe.each(profiles)('native chat on %s', profile => {
     core.setField({ name: 'llama_model_params', pointer: params, field: 'n_gpu_layers', value: 0 });
     model = await core.api.llama_model_load_from_file(filename, params);
     expect(model).not.toBe(0n);
+    fixtureVocab = await core.api.llama_model_get_vocab(model);
   }, 30000);
 
   afterAll(async () => {
@@ -188,13 +190,13 @@ describe.each(profiles)('native chat on %s', profile => {
         let content = '';
         let reasoning = '';
         for (let length = 1; length <= output.length; length++) {
-          const parsed = chat.parse({ text: output.slice(0, length), partial: true });
+          const parsed = chat.parse({ pieces: [{ text: output.slice(0, length), token: undefined }], partial: true, vocab: fixtureVocab });
           expect(parsed.content.startsWith(content), `content prefix at ${length}`).toBe(true);
           expect(parsed.reasoningContent.startsWith(reasoning), `reasoning prefix at ${length}`).toBe(true);
           content = parsed.content;
           reasoning = parsed.reasoningContent;
         }
-        const result = chat.parse({ text: output, partial: false });
+        const result = chat.parse({ pieces: [{ text: output, token: undefined }], partial: false, vocab: fixtureVocab });
         expect(result.content.startsWith(content)).toBe(true);
         if (output === 'Hello.') {
           expect(result.content).toBe(output);
@@ -220,12 +222,12 @@ describe.each(profiles)('native chat on %s', profile => {
 <tool_call>
 {"name":"lookup","arguments":{"city":"Tokyo"}}
 </tool_call>`;
-      const partial = chat.parse({ text: output.slice(0, 35), partial: true });
+      const partial = chat.parse({ pieces: [{ text: output.slice(0, 35), token: undefined }], partial: true, vocab: fixtureVocab });
       expect(partial.content).not.toContain('<tool_call>');
-      const result = chat.parse({ text: output, partial: false });
+      const result = chat.parse({ pieces: [{ text: output, token: undefined }], partial: false, vocab: fixtureVocab });
       expect(result.content).toBe('');
       expect(result.toolCalls).toHaveLength(1);
-      expect(chat.parse({ text: output + output, partial: false }).toolCalls).toHaveLength(2);
+      expect(chat.parse({ pieces: [{ text: output + output, token: undefined }], partial: false, vocab: fixtureVocab }).toolCalls).toHaveLength(2);
       expect(result.toolCalls[0]?.function.name).toBe('lookup');
       expect(JSON.parse(result.toolCalls[0]!.function.arguments)).toEqual({ city: 'Tokyo' });
       const next = prepareChat({
@@ -288,7 +290,7 @@ Sunny`);
             chat.dispose();
           },
         };
-        expect(chat.parse({ text: 'Hello back', partial: false }).content).toBe('Hello back');
+        expect(chat.parse({ pieces: [{ text: 'Hello back', token: undefined }], partial: false, vocab: fixtureVocab }).content).toBe('Hello back');
       }
     });
   });

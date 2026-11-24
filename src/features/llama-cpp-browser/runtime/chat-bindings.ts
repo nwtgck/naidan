@@ -13,6 +13,7 @@ export type ChatParams = Pick<common_chat_params,
 type ChatInputValues = Pick<common_chat_templates_inputs,
   'delete' | 'tools' | 'add_generation_prompt' | 'use_jinja' | 'parallel_tool_calls' | 'enable_thinking' | 'reasoning_format' | 'chat_template_kwargs'>;
 export type ChatPromptPart = { text: string, isInput: boolean };
+export type ChatOutputPiece = Readonly<{ text: string, token: number | undefined }>;
 type ParsedMessage = Pick<common_chat_msg, 'delete' | 'tool_calls' | 'content' | 'reasoning_content'>;
 const mediaMarkerPrefix = '<__media_';
 
@@ -29,8 +30,8 @@ export function bindNativeChat<
   Inputs extends ChatInputValues & { messages: Messages },
   Params extends ChatParams & { prompt: Pick<common_chat_prompt, 'delete' | 'parts'>, parser: Arena },
   Arena extends { delete(): void },
-  Parser extends { delete(): void; parser: Arena },
-  Input extends { delete(): void },
+  Parser extends { delete(): void; parser: Arena; generation_prompt: Input },
+  Input extends { delete(): void; append(text: string, token: number): void },
 >({ native }: { native: Pick<MainModule, 'string_map' | 'common_reasoning_format'> & {
   common_json: { parse(text: string): Json };
   common_chat_msgs_parse_oaicompat(json: Json): Messages;
@@ -39,6 +40,7 @@ export function bindNativeChat<
   common_chat_templates: new (model: bigint, chatTemplate: string, bosToken: string, eosToken: string) => { delete(): void; apply(inputs: Inputs): Params };
   common_chat_parser_params: new (params: Params) => Parser;
   common_chat_input: new (text: string) => Input;
+  common_chat_input_tokenize(vocab: bigint, text: string): Input;
   common_chat_parse(input: Input, partial: boolean, parser: Parser): ParsedMessage;
 } }) {
   /* eslint-enable local-rules-named-args/require-named-args */
@@ -80,17 +82,28 @@ export function bindNativeChat<
       assertIdle();
       let params: Params | undefined;
       let parser: Parser | undefined;
+      let input: Input | undefined;
+      let inputPieces: readonly ChatOutputPiece[] | undefined;
+      let appendedPieces = 0;
+      let prefixVocab: bigint | undefined;
       const dispose = (): void => {
         // Release ownership before destructors run. A failed parser cleanup
         // must neither leak the parameters nor retry the same handle later.
         const ownedParser = parser;
         const ownedParams = params;
+        const ownedInput = input;
         parser = undefined;
         params = undefined;
+        input = undefined;
+        inputPieces = undefined;
         try {
-          ownedParser?.delete();
+          ownedInput?.delete();
         } finally {
-          ownedParams?.delete();
+          try {
+            ownedParser?.delete();
+          } finally {
+            ownedParams?.delete();
+          }
         }
       };
       try {
@@ -259,38 +272,55 @@ export function bindNativeChat<
           additionalStops,
           images,
           dispose,
-          parse({ text, partial }: { text: string, partial: boolean }): Omit<GenerationResult, 'finishReason'> {
+          parse({ pieces, partial, vocab }: { pieces: readonly ChatOutputPiece[], partial: boolean, vocab: bigint }): Omit<GenerationResult, 'finishReason'> {
             assertIdle();
             if (parser === undefined) {
               throw new Error('Native chat request has been disposed');
             }
-            const input = new native.common_chat_input(text);
-            try {
-              const message = native.common_chat_parse(input, partial, parserParams);
+            if (prefixVocab !== vocab && chatParams.generation_prompt) {
+              const prefix = native.common_chat_input_tokenize(vocab, chatParams.generation_prompt);
               try {
-                const calls = message.tool_calls;
-                try {
-                  const toolCalls: GenerationResult['toolCalls'] = [];
-                  for (let index = 0; index < calls.size(); index++) {
-                    const call = calls.get(index);
-                    if (!call) {
-                      throw new Error('Missing native tool call');
-                    }
-                    try {
-                      toolCalls.push({ id: call.id, type: 'function', function: { name: call.name, arguments: call.arguments } });
-                    } finally {
-                      call.delete();
-                    }
-                  }
-                  return { content: message.content, reasoningContent: message.reasoning_content, toolCalls };
-                } finally {
-                  calls.delete();
-                }
+                parserParams.generation_prompt = prefix;
+                prefixVocab = vocab;
               } finally {
-                message.delete();
+                prefix.delete();
+              }
+            }
+            // Each response supplies one append-only list across parse calls.
+            if (input === undefined || inputPieces !== pieces) {
+              const previous = input;
+              input = undefined;
+              previous?.delete();
+              input = new native.common_chat_input('');
+              inputPieces = pieces;
+              appendedPieces = 0;
+            }
+            for (; appendedPieces < pieces.length; appendedPieces++) {
+              const piece = pieces[appendedPieces]!;
+              input.append(piece.text, piece.token ?? -1); // LLAMA_TOKEN_NULL for a fragment without a token.
+            }
+            const message = native.common_chat_parse(input, partial, parserParams);
+            try {
+              const calls = message.tool_calls;
+              try {
+                const toolCalls: GenerationResult['toolCalls'] = [];
+                for (let index = 0; index < calls.size(); index++) {
+                  const call = calls.get(index);
+                  if (!call) {
+                    throw new Error('Missing native tool call');
+                  }
+                  try {
+                    toolCalls.push({ id: call.id, type: 'function', function: { name: call.name, arguments: call.arguments } });
+                  } finally {
+                    call.delete();
+                  }
+                }
+                return { content: message.content, reasoningContent: message.reasoning_content, toolCalls };
+              } finally {
+                calls.delete();
               }
             } finally {
-              input.delete();
+              message.delete();
             }
           },
         };

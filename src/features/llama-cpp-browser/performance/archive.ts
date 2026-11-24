@@ -66,6 +66,13 @@ completed native call: failed/aborted cleanup can also cause stage-transition. T
 flags mark the capture limits. Nonzero clockAnomalies invalidates timing precision;
 exceptional, non-finite or backward clock reads retain the last valid timestamp.
 
+Optional firstLogits counts finite scores, NaNs and both signs of infinity in
+the vocabulary row before the first native sample. It also records the finite
+minimum, maximum and runner-up, including ties for the maximum. It is collected
+for GPU profiling and standard runs with detailed placement diagnostics. The
+export omits the full score row and token IDs. Reading the row can synchronize
+native work, so use uninstrumented runs for timing comparisons.
+
 For an image workload, visionAdmission precedes the image RPC and records native
 vision support or a reason for skipping. Missing projectors are skipped before
 loading. Initialization/encoding failures remain failures. Cold host elapsed and

@@ -26,7 +26,7 @@ import { createTinyByteBpeLfm2Gguf, createTinyLfm2Gguf } from './test-utils/tiny
 import type { WorkerGenerateInput } from './types';
 import type { ResolvedModel } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { profileSchema, type GenerationEvent, type GenerationResult } from '@/features/llama-cpp-browser/types';
-import { diagnosticSchema, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
+import { diagnosticSchema, subscribeDiagnostics, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { createProjectorTrace } from './projector-trace';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
 import { roundTripChatContentPersistenceSerialization } from '@/00-storage/service/chat-content-serialization';
@@ -34,7 +34,7 @@ import { toBinaryObjectId, toMessageId, toToolCallId } from '@/01-models/ids';
 import type { AssistantMessageNode, ChatContent, ToolMessageNode, UserMessageNode } from '@/01-models/types';
 import { buildChatGenerationMessages } from '@/logic/build-chat-generation-messages';
 import { prepareLlamaCppRequest } from '@/features/llama-cpp-browser/message-projection';
-import { prepareChat } from './native-chat';
+import { prepareChat, tokenizeChatText } from './native-chat';
 
 // Select another installed artifact without requesting real GPU allocation.
 const integrationProfile = profileSchema.parse(READ_ENV_LCORE_TEST_PROFILE() ?? 'cpu-wasm32');
@@ -2175,6 +2175,52 @@ describe('native inference across batching and cache lifecycle transitions', () 
 });
 
 describe('structured delivery from the real CPU Wasm loop', () => {
+  it.each([false, true])('parses Inkling token IDs with a template-supplied header=%s', async prefix => {
+    const header = '<|message_model|>';
+    const think = '<|content_thinking|>';
+    const text = '<|content_text|>';
+    const end = '<|end_message|>';
+    const specialTokens = [header, think, text, end];
+    const template = `\
+{%- for m in messages -%}
+{%- if m.role == 'user' -%}<|message_user|>{%- else -%}${header}{%- endif -%}
+${text}{{ m.content }}${end}
+{%- endfor -%}
+{%- if false -%}<|content_image|>{%- endif -%}
+${prefix ? `{%- if add_generation_prompt -%}${header}{%- endif -%}` : ''}`;
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: template, userDefinedTokens: specialTokens }));
+    const req = request({ messages: [{ role: 'user', content: 'Hello' }] });
+    const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+    const ids: number[] = [];
+    for (const marker of specialTokens) {
+      const tokens = await tokenizeChatText({ core: session.core, vocab: session.vocab, text: marker });
+      expect(tokens).toHaveLength(1);
+      ids.push(tokens[0]!);
+    }
+    const [begin, thought, content, close] = ids;
+    const encode = ({ value }: { value: string }) => Array.from(new TextEncoder().encode(value), byte => 3 + byte);
+    const expected = 'Hello <|end_message|> world 🌏.';
+    const tokens = [...(prefix ? [] : [begin!]), thought!, ...encode({ value: 'Thinking.' }), close!, begin!, content!, ...encode({ value: expected }), close!, 2];
+    const events: GenerationEvent[] = [];
+    const sample = vi.spyOn(session.core.api, 'llama_sampler_sample').mockImplementation(async () => tokens.shift() ?? 2);
+    using _sample = {
+      [Symbol.dispose]: () => {
+        sample.mockRestore();
+      },
+    };
+    const result = await generate({
+      request: { ...req, maxTokens: tokens.length },
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        events.push(event);
+      },
+    });
+    expect(result).toMatchObject({ content: expected, reasoningContent: 'Thinking.', finishReason: 'stop' });
+    expect(events.flatMap(event => event.type === 'text' ? [event.text] : []).join('')).toBe(expected);
+  }, 30000);
+
   it.each(['stop', 'length', 'aborted'] as const)('delivers native tool argument previews without completing a call before %s', async termination => {
     const template = `\
 {% for tool in tools %}{{ tool.function.name + '\\n' }}{% endfor %}
@@ -2279,13 +2325,13 @@ describe('structured delivery from the real CPU Wasm loop', () => {
       ...prepare(args),
       // Native formats may close JSON in a partial snapshot and revise it later.
       // Inject that parser behavior while keeping the real generation/ACK loop.
-      parse: ({ text }) => ({
+      parse: ({ pieces }) => ({
         content: '',
         reasoningContent: '',
         toolCalls: [{
           id: '',
           type: 'function',
-          function: { name: text.length < 2 ? 'look' : 'lookup', arguments: text.length < 2 ? firstArguments : finalArguments },
+          function: { name: pieces.length < 2 ? 'look' : 'lookup', arguments: pieces.length < 2 ? firstArguments : finalArguments },
         }],
       }),
     }));
@@ -4433,6 +4479,45 @@ describe('measurement contracts with supplied native Wasm', () => {
     expect(checkpoint).toMatchObject({ captureAttempts: 1, restoreAttempts: 0, retainedRestoredCaptures: 0 });
     expect(checkpoint?.phases.map(phase => phase.phase)).toEqual(['boundary-tokenize', 'capture-position', 'capture-size', 'capture-allocation', 'capture-prior-compute-wait', 'capture-readback']);
     expect(checkpoint?.phases.every(phase => phase.elapsedMs >= 0 && phase.visits === 1)).toBe(true);
+  }, 30000);
+
+  it('counts the first native logits row only with detailed measurement enabled', async () => {
+    host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
+    const req = { ...request({ messages: [{ role: 'user', content: 'English fixture' }] }), debug: 'off' as const };
+    const input = { signal: undefined, onEvent: () => {}, onProgress: () => {} };
+    const session = await prepareSession({ request: req, ...input });
+    const { core, vocab } = session;
+    const count = await core.api.llama_vocab_n_tokens(vocab);
+    const length = count * Float32Array.BYTES_PER_ELEMENT;
+    const pointer = core.alloc({ bytes: length });
+    try {
+      const bytes = core.bytes({ pointer, length });
+      const scores = new Float32Array(bytes.buffer, bytes.byteOffset, count);
+      scores.fill(1);
+      scores.set([NaN, Infinity, -Infinity, -Infinity, -3, 2, 4]);
+      using logits = vi.spyOn(core.api, 'llama_get_logits_ith').mockResolvedValue(pointer);
+      const ordinary = await generate({ request: req, ...input });
+      const reports: Diagnostic[] = [];
+      const onSummary = ({ diagnostic }: { diagnostic: Diagnostic }) => {
+        reports.push(diagnostic);
+      };
+      const standard = await generate({ request: { ...req, measurement: { sequence: 'fresh' } }, ...input, onSummary });
+      expectSameGenerationResult({ actual: standard, expected: ordinary });
+      expect(logits).not.toHaveBeenCalled();
+      expect(diagnosticSchema.parse(reports[0]).performance?.firstLogits).toBeUndefined();
+      const detailed = await generate({ request: { ...req, measurement: { sequence: 'fresh', observation: 'placement' } }, ...input, onSummary });
+      expectSameGenerationResult({ actual: detailed, expected: ordinary });
+      expect(logits).toHaveBeenCalledExactlyOnceWith(session.context, -1);
+      expect(diagnosticSchema.parse(reports[1]).performance?.firstLogits).toEqual({
+        finite: count - 4,
+        nan: 1,
+        positiveInfinity: 1,
+        negativeInfinity: 2,
+        finiteRange: { minimum: -3, maximum: 4, secondHighest: 2 },
+      });
+    } finally {
+      core.free({ pointer });
+    }
   }, 30000);
 
   it('retains model read counters in measured loading without per-read timers', async () => {
