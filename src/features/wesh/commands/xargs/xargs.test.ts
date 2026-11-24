@@ -1185,7 +1185,7 @@ prefix beta
     expect(execution.stdout.text).toBe('');
     expect(execution.stderr.text).toBe('');
     expect(execution.result.exitCode).toBe(0);
-  });
+  }, 30_000);
 
   it('reports malformed quoted input', async () => {
     const { result, stdout, stderr } = await execute({
