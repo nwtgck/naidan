@@ -27,6 +27,17 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+## [0.75.0] - 2026-11-24
+
+### Changed
+
+- Use `naidan-llama-cpp-browser-diagnostics-….zip` names for llama.cpp browser investigation downloads.
+  GPU profiling and detailed standard runs include a summary of the first-token scores.
+
+### Fixed
+
+- Restore chat replies from the Unsloth Inkling 2 Mini GGUF on WebGPU when it would previously generate tokens without displaying a reply.
+
 ## [0.74.0] - 2026-11-23
 
 ### Added
@@ -1370,7 +1381,8 @@ Do not add entries directly here during ordinary development.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.74.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.75.0...develop
+[0.75.0]: https://github.com/nwtgck/naidan/compare/v0.74.0...v0.75.0
 [0.74.0]: https://github.com/nwtgck/naidan/compare/v0.73.0...v0.74.0
 [0.73.0]: https://github.com/nwtgck/naidan/compare/v0.72.0...v0.73.0
 [0.72.0]: https://github.com/nwtgck/naidan/compare/v0.71.0...v0.72.0
