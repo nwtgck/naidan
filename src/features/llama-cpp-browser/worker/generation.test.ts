@@ -34,7 +34,7 @@ import { toBinaryObjectId, toMessageId, toToolCallId } from '@/01-models/ids';
 import type { AssistantMessageNode, ChatContent, ToolMessageNode, UserMessageNode } from '@/01-models/types';
 import { buildChatGenerationMessages } from '@/logic/build-chat-generation-messages';
 import { prepareLlamaCppRequest } from '@/features/llama-cpp-browser/message-projection';
-import { prepareChat } from './native-chat';
+import { prepareChat, tokenizeChatText } from './native-chat';
 
 // Select another installed artifact without requesting real GPU allocation.
 const integrationProfile = profileSchema.parse(READ_ENV_LCORE_TEST_PROFILE() ?? 'cpu-wasm32');
@@ -2175,6 +2175,52 @@ describe('native inference across batching and cache lifecycle transitions', () 
 });
 
 describe('structured delivery from the real CPU Wasm loop', () => {
+  it.each([false, true])('parses Inkling token IDs with a template-supplied header=%s', async prefix => {
+    const header = '<|message_model|>';
+    const think = '<|content_thinking|>';
+    const text = '<|content_text|>';
+    const end = '<|end_message|>';
+    const specialTokens = [header, think, text, end];
+    const template = `\
+{%- for m in messages -%}
+{%- if m.role == 'user' -%}<|message_user|>{%- else -%}${header}{%- endif -%}
+${text}{{ m.content }}${end}
+{%- endfor -%}
+{%- if false -%}<|content_image|>{%- endif -%}
+${prefix ? `{%- if add_generation_prompt -%}${header}{%- endif -%}` : ''}`;
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: template, userDefinedTokens: specialTokens }));
+    const req = request({ messages: [{ role: 'user', content: 'Hello' }] });
+    const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+    const ids: number[] = [];
+    for (const marker of specialTokens) {
+      const tokens = await tokenizeChatText({ core: session.core, vocab: session.vocab, text: marker });
+      expect(tokens).toHaveLength(1);
+      ids.push(tokens[0]!);
+    }
+    const [begin, thought, content, close] = ids;
+    const encode = ({ value }: { value: string }) => Array.from(new TextEncoder().encode(value), byte => 3 + byte);
+    const expected = 'Hello <|end_message|> world 🌏.';
+    const tokens = [...(prefix ? [] : [begin!]), thought!, ...encode({ value: 'Thinking.' }), close!, begin!, content!, ...encode({ value: expected }), close!, 2];
+    const events: GenerationEvent[] = [];
+    const sample = vi.spyOn(session.core.api, 'llama_sampler_sample').mockImplementation(async () => tokens.shift() ?? 2);
+    using _sample = {
+      [Symbol.dispose]: () => {
+        sample.mockRestore();
+      },
+    };
+    const result = await generate({
+      request: { ...req, maxTokens: tokens.length },
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        events.push(event);
+      },
+    });
+    expect(result).toMatchObject({ content: expected, reasoningContent: 'Thinking.', finishReason: 'stop' });
+    expect(events.flatMap(event => event.type === 'text' ? [event.text] : []).join('')).toBe(expected);
+  }, 30000);
+
   it.each(['stop', 'length', 'aborted'] as const)('delivers native tool argument previews without completing a call before %s', async termination => {
     const template = `\
 {% for tool in tools %}{{ tool.function.name + '\\n' }}{% endfor %}
@@ -2279,13 +2325,13 @@ describe('structured delivery from the real CPU Wasm loop', () => {
       ...prepare(args),
       // Native formats may close JSON in a partial snapshot and revise it later.
       // Inject that parser behavior while keeping the real generation/ACK loop.
-      parse: ({ text }) => ({
+      parse: ({ pieces }) => ({
         content: '',
         reasoningContent: '',
         toolCalls: [{
           id: '',
           type: 'function',
-          function: { name: text.length < 2 ? 'look' : 'lookup', arguments: text.length < 2 ? firstArguments : finalArguments },
+          function: { name: pieces.length < 2 ? 'look' : 'lookup', arguments: pieces.length < 2 ? firstArguments : finalArguments },
         }],
       }),
     }));

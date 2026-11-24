@@ -18,7 +18,7 @@ import { prepareMultimodal } from './multimodal';
 import { errorCode, LlamaCppBrowserError, usesWebGpu, type GenerationResult, type GenerationCallback, type Progress } from '@/features/llama-cpp-browser/types';
 import { classifyFailure, logDiagnostic, logFailure, type Diagnostic, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
 import type { WorkerGenerateInput } from './types';
-import { createOutputStream } from './output-stream';
+import { createChatOutput } from './output-stream';
 import { prepareGenerationSession } from './session';
 import { prepareChat } from './native-chat';
 import { createChatSampler } from './chat-sampler';
@@ -652,8 +652,7 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
     const samplingChain = sampler;
     sampler = 0n;
     chatSampler = await createChatSampler({ core, vocab, chain: samplingChain, params: chat.params });
-    const stream = createOutputStream({ stops: [...request.stop, ...chat.additionalStops], harmony: false, initialChannel: 'final' });
-    let output = '';
+    const output = createChatOutput({ stops: [...request.stop, ...chat.additionalStops] });
     let content = '';
     let reasoning = '';
     let pendingCalls = 0;
@@ -680,7 +679,7 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
       } else {
         streaming.finalParseCalls++;
       }
-      return chat!.parse({ text: output, partial });
+      return chat!.parse({ pieces: output.pieces, partial, vocab });
     };
     let deliveryFailed = false;
     let deliveryDecodeActive = false;
@@ -786,7 +785,7 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
       if (deliveryFailed) {
         return;
       }
-      output += stream.push({ text: renderer.finish() }).text + stream.finish();
+      output.finish({ text: renderer.finish() });
       setStage({ value: 'partial-parse' });
       await emitParsed({ parsed: parseOutput({ partial: true }) });
     };
@@ -858,13 +857,12 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
       const { text: tokenText, endOfGeneration } = await renderer.render({ token, special: chatSampler.preservedTokens.has(token) });
       measurements.rendered({ endOfGeneration: Boolean(endOfGeneration) });
       speedTracker.sample({ sampledAt, endOfGeneration: Boolean(endOfGeneration) });
-      const rendered = stream.push({ text: tokenText });
       checkCancelled();
-      output += rendered.text;
+      const matchedStop = output.push({ text: tokenText, token });
       let partial: Omit<GenerationResult, 'finishReason'> | undefined;
       if (outputPacing.shouldParse({
         outputLength: output.length,
-        force: rendered.done || Boolean(endOfGeneration) || generated + 1 === maximum,
+        force: matchedStop || Boolean(endOfGeneration) || generated + 1 === maximum,
       })) {
         setStage({ value: 'partial-parse' });
         partial = parseOutput({ partial: true });
@@ -873,7 +871,7 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
       } else {
         streaming.skippedPartialParses++;
       }
-      const terminal = rendered.done || endOfGeneration || (!multimodal && generated + 1 === maximum);
+      const terminal = matchedStop || endOfGeneration || (!multimodal && generated + 1 === maximum);
       const pair = partial !== undefined && !terminal && !multimodal && !request.tools?.length
         && partial.toolCalls.length === 0 && pendingCalls === 0
         && (partial.content.length > content.length || partial.reasoningContent.length > reasoning.length);
@@ -881,8 +879,8 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
         await emitParsed({ parsed: partial });
         checkCancelled();
       }
-      if (rendered.done || endOfGeneration) {
-        const stop = stream.getMatchedStop();
+      if (matchedStop || endOfGeneration) {
+        const stop = output.getMatchedStop();
         finishReason = stop !== undefined && request.stop.includes(stop) ? 'stop_sequence' : 'stop';
         break;
       }
@@ -927,8 +925,7 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
       }
     }
     checkCancelled();
-    const tail = stream.push({ text: renderer.finish() }).text + stream.finish();
-    output += tail;
+    output.finish({ text: renderer.finish() });
     setStage({ value: 'final-parse' });
     const parsed = parseOutput({ partial: finishReason !== 'stop' });
     await emitParsed({ parsed });

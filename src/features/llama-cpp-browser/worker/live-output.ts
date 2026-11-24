@@ -7,6 +7,7 @@ import { readAudioScalar } from './audio-memory';
 import { createChatSampler } from './chat-sampler';
 import { createTokenRenderer } from './token-renderer';
 import { createLiveAllocations, type LiveNative } from './live-memory';
+import { createChatOutput } from './output-stream';
 
 type Prepared = ReturnType<NativeChat['prepare']>;
 
@@ -77,7 +78,7 @@ export async function generateLiveAnswer({ native, prepared, prompt, turnId, out
   const cooperate = createAudioCooperator({ signal });
   let helper = 0n;
   let sampler: Awaited<ReturnType<typeof createLiveSampler>> | undefined;
-  let raw = '';
+  const reply = createChatOutput({ stops: [] });
   let visible = '';
   let finishReason: LiveAnswer['finishReason'] = 'limit';
   let deliveredSamples = 0;
@@ -207,11 +208,11 @@ export async function generateLiveAnswer({ native, prepared, prompt, turnId, out
       if (!stop && token !== core.constant({ name: 'LLAMA_TOKEN_NULL' })) {
         const preserved = sampler.preservedTokens.has(token);
         if (preserved || !await api.llama_vocab_is_control(vocab, token)) {
-          raw += (await renderer.render({ token, special: preserved })).text;
-          if (raw.length > 131072) {
+          reply.push({ text: (await renderer.render({ token, special: preserved })).text, token });
+          if (reply.length > 131072) {
             throw new Error('Live answer text is too large');
           }
-          const parsed = prepared.parse({ text: raw, partial: true });
+          const parsed = prepared.parse({ pieces: reply.pieces, partial: true, vocab });
           if (parsed.content !== visible) {
             visible = parsed.content;
             await onEvent({ event: { type: 'text', text: visible } });
@@ -242,14 +243,14 @@ export async function generateLiveAnswer({ native, prepared, prompt, turnId, out
     if (interrupted()) {
       finishReason = 'interrupted';
     }
-    raw += renderer.finish();
+    reply.finish({ text: renderer.finish() });
     switch (finishReason) {
     case 'stop': {
-      const parsed = prepared.parse({ text: raw, partial: false });
+      const parsed = prepared.parse({ pieces: reply.pieces, partial: false, vocab });
       return { type: 'answer', turnId, text: parsed.content, toolCalls: parsed.toolCalls, finishReason };
     }
     case 'limit': case 'interrupted':
-      return { type: 'answer', turnId, text: prepared.parse({ text: raw, partial: true }).content, toolCalls: [], finishReason };
+      return { type: 'answer', turnId, text: prepared.parse({ pieces: reply.pieces, partial: true, vocab }).content, toolCalls: [], finishReason };
     default: {
       const exhaustive: never = finishReason;
       throw new Error(String(exhaustive));

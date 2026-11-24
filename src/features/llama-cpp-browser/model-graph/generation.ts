@@ -7,7 +7,7 @@ import { createGenerationPerformance } from '@/features/llama-cpp-browser/worker
 import { createGenerationSpeedTracker } from '@/features/llama-cpp-browser/worker/generation-speed';
 import { createGenerationYieldPacing } from '@/features/llama-cpp-browser/worker/generation-yield-pacing';
 import { createOutputPacing } from '@/features/llama-cpp-browser/worker/output-pacing';
-import { createOutputStream } from '@/features/llama-cpp-browser/worker/output-stream';
+import { createChatOutput } from '@/features/llama-cpp-browser/worker/output-stream';
 import { createTokenRenderer } from '@/features/llama-cpp-browser/worker/token-renderer';
 import { encodeChatPrompt, tokenizeChatPrompt } from '@/features/llama-cpp-browser/worker/tokenize-chat-prompt';
 import { prepareRegisteredGraph, releaseRegisteredGraph } from './session';
@@ -150,12 +150,12 @@ export async function generateWithRegisteredGraph({ request, signal, onEvent, on
     workspace = boundary.createSamplerWorkspace({ vocabularySize });
     renderer = createTokenRenderer({ core, vocab: vocabulary.vocab, cacheMode: 'bounded' });
     measured.counters.tokenRendering = renderer.counters;
-    const stream = createOutputStream({ stops: [...request.stop, ...chat.additionalStops], harmony: false, initialChannel: 'final' });
+    const output = createChatOutput({ stops: [...request.stop, ...chat.additionalStops] });
     const pacing = createOutputPacing({ mode: request.tools?.length ? 'per-token' : 'coalesced', now: () => performance.now() });
     const yieldPacing = createGenerationYieldPacing({ mode: 'coalesced', now: () => performance.now() });
     measured.counters.generationYield = yieldPacing.counters;
     const streaming = measured.counters.streaming = { mode: pacing.mode, partialParseCalls: 0, finalParseCalls: 0, parsedCodeUnits: 0, skippedPartialParses: 0, deliveredEvents: 0 };
-    let output = '', content = '', reasoning = '';
+    let content = '', reasoning = '';
     const drafts: { name: string, arguments: string }[] = [];
     const send: GenerationCallback = async ({ event }) => {
       measured.enter({ next: 'stream-emit' });
@@ -180,7 +180,7 @@ export async function generateWithRegisteredGraph({ request, signal, onEvent, on
       } else {
         streaming.finalParseCalls++;
       }
-      const parsed = chat!.parse({ text: output, partial });
+      const parsed = chat!.parse({ pieces: output.pieces, partial, vocab: vocabulary.vocab });
       if (!parsed.content.startsWith(content) || !parsed.reasoningContent.startsWith(reasoning) || parsed.toolCalls.length < drafts.length) {
         throw new Error('Native graph output parsing is not monotonic');
       }
@@ -221,7 +221,7 @@ export async function generateWithRegisteredGraph({ request, signal, onEvent, on
     };
     flushAccepted = async () => {
       // Stop drains only already sampled content, not a new token or tool call.
-      output += stream.push({ text: renderer!.finish() }).text + stream.finish();
+      output.finish({ text: renderer!.finish() });
       await emit({ partial: true });
     };
     const maximum = Math.min(request.maxTokens ?? contextSize, contextSize - promptTokens.length);
@@ -243,9 +243,8 @@ export async function generateWithRegisteredGraph({ request, signal, onEvent, on
       const rendered = await renderer.render({ token, special: sampler.preservedTokens.has(token) });
       measured.rendered({ endOfGeneration: rendered.endOfGeneration });
       speed.sample({ sampledAt, endOfGeneration: rendered.endOfGeneration });
-      const chunk = stream.push({ text: rendered.text });
-      output += chunk.text;
-      const terminal = chunk.done || rendered.endOfGeneration || generated + 1 === maximum;
+      const matchedStop = output.push({ text: rendered.text, token });
+      const terminal = matchedStop || rendered.endOfGeneration || generated + 1 === maximum;
       if (pacing.shouldParse({ outputLength: output.length, force: terminal })) {
         await emit({ partial: true });
       } else {
@@ -253,8 +252,9 @@ export async function generateWithRegisteredGraph({ request, signal, onEvent, on
       }
       check();
       progress({ phase: 'generating', completed: generated + 1, total: maximum });
-      if (chunk.done || rendered.endOfGeneration) {
-        finishReason = stream.getMatchedStop() !== undefined && request.stop.includes(stream.getMatchedStop()!) ? 'stop_sequence' : 'stop';
+      if (matchedStop || rendered.endOfGeneration) {
+        const stop = output.getMatchedStop();
+        finishReason = stop !== undefined && request.stop.includes(stop) ? 'stop_sequence' : 'stop';
         break;
       }
       if (terminal) {
@@ -272,7 +272,7 @@ export async function generateWithRegisteredGraph({ request, signal, onEvent, on
     }
     check();
     flushAccepted = undefined;
-    output += stream.push({ text: renderer.finish() }).text + stream.finish();
+    output.finish({ text: renderer.finish() });
     const parsed = await emit({ partial: finishReason !== 'stop' });
     switch (finishReason) {
     case 'length': case 'stop_sequence': break;
