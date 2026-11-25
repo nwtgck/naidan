@@ -120,6 +120,7 @@ describe('in-app llama Diagnostics page', () => {
     expect(wrapper.get('[data-testid="llama-performance-vision-help"]').text()).toContain('512');
     expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-diagnostic"]').element.disabled).toBe(true);
     await flushPromises();
+    expect(wrapper.text()).toContain('1 models · 2 generations including preparation');
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
     const saved = mocks.archive.mock.calls[0]![0].snapshot;
@@ -134,6 +135,7 @@ describe('in-app llama Diagnostics page', () => {
     await flushPromises();
     await wrapper.findAll<HTMLInputElement>('[data-testid="llama-performance-model"]')[1]!.setValue(true);
     await flushPromises();
+    expect(wrapper.text()).toContain('2 models · 16 generations including preparation');
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
     expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(2);
@@ -153,6 +155,7 @@ describe('in-app llama Diagnostics page', () => {
     await flushPromises();
     expect(wrapper.get('[data-testid="llama-performance-q2-ab"]').text()).toBe('Q2 A/B');
     expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-text"]').element.checked).toBe(true);
+    expect(wrapper.text()).toContain('1 models · 10 generations including preparation');
     expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
@@ -403,6 +406,7 @@ describe('profiling modes and safe result actions', () => {
     available();
     await open();
     expect(wrapper!.get<HTMLInputElement>('[data-testid="llama-performance-mode-gpu-profile"]').element.checked).toBe(true);
+    expect(wrapper!.text()).toContain('1 models · 8 generations including preparation');
     await flushPromises();
     await wrapper!.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
@@ -416,10 +420,12 @@ describe('profiling modes and safe result actions', () => {
     await open();
     await wrapper!.get(`[data-testid="llama-performance-mode-${mode}"]`).setValue(true);
     await flushPromises();
+    const expected = mode === 'both' ? 14 : 8;
+    expect(wrapper!.text()).toContain(`1 models · ${expected} generations including preparation`);
     await wrapper!.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
     expect(mocks.runPerformanceOperation.mock.calls.map(([args]) => args.options.profile)).toEqual(mode === 'both' ? ['webgpu-wasm64-jspi', 'webgpu-wasm64-jspi-gpu-profile', 'webgpu-wasm64-jspi-gpu-profile'] : ['webgpu-wasm64-jspi']);
-    expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(mode === 'both' ? 14 : 8);
+    expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(expected);
     expect(mocks.archive.mock.calls[0]![0].snapshot.plan.settings.mode).toBe(mode);
   });
 

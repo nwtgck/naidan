@@ -64,6 +64,9 @@ describe('portable performance results', () => {
     ]);
     expect((await zip.file('gpu-profile.jsonl')!.async('string')).trim()).toBe('');
     expect(JSON.parse(await zip.file('manifest.json')!.async('string'))).toMatchObject({ q2Placement: 'ab' });
+    const readme = await zip.file('README.md')!.async('string');
+    expect(readme).not.toContain('## Text measurement schedule');
+    expect(readme).not.toContain('## Tool result continuation');
   });
 
   it('keeps optional kernel diagnostics separate from model trials and throughput summaries', async () => {
@@ -153,9 +156,13 @@ ordinary chat tok/s`);
     expect(exported.checkpoint).toEqual(metrics.checkpoint);
     expect(exported.earlyGenerationTiming).toEqual(metrics.earlyGenerationTiming);
     expect(exported.firstLogits).toEqual(metrics.firstLogits);
-    expect(await zip.file('README.md')!.async('string')).toContain('cacheReuse records the cache decision before prefill');
-    expect(await zip.file('README.md')!.async('string')).toContain('## Tool result continuation');
-    expect(await zip.file('README.md')!.async('string')).toContain('generation-overlap includes delivery and decode');
+    const readme = await zip.file('README.md')!.async('string');
+    expect(readme).toContain('cacheReuse records the cache decision before prefill');
+    expect(readme).toContain('## Tool result continuation');
+    expect(readme).toContain(`\
+8 planned calls per model in one lane and
+14 in paired mode`);
+    expect(readme).toContain('generation-overlap includes delivery and decode');
   });
 
   it.each(['clean', 'dirty', 'unknown'] as const)('preserves the run app identity with a %s working tree at export', async workingTree => {

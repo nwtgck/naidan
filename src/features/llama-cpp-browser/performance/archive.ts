@@ -1,12 +1,15 @@
 import { observedModelExecution } from './model-execution';
 import { createAbortableByteStream } from '@/utils/abortable-byte-stream';
 import { isGpuProfileTrial, summarizeGpuProfiles } from './gpu-profile-summary';
+import { visionProtocol } from './vision-plan';
 import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/utils/zip-stream/memory';
 import { StreamingZipWriter, createWebZipCompressionCodec } from '@/utils/zip-stream';
 import { performanceProtocol, snapshotSchema, type PerformanceSnapshot } from './types';
 import { summarizePerformance, performanceFindings, trialRates } from './summary';
 
 function archiveReadme({ protocol, q2Placement }: { protocol: PerformanceSnapshot['plan']['protocol'], q2Placement: PerformanceSnapshot['plan']['settings']['q2Placement'] }): string {
+  const textSchedule = protocol !== visionProtocol && q2Placement === undefined;
+  const toolRoundTrip = textSchedule && protocol === performanceProtocol;
   return `# Naidan llama.cpp browser performance / ${protocol}
 
 ## Start here
@@ -118,8 +121,8 @@ Definition source and execution approvals are not exported in diagnostic archive
 plan.settings.mode is gpu-profile, standard, or both. Missing means the older
 standard-only protocol. Both runs each model's complete standard block first,
 retires its Worker, then runs the profiling block in a new Worker. Continuations
-never cross these boundaries. Each lane has its own initial load/warm-up and
-optional placement diagnostic. Request counts double, not necessarily wall time.
+never cross these boundaries. Each lane has its own initial load/warm-up.
+See plan.steps for the exact workload and per-lane counts.
 The ordinary lane in both always uses webgpu-wasm64-jspi, matching the diagnostic
 profile's memory width and suspension strategy. Standalone cannot select the GPU
 profiling runtime. Hosted includes development serving as well as production.
@@ -193,29 +196,31 @@ Late readbacks cannot modify a closed request or contaminate its successor.
 No hardware performance counters, physical GPU residency, swap, bandwidth
 utilization or per-instruction timings are collected.
 
-## What changed in this protocol
-The default baseline is one block: initial short (up to 8 output tokens), short before
+${textSchedule ? `## Text measurement schedule
+The baseline is one block: initial short (up to 8 output tokens), short before
 (up to 64), its real continuation (up to 16), long input (up to 8), and the
 same fresh short input after (up to 64). The initial call doubles as warm-up;
 there is no additional full-length warm-up or regenerated continuation parent.
-An optional final diagnostic generates up to 2 tokens. Thus the default is
-6 calls per lane with an output ceiling of 162 tokens. GPU profiling is the UI
-default when supported; both uses 12 calls with these same default settings.
-That describes the default UI settings only; plan.steps is authoritative for this
-archive, including custom output limits, disabled diagnostics and extra blocks.
+The placement diagnostic runs by default and generates up to 2 tokens. The
+baseline therefore has 6 planned calls per model in each lane.
+Use plan.steps to check the exact schedule, including custom output limits,
+disabled diagnostics and extra blocks.
 The short before/after results stay separate. The first long input can include
 first-use graph/pipeline work; it is NOT a warmed-prefill claim. Increase blocks
 only when a specific comparison needs confirmation, not to hide chronological drift.
 The input is English. Results are not interchangeable with standard-text-v1
 (Japanese) or standard-text-en-v2 (a different schedule and output budget).
-${protocol === performanceProtocol && q2Placement === undefined ? `
+
+` : ''}${toolRoundTrip ? `
 ## Tool result continuation
-One additional pair per selected model runs after the baseline in its lane. Paired
-mode puts it in the standard lane. The first request gives the model a synthetic
-tool and asks it to generate a call with a long argument. Its output ceiling is
-512 tokens. The next request uses the same runtime and tool definition, with the
-real generated call and a fixed short tool result. The result request generates
-up to 32 tokens. The diagnostic does not execute the generated call.
+One additional pair per selected model runs after the baseline in its lane.
+The default text schedule has 8 planned calls per model in one lane and
+14 in paired mode, where the tool requests run in the standard lane.
+The first request gives the model a synthetic tool and asks it to generate a
+call with a long argument. Its output ceiling is 512 tokens. The next request
+uses the same runtime and tool definition, with the real generated call and a
+fixed short tool result. The result request generates up to 32 tokens. The
+diagnostic does not execute the generated call.
 Use outputs/<id>.json for the actual tool definition, argument string, and tool
 result. For the tool-continuation row in trials.jsonl, compare
 summary.performance.cacheReuse with the prefill stages and checkpoint breakdown.

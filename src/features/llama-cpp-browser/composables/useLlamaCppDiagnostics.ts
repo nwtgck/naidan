@@ -125,7 +125,10 @@ export function useLlamaCppDiagnostics() {
       }
       }
     })();
-    return selectedModels.value.length * perModel * measurementLanes({ mode: mode.value, q2Placement: q2Placement.value }).length;
+    const lanes = measurementLanes({ mode: mode.value, q2Placement: q2Placement.value });
+    // The tool call and its continuation run once per model, in the first lane.
+    const toolCalls = workload.value === 'text' && q2Placement.value === undefined ? 2 : 0;
+    return selectedModels.value.length * (perModel * lanes.length + toolCalls);
   });
   const runner = createPerformanceRunner({
     service,

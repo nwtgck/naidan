@@ -1,1 +1,1 @@
-export const llamaCppPerformance__measure_both_help = (): string => "Executa o mesmo plano primeiro com WebGPU normal de 64 bits e depois com perfilamento da GPU. Cada modelo é carregado separadamente para cada execução. O número de solicitações dobra; o tempo total pode superar o dobro.";
+export const llamaCppPerformance__measure_both_help = (): string => "Executa os testes em comum primeiro com WebGPU normal de 64 bits e depois com perfilamento da GPU. O modelo é carregado separadamente em cada execução. O perfilamento da GPU pode demorar mais.";
