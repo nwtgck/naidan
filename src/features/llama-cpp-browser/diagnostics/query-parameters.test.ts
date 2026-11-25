@@ -38,14 +38,21 @@ describe('disposable diagnostics URL configuration', () => {
   });
 
   it('rejects duplicated scalars, empty choices and invalid flags independently', () => {
-    expect(parseDiagnosticsQuery({ query: { mode: ['both', 'standard'], workload: '', repeats: ['3'], placement: 'true', profile: 'webgpu-wasm64-jspi-gpu-profile' } })).toEqual({});
+    expect(parseDiagnosticsQuery({ query: { mode: ['both', 'standard'], text: ['0', '1'], image: '', repeats: ['3'], placement: 'true', profile: 'webgpu-wasm64-jspi-gpu-profile' } })).toEqual({});
+  });
+
+  it('decodes independent workload exclusions and ignores the former choice', () => {
+    expect(parseDiagnosticsQuery({ query: parseQuery('workload=vision&text=0') })).toEqual({ includeText: false });
+    expect(parseDiagnosticsQuery({ query: parseQuery('workload=text&image=0') })).toEqual({ includeImages: false });
+    expect(stringifyQuery(serializeDiagnosticsQuery({ config: { includeText: false, includeImages: false } }))).toBe('text=0&image=0');
   });
 
   it('round trips every registered field and respects the optional runtime defaults', () => {
     const config = {
       modelIds: ['a'],
       modelFilter: 'qwen',
-      workload: 'vision' as const,
+      includeText: false,
+      includeImages: true,
       mode: 'standard' as const,
       repeats: 5,
       maxTokens: 512,
@@ -73,14 +80,14 @@ line 1
   });
 
   it('preserves conflicting SWA settings in the URL and detects them together', () => {
-    const query = parseQuery('swaCache=ab&q2Placement=ab&workload=vision&mode=both&placement=1&profile=cpu-wasm32');
+    const query = parseQuery('swaCache=ab&q2Placement=ab&text=0&image=1&mode=both&placement=1&profile=cpu-wasm32');
     const config = parseDiagnosticsQuery({ query });
     expect(serializeDiagnosticsQuery({ config })).toEqual(query);
-    expect(conflictingSwaCacheSettings({ config })).toEqual(['q2Placement', 'workload', 'mode', 'placement', 'profile']);
+    expect(conflictingSwaCacheSettings({ config })).toEqual(['q2Placement', 'text', 'image', 'mode', 'placement', 'profile']);
   });
 
-  it.each(['swaCache=ab', 'swaCache=ab&workload=text&mode=standard&placement=0&profile=auto', 'swaCache=ab&profile=webgpu-wasm64-jspi',
-    'q2Placement=ab&workload=vision&mode=both&placement=1&profile=cpu-wasm32'])('accepts compatible or implicit SWA settings and keeps Q2 behavior for %s', query => {
+  it.each(['swaCache=ab', 'swaCache=ab&text=1&image=0&mode=standard&placement=0&profile=auto', 'swaCache=ab&profile=webgpu-wasm64-jspi',
+    'q2Placement=ab&image=1&mode=both&placement=1&profile=cpu-wasm32'])('accepts compatible or implicit SWA settings and keeps Q2 behavior for %s', query => {
     expect(conflictingSwaCacheSettings({ config: parseDiagnosticsQuery({ query: parseQuery(query) }) })).toEqual([]);
   });
 

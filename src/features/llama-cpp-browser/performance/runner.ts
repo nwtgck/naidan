@@ -1,4 +1,4 @@
-import { visionProtocol } from './vision-plan';
+import { combinedProtocol, visionProtocol } from './vision-plan';
 import { optionsForLane, performanceLanes, q2PlacementForLane } from './plan';
 import { nanoid } from 'nanoid';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
@@ -144,7 +144,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       }
       notify();
       try {
-        const image = plan.protocol === visionProtocol ? await (await import('./vision-fixture')).createVisionFixture() : undefined;
+        let pendingImage: Promise<Blob> | undefined;
         control.signal.throwIfAborted();
         const lanes = performanceLanes({ mode: plan.settings.mode, q2Placement: plan.settings.q2Placement, swaCache: plan.settings.swaCache });
         for (const { modelIndex, model, lane } of plan.models.flatMap((model, modelIndex) => lanes.map(lane => ({ modelIndex, model, lane })))) {
@@ -212,6 +212,20 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                         }
                         await visible({ modelIndex, stepId: step.id, lane, runtimeSegment });
                         control.signal.throwIfAborted();
+                        let image: Blob | undefined;
+                        if (step.vision) {
+                          try {
+                            pendingImage ??= import('./vision-fixture').then(({ createVisionFixture }) => createVisionFixture());
+                            image = await pendingImage;
+                          } catch (error) {
+                            control.signal.throwIfAborted();
+                            const message = error instanceof Error ? error.message : String(error);
+                            skip({ step, options: scope.options, error: `Unable to prepare image fixture (${message})`, runtimeSegment });
+                            notify();
+                            continue;
+                          }
+                          control.signal.throwIfAborted();
+                        }
                         const parent = step.dependsOn === undefined ? undefined : trialsByStep.get(step.dependsOn);
                         const toolWorkload = step.scenario === 'tool-call' || step.scenario === 'tool-continuation';
                         const tools = toolWorkload ? performanceTools : undefined;
@@ -314,7 +328,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                         })();
                         const input: Omit<GenerateInput, 'options'> = {
                           modelId: model.modelId,
-                          messages: step.vision && image ? [{ role: 'user', content: [{ type: 'image', blob: image }, { type: 'text', text: step.prompt }] }] : messages,
+                          messages: image ? [{ role: 'user', content: [{ type: 'image', blob: image }, { type: 'text', text: step.prompt }] }] : messages,
                           ...(tools === undefined ? {} : { tools }),
                           debug: 'off',
                           temperature: 0,
@@ -576,14 +590,30 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
               }
               const skipReason = modelSkip ?? (toolSkip && errorCode({ error }) === 'template-unsupported' ? toolSkip : undefined);
               const errorMessage = error instanceof Error ? error.message : String(error);
-              const segment = comparison ? { runtimeSegment } : {};
+              const combined = plan.protocol === combinedProtocol;
+              const segment = comparison || combined ? { runtimeSegment } : {};
               if (!skipReason) {
                 activeSnapshot.modelErrors.push({ modelIndex, lane, ...segment, error: errorMessage });
               }
+              const imageSteps: PerformanceStep[] = [];
               for (const step of steps) {
-                if (!trialsByStep.has(step.id)) {
-                  skip({ step, options, ...segment, error: skipReason ?? (control.signal.aborted ? 'cancelled' : comparison ? errorMessage : 'model-operation-failed'), skipReason });
+                if (trialsByStep.has(step.id)) {
+                  continue;
                 }
+                if (combined && step.vision && skipReason === 'tool-template-unsupported' && !control.signal.aborted) {
+                  imageSteps.push(step);
+                  continue;
+                }
+                skip({ step, options, ...segment, error: skipReason ?? (control.signal.aborted ? 'cancelled' : comparison ? errorMessage : 'model-operation-failed'), skipReason });
+              }
+              if (imageSteps.length) {
+                // The previous scope failed. The image workload has no dependency on
+                // text and starts in a fresh, separately recorded runtime segment.
+                remaining = imageSteps;
+                toolSkip = undefined;
+                runtimeSegment++;
+                notify();
+                continue;
               }
               notify();
               break;

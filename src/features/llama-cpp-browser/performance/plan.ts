@@ -1,4 +1,4 @@
-import { visionFixture, visionPrompt, visionProtocol } from './vision-plan';
+import { combinedProtocol, visionFixture, visionPrompt, visionProtocol } from './vision-plan';
 import { gpuProfilingProfile, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
 import { measurementLanes, performanceProtocol, planSchema, type MeasurementLane, type MeasurementMode, type PerformancePlan, type PerformanceStep } from './types';
 import { toolCallPrompt, toolCallTokenLimit, toolContinuationTokenLimit, toolResult } from './tool-continuation';
@@ -9,10 +9,24 @@ const longPrompt = libraryPrompt({ weeks: 12 });
 const followUp = 'Choose the most important limitation from your previous explanation and describe a concrete way to reduce its impact. Answer in English.';
 
 export function createPerformancePlan({ id, createdAt, models, settings, options, notes }: { id: PerformancePlan['id'], createdAt: PerformancePlan['createdAt'], models: PerformancePlan['models'], settings: PerformancePlan['settings'], options: PerformancePlan['options'], notes: PerformancePlan['notes'] }): PerformancePlan {
+  return createTextPlan({ input: { id, createdAt, models, settings, options, notes }, protocol: performanceProtocol });
+}
+
+export const createCombinedPerformancePlan: typeof createPerformancePlan = ({ id, createdAt, models, settings, options, notes }) =>
+  createTextPlan({ input: { id, createdAt, models, settings, options, notes }, protocol: combinedProtocol });
+
+function createTextPlan({ input, protocol }: {
+  input: Parameters<typeof createPerformancePlan>[0], protocol: typeof performanceProtocol | typeof combinedProtocol,
+}): PerformancePlan {
+  const { id, createdAt, models, settings, options, notes } = input;
+  const combined = protocol === combinedProtocol;
   if (new Set(models.map(model => model.modelId)).size !== models.length) {
     throw new Error('Duplicate modelId');
   }
   if (settings.swaCache !== undefined) {
+    if (combined) {
+      throw new Error('SWA cache comparison requires a text-only plan');
+    }
     return planSchema.parse({
       version: 1,
       protocol: swaCacheProtocol,
@@ -27,6 +41,9 @@ export function createPerformancePlan({ id, createdAt, models, settings, options
   }
   const steps: PerformanceStep[] = [];
   const q2Placement = settings.q2Placement !== undefined;
+  if (combined && q2Placement) {
+    throw new Error('Q2 placement comparison requires a text-only plan');
+  }
   const diagnostics = q2Placement ? 'placement' : settings.diagnostics;
   const lanes = performanceLanes({ mode: settings.mode, q2Placement: settings.q2Placement });
   let baselineIndex = 0;
@@ -103,10 +120,14 @@ export function createPerformancePlan({ id, createdAt, models, settings, options
         maxTokens: Math.min(toolContinuationTokenLimit, settings.maxTokens),
       });
     }
+    if (combined) {
+      appendVisionSteps({ steps, modelIndex, lane, settings, idPrefix: `m${modelIndex}-image` });
+    }
   }
   const plan = planSchema.parse({
     version: 1,
-    protocol: performanceProtocol,
+    protocol,
+    ...(combined ? { visionFixture } : {}),
     id,
     createdAt,
     models,
@@ -118,25 +139,31 @@ export function createPerformancePlan({ id, createdAt, models, settings, options
   return plan;
 }
 
-/** The first image request owns loading; subsequent fresh requests reuse its resident projector. */
+/** The first image request loads the projector for subsequent fresh requests. */
+function appendVisionSteps({ steps, modelIndex, lane, settings, idPrefix }: {
+  steps: PerformanceStep[], modelIndex: number, lane: MeasurementLane, settings: PerformancePlan['settings'], idPrefix: string,
+}): void {
+  for (let repetition = 0; repetition <= settings.repeats; repetition++) {
+    steps.push({
+      id: `${idPrefix}-${steps.length}`,
+      modelIndex,
+      lane,
+      scenario: repetition === 0 ? 'initial' : 'short',
+      position: repetition === 0 ? 'initial' : 'workload',
+      role: 'measurement',
+      repetition,
+      sequence: 'fresh',
+      prompt: visionPrompt,
+      maxTokens: Math.min(32, settings.maxTokens),
+      vision: { fixtureId: visionFixture.id, residency: repetition === 0 ? 'cold' : 'warm' },
+    });
+  }
+}
+
 export function createVisionPerformancePlan({ id, createdAt, models, settings, options, notes }: { id: PerformancePlan['id'], createdAt: PerformancePlan['createdAt'], models: PerformancePlan['models'], settings: PerformancePlan['settings'], options: PerformancePlan['options'], notes: PerformancePlan['notes'] }): PerformancePlan {
   const steps: PerformanceStep[] = [];
   for (const { modelIndex, lane } of models.flatMap((_, modelIndex) => performanceLanes({ mode: settings.mode }).map(lane => ({ modelIndex, lane })))) {
-    for (let repetition = 0; repetition <= settings.repeats; repetition++) {
-      steps.push({
-        id: `m${modelIndex}-${steps.length}`,
-        modelIndex,
-        lane,
-        scenario: repetition === 0 ? 'initial' : 'short',
-        position: repetition === 0 ? 'initial' : 'workload',
-        role: 'measurement',
-        repetition,
-        sequence: 'fresh',
-        prompt: visionPrompt,
-        maxTokens: Math.min(32, settings.maxTokens),
-        vision: { fixtureId: visionFixture.id, residency: repetition === 0 ? 'cold' : 'warm' },
-      });
-    }
+    appendVisionSteps({ steps, modelIndex, lane, settings, idPrefix: `m${modelIndex}` });
   }
   if (new Set(models.map(model => model.modelId)).size !== models.length) {
     throw new Error('Duplicate modelId');

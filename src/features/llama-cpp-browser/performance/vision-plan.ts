@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const visionProtocol = 'targeted-vision-en-v1' as const;
+export const combinedProtocol = 'targeted-text-vision-en-v1' as const;
 export const visionPrompt = 'Describe the visible geometric shapes and colors briefly in English.';
 export const visionFixture = {
   id: 'rgb-quadrants-512-v1',

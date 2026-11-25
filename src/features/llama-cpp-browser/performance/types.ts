@@ -1,5 +1,5 @@
 import { visionAdmissionSchema } from './vision-admission-schema';
-import { visionFixtureSchema, visionPrompt, visionProtocol, visionTrialSchema } from './vision-plan';
+import { combinedProtocol, visionFixtureSchema, visionPrompt, visionProtocol, visionTrialSchema } from './vision-plan';
 import { memoryDiagnosticsSchema } from './memory-schema';
 import { q8DiagnosticObservationSchema } from './q8-diagnostic-observation';
 import { z } from 'zod';
@@ -67,7 +67,7 @@ export const stepSchema = z.object({
 }).strict();
 export const planSchema = z.object({
   version: z.literal(1),
-  protocol: z.enum(['targeted-text-en-v3', 'targeted-text-en-v4', performanceProtocol, visionProtocol, swaCacheProtocol]),
+  protocol: z.enum(['targeted-text-en-v3', 'targeted-text-en-v4', performanceProtocol, visionProtocol, combinedProtocol, swaCacheProtocol]),
   visionFixture: visionFixtureSchema.optional(),
   id: idSchema,
   createdAt: z.string(),
@@ -78,6 +78,9 @@ export const planSchema = z.object({
   steps: z.array(stepSchema).min(1),
 }).strict().superRefine((plan, context) => {
   const q2Placement = plan.settings.q2Placement !== undefined;
+  const combined = plan.protocol === combinedProtocol;
+  const visionOnly = plan.protocol === visionProtocol;
+  const hasToolRoundTrip = !q2Placement && (plan.protocol === performanceProtocol || combined);
   const swaCache = plan.settings.swaCache !== undefined;
   if (swaCache !== (plan.protocol === swaCacheProtocol) || (swaCache && (q2Placement || plan.settings.mode !== 'standard'
     || plan.settings.diagnostics !== 'none' || plan.options.profile !== 'webgpu-wasm64-jspi'))) {
@@ -109,7 +112,7 @@ export const planSchema = z.object({
     throw new Error(String(exhaustive));
   }
   }
-  if ((plan.protocol === visionProtocol) !== (plan.visionFixture !== undefined)) {
+  if ((visionOnly || combined) !== (plan.visionFixture !== undefined)) {
     context.addIssue({ code: 'custom', message: 'Image protocol requires its fixed fixture metadata' });
   }
   const allowed = measurementLanes({ mode: plan.settings.mode, q2Placement: plan.settings.q2Placement, swaCache: plan.settings.swaCache });
@@ -148,7 +151,7 @@ export const planSchema = z.object({
       context.addIssue({ code: 'custom', message: 'Q2 placement comparison requires both matching text workloads for every model' });
     }
   }
-  if (plan.protocol === visionProtocol) {
+  if (visionOnly) {
     const expected = plan.models.flatMap((_, modelIndex) => allowed.flatMap(lane => Array.from({ length: plan.settings.repeats + 1 }, (_, repetition) => ({ modelIndex, lane, repetition }))));
     if (plan.settings.diagnostics !== 'none' || expected.length !== plan.steps.length || expected.some((value, index) => {
       const actual = plan.steps[index];
@@ -157,12 +160,48 @@ export const planSchema = z.object({
       context.addIssue({ code: 'custom', message: 'Image workload order must contain an initial request followed by its resident requests' });
     }
   }
+  if (combined) {
+    const textOrder = [
+      { scenario: 'initial', position: 'initial', repetition: 0 },
+      ...Array.from({ length: plan.settings.repeats }, (_, index) => [
+        { scenario: 'short', position: 'before', repetition: index + 1 },
+        { scenario: 'continuation', position: 'workload', repetition: index + 1 },
+        { scenario: 'long', position: 'workload', repetition: index + 1 },
+        { scenario: 'short', position: 'after', repetition: index + 1 },
+      ]).flat(),
+    ];
+    switch (plan.settings.diagnostics) {
+    case 'placement':
+      textOrder.push({ scenario: 'placement', position: 'diagnostic', repetition: 0 });
+      break;
+    case 'none': case undefined: break;
+    default: {
+      const exhaustive: never = plan.settings.diagnostics;
+      throw new Error(String(exhaustive));
+    }
+    }
+    const imageOrder = Array.from({ length: plan.settings.repeats + 1 }, (_, repetition) =>
+      ({ scenario: repetition === 0 ? 'initial' : 'short', position: repetition === 0 ? 'initial' : 'workload', repetition }));
+    const expected = plan.models.flatMap((_, modelIndex) => allowed.flatMap((lane, index) => [
+      ...textOrder.map(step => ({ ...step, modelIndex, lane, image: false })),
+      ...(index === 0 ? ['tool-call', 'tool-continuation'].map(scenario => ({ modelIndex, lane, scenario, position: 'workload', repetition: 0, image: false })) : []),
+      ...imageOrder.map(step => ({ ...step, modelIndex, lane, image: true })),
+    ]));
+    const inOrder = expected.length === plan.steps.length && expected.every((value, index) => {
+      const step = plan.steps[index];
+      return step && step.modelIndex === value.modelIndex && step.lane === value.lane && step.scenario === value.scenario
+        && step.position === value.position && step.repetition === value.repetition && (step.vision !== undefined) === value.image;
+    });
+    if (new Set(plan.models.map(model => model.modelId)).size !== plan.models.length || !inOrder) {
+      context.addIssue({ code: 'custom', message: 'Combined workloads require ordered text and image steps for each model and runtime lane' });
+    }
+  }
   const seen = new Map<string, typeof plan.steps[number]>();
   const toolLane = allowed[0];
   const toolCalls = new Set<number>();
   let previous: PerformanceStep | undefined;
   for (const step of plan.steps) {
-    if (plan.protocol === visionProtocol) {
+    if (visionOnly || combined && step.vision) {
       if (!step.vision || step.dependsOn !== undefined || step.sequence !== 'fresh' || step.prompt !== visionPrompt
         || step.maxTokens !== Math.min(32, plan.settings.maxTokens) || step.role !== 'measurement'
         || step.scenario !== (step.repetition === 0 ? 'initial' : 'short') || step.position !== (step.repetition === 0 ? 'initial' : 'workload')
@@ -181,14 +220,14 @@ export const planSchema = z.object({
     }
     const parent = step.dependsOn === undefined ? undefined : seen.get(step.dependsOn);
     if (step.dependsOn !== undefined) {
-      if (!parent || parent.modelIndex !== step.modelIndex || (parent.lane ?? 'standard') !== (step.lane ?? 'standard')) {
-        context.addIssue({ code: 'custom', message: 'Continuation crosses a model or runtime lane' });
+      if (!parent || parent.modelIndex !== step.modelIndex || (parent.lane ?? 'standard') !== (step.lane ?? 'standard') || combined && parent.vision) {
+        context.addIssue({ code: 'custom', message: 'Continuation crosses a model, runtime lane or workload' });
       }
     }
     switch (step.scenario) {
     case 'tool-call': case 'tool-continuation': {
       const preparation = step.scenario === 'tool-call';
-      if (plan.protocol !== performanceProtocol || (step.lane ?? 'standard') !== toolLane
+      if (!hasToolRoundTrip || (step.lane ?? 'standard') !== toolLane
         || step.position !== 'workload' || step.repetition !== 0 || (preparation
         ? step.role !== 'preparation' || step.dependsOn !== undefined || step.sequence !== 'fresh' || step.prompt !== toolCallPrompt
             || step.maxTokens !== toolCallTokenLimit || toolCalls.has(step.modelIndex)
@@ -201,7 +240,18 @@ export const planSchema = z.object({
       }
       break;
     }
-    case 'initial': case 'short': case 'long': case 'continuation': case 'placement': break;
+    case 'initial': case 'short': case 'long': case 'continuation': case 'placement': {
+      if (combined && !step.vision) {
+        const continuation = step.scenario === 'continuation';
+        if (step.role !== 'measurement' || (continuation
+          ? step.sequence !== 'continue' || !parent || parent !== previous || parent.scenario !== 'short'
+            || parent.position !== 'before' || parent.repetition !== step.repetition
+          : step.sequence !== 'fresh' || step.dependsOn !== undefined)) {
+          context.addIssue({ code: 'custom', message: 'Invalid combined text workload sequence' });
+        }
+      }
+      break;
+    }
     default: {
       const exhaustive: never = step.scenario;
       throw new Error(String(exhaustive));
@@ -213,7 +263,7 @@ export const planSchema = z.object({
     seen.set(step.id, step);
     previous = step;
   }
-  if (previous?.scenario === 'tool-call' || (plan.protocol === performanceProtocol && !q2Placement && toolCalls.size !== plan.models.length)) {
+  if (previous?.scenario === 'tool-call' || (hasToolRoundTrip && toolCalls.size !== plan.models.length)) {
     context.addIssue({ code: 'custom', message: 'Expected one tool round trip per model' });
   }
 });

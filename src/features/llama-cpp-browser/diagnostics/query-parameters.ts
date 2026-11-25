@@ -83,7 +83,8 @@ export const diagnosticsQueryParameters = {
   modelIds: parameter({ key: 'model', codec: models }),
   allModels: parameter({ key: 'all-models', codec: presence }),
   modelFilter: parameter({ key: 'modelFilter', codec: text({ maximum: 200 }) }),
-  workload: parameter({ key: 'workload', codec: choice({ values: ['text', 'vision'] }) }),
+  includeText: parameter({ key: 'text', codec: flag }),
+  includeImages: parameter({ key: 'image', codec: flag }),
   mode: parameter({ key: 'mode', codec: choice({ values: measurementModeSchema.options }) }),
   repeats: parameter({ key: 'repeats', codec: integer({ minimum: 1, maximum: 5 }) }),
   maxTokens: parameter({ key: 'maxTokens', codec: integer({ minimum: 1, maximum: 512 }) }),
@@ -151,14 +152,15 @@ export function conflictingSwaCacheSettings({ config }: { config: DiagnosticsQue
   if (config.swaCache === undefined) {
     return [];
   }
-  const { q2Placement, workload, mode, placement, profile } = config;
+  const { q2Placement, includeText, includeImages, mode, placement, profile } = config;
   const conflicts = {
-    q2Placement: q2Placement !== undefined,
-    workload: workload === 'vision',
-    mode: mode !== undefined && mode !== 'standard',
-    placement: placement === true,
-    profile: profile !== undefined && profile !== 'auto' && profile !== 'webgpu-wasm64-jspi',
-  } satisfies Partial<Record<keyof Registry, boolean>>;
+    [diagnosticsQueryParameters.q2Placement.key]: q2Placement !== undefined,
+    [diagnosticsQueryParameters.includeText.key]: includeText === false,
+    [diagnosticsQueryParameters.includeImages.key]: includeImages === true,
+    [diagnosticsQueryParameters.mode.key]: mode !== undefined && mode !== 'standard',
+    [diagnosticsQueryParameters.placement.key]: placement === true,
+    [diagnosticsQueryParameters.profile.key]: profile !== undefined && profile !== 'auto' && profile !== 'webgpu-wasm64-jspi',
+  };
   return Object.entries(conflicts).flatMap(([field, conflict]) => conflict ? [field] : []);
 }
 

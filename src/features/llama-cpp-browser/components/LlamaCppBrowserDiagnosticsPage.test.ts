@@ -112,17 +112,19 @@ describe('in-app llama Diagnostics page', () => {
     expect(document.activeElement?.id).toBe('llama-performance-heading');
   });
 
-  it('keeps text as the default and explicitly selects a fixed image workload with separate initial/resident runs', async () => {
+  it('checks both workloads by default and runs only image trials when text is unchecked', async () => {
     wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: 'user/m0' } });
     await flushPromises();
     expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-text"]').element.checked).toBe(true);
-    await wrapper.get('[data-testid="llama-performance-workload-vision"]').setValue(true);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-vision"]').element.checked).toBe(true);
+    await wrapper.get('[data-testid="llama-performance-workload-text"]').setValue(false);
     expect(wrapper.get('[data-testid="llama-performance-vision-help"]').text()).toContain('512');
     expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-diagnostic"]').element.disabled).toBe(true);
     await flushPromises();
     expect(wrapper.text()).toContain('1 models · 2 generations including preparation');
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
+    expect(router.currentRoute.value.query).toEqual({ text: '0' });
     const saved = mocks.archive.mock.calls[0]![0].snapshot;
     expect(saved.plan.protocol).toBe('targeted-vision-en-v1');
     expect(saved.plan.steps).toHaveLength(2);
@@ -130,17 +132,19 @@ describe('in-app llama Diagnostics page', () => {
     expect(saved.q8KernelDiagnostic).toBeUndefined();
   });
 
-  it('runs multiple selected models with one click, exports only on a separate click and returns direct links to the top page', async () => {
+  it('runs both workloads for multiple models with one click and exports a single snapshot', async () => {
     wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: 'user/m0' } });
     await flushPromises();
     await wrapper.findAll<HTMLInputElement>('[data-testid="llama-performance-model"]')[1]!.setValue(true);
     await flushPromises();
-    expect(wrapper.text()).toContain('2 models · 16 generations including preparation');
+    expect(wrapper.text()).toContain('2 models · 20 generations including preparation');
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
     expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(2);
     const exported = mocks.archive.mock.calls[0]![0].snapshot;
-    expect(exported.trials).toHaveLength(16);
+    expect(exported.plan.protocol).toBe('targeted-text-vision-en-v1');
+    expect(exported.trials).toHaveLength(20);
+    expect(exported.trials.filter((trial: { vision?: object }) => trial.vision)).toHaveLength(4);
     expect(exported.trials.filter((trial: { skipReason?: string }) => trial.skipReason === 'no-usable-tool-call')).toHaveLength(2);
     expect(exported.plan.options.profile).toBe('webgpu-wasm64-jspi');
     await wrapper.get('[data-testid="llama-performance-back"]').trigger('click');
@@ -149,12 +153,32 @@ describe('in-app llama Diagnostics page', () => {
     expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(2);
   });
 
+  it('restores independent URL exclusions and prevents an empty measurement', async () => {
+    await router.replace('/llama-cpp-browser/diagnostics?image=0&workload=vision');
+    wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: 'user/m0' } });
+    await flushPromises();
+    const text = wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-text"]');
+    const image = wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-vision"]');
+    expect(text.element.checked).toBe(true);
+    expect(image.element.checked).toBe(false);
+    await text.setValue(false);
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-start"]').element.disabled).toBe(true);
+    expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
+    await text.setValue(true);
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({ image: '0' });
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    await saveManually();
+    expect(mocks.archive.mock.calls[0]![0].snapshot.plan.protocol).toBe('targeted-text-en-v5');
+  });
+
   it('uses the existing Start and ZIP buttons for an explicit Q2 A/B URL', async () => {
-    await router.replace('/llama-cpp-browser/diagnostics?q2Placement=ab&mode=both&profile=cpu-wasm32&workload=vision');
+    await router.replace('/llama-cpp-browser/diagnostics?q2Placement=ab&mode=both&profile=cpu-wasm32&text=0&image=1');
     wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: 'user/m0' } });
     await flushPromises();
     expect(wrapper.get('[data-testid="llama-performance-q2-ab"]').text()).toBe('Q2 A/B');
     expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-text"]').element.checked).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-vision"]').element.checked).toBe(false);
     expect(wrapper.text()).toContain('1 models · 10 generations including preparation');
     expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
@@ -175,6 +199,8 @@ describe('in-app llama Diagnostics page', () => {
     await flushPromises();
     expect(wrapper.get('[data-testid="llama-performance-swa-ab"]').text()).toBe('SWA A/B');
     expect(wrapper.get<HTMLFieldSetElement>('[data-testid="llama-performance-workload"]').element.disabled).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-text"]').element.checked).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-vision"]').element.checked).toBe(false);
     expect(wrapper.find('[data-testid="llama-performance-diagnostic"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('1 models · 10 generations including preparation');
     expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
@@ -186,6 +212,7 @@ describe('in-app llama Diagnostics page', () => {
     expect(snapshot.plan.protocol).toBe('swa-cache-en-v1');
     expect(snapshot.plan.settings).toMatchObject({ swaCache: 'ab', mode: 'standard', diagnostics: 'none' });
     expect(snapshot.plan.steps).toHaveLength(10);
+    expect(snapshot.plan.visionFixture).toBeUndefined();
     expect(snapshot.trials).toHaveLength(10);
     expect(wrapper.text()).toContain('SWA A · full');
     expect(wrapper.text()).toContain('SWA B · compact');
@@ -193,20 +220,22 @@ describe('in-app llama Diagnostics page', () => {
   });
 
   it('blocks inconsistent SWA settings until they are reset', async () => {
-    await router.replace('/llama-cpp-browser/diagnostics?swaCache=ab&q2Placement=ab&workload=vision');
+    await router.replace('/llama-cpp-browser/diagnostics?swaCache=ab&q2Placement=ab&text=0&image=1');
     wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: 'user/m0' } });
     await flushPromises();
-    expect(wrapper.get('[data-testid="llama-diagnostics-swa-conflict"]').text()).toContain('q2Placement, workload');
+    expect(wrapper.get('[data-testid="llama-diagnostics-swa-conflict"]').text()).toContain('q2Placement, text, image');
     const start = wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-start"]');
     expect(start.element.disabled).toBe(true);
     await start.trigger('click');
     expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
-    expect(router.currentRoute.value.query).toEqual({ swaCache: 'ab', q2Placement: 'ab', workload: 'vision' });
+    expect(router.currentRoute.value.query).toEqual({ swaCache: 'ab', q2Placement: 'ab', text: '0', image: '1' });
 
     await wrapper.get('[data-testid="llama-diagnostics-reset"]').trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.query).toEqual({});
     expect(wrapper.find('[data-testid="llama-diagnostics-swa-conflict"]').exists()).toBe(false);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-text"]').element.checked).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-vision"]').element.checked).toBe(true);
     expect(start.element.disabled).toBe(false);
   });
 
@@ -447,13 +476,13 @@ describe('profiling modes and safe result actions', () => {
     available();
     await open();
     expect(wrapper!.get<HTMLInputElement>('[data-testid="llama-performance-mode-gpu-profile"]').element.checked).toBe(true);
-    expect(wrapper!.text()).toContain('1 models · 8 generations including preparation');
+    expect(wrapper!.text()).toContain('1 models · 10 generations including preparation');
     await flushPromises();
     await wrapper!.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
     expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(2);
     expect(mocks.runPerformanceOperation.mock.calls[0]![0].options.profile).toBe('webgpu-wasm64-jspi-gpu-profile');
-    expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(8);
+    expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(10);
   });
 
   it.each(['standard', 'both'] as const)('allows %s and runs exactly the selected lanes', async mode => {
@@ -461,7 +490,7 @@ describe('profiling modes and safe result actions', () => {
     await open();
     await wrapper!.get(`[data-testid="llama-performance-mode-${mode}"]`).setValue(true);
     await flushPromises();
-    const expected = mode === 'both' ? 14 : 8;
+    const expected = mode === 'both' ? 18 : 10;
     expect(wrapper!.text()).toContain(`1 models · ${expected} generations including preparation`);
     await wrapper!.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
@@ -577,10 +606,10 @@ describe('current-trial interruption controls', () => {
     await saveManually();
     const snapshot = mocks.archive.mock.calls[0]![0].snapshot;
     expect(snapshot.status).toBe('completed');
-    expect(snapshot.trials).toHaveLength(8);
+    expect(snapshot.trials).toHaveLength(10);
     expect(snapshot.trials[0]).toMatchObject({ status: 'interrupted', partialText: 'partial from slow model', interruption: { recovery: 'new-scope' }, summary: { performance: { outcome: 'aborted' } }, memoryDiagnostics: { samples: [] } });
-    expect(snapshot.trials.slice(1, -1).every((trial: { status: string }) => trial.status === 'succeeded')).toBe(true);
-    expect(snapshot.trials.at(-1)).toMatchObject({ status: 'skipped', skipReason: 'no-usable-tool-call' });
+    expect(snapshot.trials.filter((trial: { status: string }) => trial.status === 'succeeded')).toHaveLength(8);
+    expect(snapshot.trials.find((trial: { status: string }) => trial.status === 'skipped')).toMatchObject({ skipReason: 'no-usable-tool-call' });
     expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(2);
   });
 
@@ -876,10 +905,10 @@ describe('Diagnostics page URL contract', () => {
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
     expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(20);
-    expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(160);
+    expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(200);
     expect(wrapper.findAll('tbody tr')).toHaveLength(100);
     await wrapper.get('[data-testid="llama-diagnostics-more-trials"]').trigger('click');
-    expect(wrapper.findAll('tbody tr')).toHaveLength(160);
+    expect(wrapper.findAll('tbody tr')).toHaveLength(200);
     expect(router.currentRoute.value.query).toEqual({ 'all-models': null, mode: 'standard' });
   });
 

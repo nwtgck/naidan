@@ -2,7 +2,7 @@
 import JSZip from 'jszip';
 import { describe, expect, it, vi } from 'vitest';
 import { createPerformanceRunner } from './runner';
-import { createVisionPerformancePlan } from './plan';
+import { createCombinedPerformancePlan, createVisionPerformancePlan } from './plan';
 import { performanceEnvironment, performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import type { LlamaCppBrowserService, LlamaCppPerformanceScope } from '@/features/llama-cpp-browser/service-contract';
@@ -11,8 +11,9 @@ import { performanceArchive } from './archive';
 import { visionAdmission } from './vision.test-support';
 import { trialRates, summarizePerformance } from './summary';
 
-function setup({ mode, models }: { mode: 'standard' | 'gpu-profile', models: number }) {
-  const plan = createVisionPerformancePlan(performancePlan({ repeats: 2, mode, models }));
+function setup({ mode, models, workload }: { mode: 'standard' | 'gpu-profile', models: number, workload?: 'combined' }) {
+  const createPlan = workload === 'combined' ? createCombinedPerformancePlan : createVisionPerformancePlan;
+  const plan = createPlan(performancePlan({ repeats: 2, mode, models }));
   const generate = vi.fn<LlamaCppPerformanceScope['generate']>(async ({ onSummary, onEvent }) => {
     const report = performanceReport();
     report.performance!.input = 'multimodal';
@@ -145,6 +146,119 @@ describe('image workload through the ordinary generation scope', () => {
     await test.start();
     expect(test.generate).toHaveBeenCalledOnce();
     expect(test.runner.snapshot()).toMatchObject({ status: 'cancelled', trials: [expect.objectContaining({ status: 'cancelled', hiddenObserved: true, exclusion: expect.arrayContaining(['page-hidden']) }), expect.anything(), expect.anything()] });
+  });
+});
+
+function setupCombined({ models }: { models: number }) {
+  const test = setup({ mode: 'standard', models, workload: 'combined' });
+  const imageCounts = new Map<string, number>();
+  test.generate.mockImplementation(async ({ input, sequence, observation, onSummary, onVisionAdmission }) => {
+    const report = performanceReport({ reused: sequence === 'continue' ? 16 : 0 });
+    if (observation === 'vision') {
+      const count = imageCounts.get(input.modelId) ?? 0;
+      imageCounts.set(input.modelId, count + 1);
+      onVisionAdmission?.({ admission: visionAdmission({ decision: 'ready' }) });
+      report.performance!.input = 'multimodal';
+      report.performance!.sessionPreparation = { projector: count === 0 ? 'loaded' : 'reused', releasedTextContext: count === 0 };
+    }
+    onSummary({ diagnostic: report });
+    return {
+      content: 'answer',
+      reasoningContent: '',
+      toolCalls: input.tools && sequence === 'fresh' ? [{
+        id: 'fixture1',
+        type: 'function',
+        function: { name: 'record_sample', arguments: JSON.stringify({ label: 'archive', passage: 'Text in the library archive. '.repeat(14) }) },
+      }] : [],
+      finishReason: 'stop',
+    };
+  });
+  return test;
+}
+
+describe('combined text and image workload', () => {
+  it('uses one scope and one archive with recognizable text and projector-residency evidence', async () => {
+    const test = setupCombined({ models: 1 });
+    await test.start();
+    expect(test.service.runPerformanceOperation).toHaveBeenCalledOnce();
+    expect(test.generate.mock.calls.slice(-3).map(([call]) => call.observation)).toEqual(['vision', 'vision', 'vision']);
+    expect(test.generate.mock.calls.slice(0, -3).every(([call]) => call.observation === undefined)).toBe(true);
+    expect(test.generate.mock.calls.at(-4)?.[0]).toMatchObject({ sequence: 'continue', input: { messages: expect.arrayContaining([expect.objectContaining({ role: 'tool' })]) } });
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.trials.map(trial => trial.vision?.residency)).toEqual([...Array<undefined>(11).fill(undefined), 'cold', 'warm', 'warm']);
+    expect(snapshot.trials.every(trial => trial.status === 'succeeded' && trial.runtimeSegment === 0)).toBe(true);
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot })).arrayBuffer());
+    const readme = await zip.file('README.md')!.async('string');
+    expect(readme).toContain('## Combined text and image measurement');
+    expect(readme).toContain('## Tool result continuation');
+    expect(zip.file('vision-fixture.json')).toBeTruthy();
+    const csv = (await zip.file('summary.csv')!.async('string')).trim().split('\r\n');
+    expect(csv[0]).toContain('"workload","image_residency"');
+    expect(csv[1]).toMatch(/,"text",""$/);
+    expect(csv.at(-3)).toMatch(/,"image","cold"$/);
+    expect(csv.at(-1)).toMatch(/,"image","warm"$/);
+    const scenarios = summarizePerformance({ snapshot }).map(group => group.scenario);
+    expect(scenarios).toEqual(expect.arrayContaining(['short', 'image-cold', 'image-warm', 'tool-continuation']));
+  });
+
+  it.each(['missing-projector', 'native-no-vision'] as const)('keeps text and other models when image admission reports %s', async decision => {
+    const test = setupCombined({ models: 2 });
+    const ordinary = test.generate.getMockImplementation()!;
+    test.generate.mockImplementation(async args => {
+      if (args.input.modelId === 'user/m0' && args.observation === 'vision') {
+        args.onVisionAdmission?.({ admission: visionAdmission({ decision }) });
+        throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+      }
+      return ordinary(args);
+    });
+    await test.start();
+    expect(test.service.runPerformanceOperation).toHaveBeenCalledTimes(2);
+    expect(test.generate.mock.calls.filter(([args]) => args.input.modelId === 'user/m0' && args.observation === 'vision')).toHaveLength(1);
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.modelErrors).toEqual([]);
+    expect(snapshot.trials.filter(trial => trial.modelIndex === 0 && !trial.vision).every(trial => trial.status === 'succeeded')).toBe(true);
+    expect(snapshot.trials.filter(trial => trial.modelIndex === 0 && trial.vision)).toMatchObject(Array.from({ length: 3 }, () => ({ status: 'skipped', skipReason: decision })));
+    expect(snapshot.trials.filter(trial => trial.modelIndex === 1 && trial.vision).every(trial => trial.status === 'succeeded')).toBe(true);
+  });
+
+  it('preserves text measurements when the fixed image fails to load', async () => {
+    const fixture = await import('./vision-fixture');
+    const create = vi.spyOn(fixture, 'createVisionFixture').mockRejectedValueOnce(new Error('Image integrity check failed'));
+    const test = setupCombined({ models: 2 });
+    try {
+      await test.start();
+      expect(create).toHaveBeenCalledOnce();
+      expect(test.generate.mock.calls.every(([args]) => args.observation !== 'vision')).toBe(true);
+      const snapshot = snapshotSchema.parse(test.runner.snapshot());
+      expect(snapshot).toMatchObject({ status: 'completed', modelErrors: [] });
+      expect(snapshot.trials.filter(trial => !trial.vision).map(trial => trial.status)).toEqual(Array(22).fill('succeeded'));
+      expect(snapshot.trials.filter(trial => trial.vision)).toMatchObject(Array.from({ length: 6 }, () => ({
+        status: 'skipped',
+        error: 'Unable to prepare image fixture (Image integrity check failed)',
+        runtimeSegment: 0,
+      })));
+    } finally {
+      create.mockRestore();
+    }
+  });
+
+  it('retires a scope that rejected the tool template before starting image measurement', async () => {
+    const test = setupCombined({ models: 1 });
+    const ordinary = test.generate.getMockImplementation()!;
+    test.generate.mockImplementation(async args => {
+      if (args.input.tools) {
+        throw new LlamaCppBrowserError({ code: 'template-unsupported' });
+      }
+      return ordinary(args);
+    });
+    await test.start();
+    expect(test.service.runPerformanceOperation).toHaveBeenCalledTimes(2);
+    expect(test.generate.mock.calls.filter(([args]) => args.input.tools)).toHaveLength(1);
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.modelErrors).toEqual([]);
+    expect(snapshot.trials.filter(trial => trial.skipReason === 'tool-template-unsupported')).toHaveLength(2);
+    expect(snapshot.trials.at(-3)).toMatchObject({ status: 'succeeded', runtimeSegment: 1, vision: { residency: 'cold' }, warnings: ['runtime-restarted'] });
+    expect(snapshot.trials.at(-1)).toMatchObject({ status: 'succeeded', runtimeSegment: 1, vision: { residency: 'warm' }, exclusion: [] });
   });
 });
 

@@ -9,7 +9,7 @@ import { llamaCppBrowserService as service } from '@/features/llama-cpp-browser'
 import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { gpuProfilingProfile, type LocalModel, type RuntimeOptions, runtimeOptionsSchema, usesWebGpu } from '@/features/llama-cpp-browser/types';
 import { resolveProfilePreference, type ProfileCapabilities } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
-import { createPerformancePlan, createVisionPerformancePlan } from '@/features/llama-cpp-browser/performance/plan';
+import { createCombinedPerformancePlan, createPerformancePlan, createVisionPerformancePlan } from '@/features/llama-cpp-browser/performance/plan';
 import { createPerformanceRunner } from '@/features/llama-cpp-browser/performance/runner';
 import { runQ8Diagnostic } from '@/features/llama-cpp-browser/performance/run-q8-diagnostic';
 import { measurementLanes, protocolSchema, type MeasurementMode, type PerformanceSnapshot, type PerformanceTrial } from '@/features/llama-cpp-browser/performance/types';
@@ -25,7 +25,7 @@ export function useLlamaCppDiagnostics() {
       modelSelection.value = { kind: 'explicit', ids: [...ids] };
     },
   });
-  const workload = ref<'text' | 'vision'>('text');
+  const includeText = ref(true), includeImages = ref(true);
   const repeats = ref(1), maxTokens = ref(64), timeoutMinutes = ref(15), notes = ref('');
   const modelDraft = ref('');
   const diagnostics = ref(true);
@@ -47,7 +47,8 @@ export function useLlamaCppDiagnostics() {
   const profileExplicit = ref(false);
   const profileConflict = computed(() => !comparing.value && profileExplicit.value && mode.value !== 'standard' && profile.value !== 'auto' && profile.value !== 'webgpu-wasm64-jspi');
   const defaults = computed(() => ({
-    workload: 'text' as const,
+    includeText: true,
+    includeImages: true,
     mode: profilingSupported.value ? 'gpu-profile' as const : 'standard' as const,
     repeats: 1,
     maxTokens: 64,
@@ -60,7 +61,7 @@ export function useLlamaCppDiagnostics() {
     notes: '',
   }));
   function applyConfiguration({ config }: { config: DiagnosticsQueryConfig }): void {
-    const { modelIds: _modelIds, allModels: _allModels, modelFilter, workload: kind, mode: measurementMode, repeats: count, maxTokens: limit,
+    const { modelIds: _modelIds, allModels: _allModels, modelFilter, includeText: text, includeImages: images, mode: measurementMode, repeats: count, maxTokens: limit,
       timeoutMinutes: timeout, placement, q2Placement: placementComparison, swaCache: cacheComparison, profile: preference, contextTokens: context, visionBf16Storage: storage, notes: memo, ...unhandled } = config;
     unhandled satisfies Record<PropertyKey, never>;
     modelSelection.value = diagnosticsModelSelection({ config });
@@ -68,7 +69,8 @@ export function useLlamaCppDiagnostics() {
     q2Placement.value = placementComparison;
     swaCache.value = cacheComparison;
     swaCacheConflicts.value = conflictingSwaCacheSettings({ config });
-    workload.value = comparing.value ? 'text' : (kind ?? defaults.value.workload);
+    includeText.value = comparing.value || (text ?? defaults.value.includeText);
+    includeImages.value = !comparing.value && (images ?? defaults.value.includeImages);
     mode.value = cacheComparison !== undefined ? 'standard' : (measurementMode ?? defaults.value.mode);
     modeInitialized = cacheComparison !== undefined || measurementMode !== undefined;
     repeats.value = count ?? defaults.value.repeats;
@@ -119,22 +121,18 @@ export function useLlamaCppDiagnostics() {
     && isDiagnosticsEditValid({ patch: { timeoutMinutes: timeoutMinutes.value } })
     && protocolSchema.safeParse({ mode: mode.value, repeats: repeats.value, maxTokens: maxTokens.value, timeoutMs: timeoutMinutes.value * 60000 }).success);
   const canStart = computed(() => inventoryReady.value && !running.value && !exporting.value && !loading.value && !otherWork.value && valid.value
+    && (includeText.value || includeImages.value)
     && (comparing.value || mode.value === 'standard' || profilingSupported.value));
   const callCount = computed(() => {
-    const perModel = (() => {
-      switch (workload.value) {
-      case 'vision': return 1 + repeats.value;
-      case 'text': return q2Placement.value !== undefined ? 2 + repeats.value * 3 : 1 + repeats.value * 4 + (diagnostics.value ? 1 : 0);
-      default: {
-        const exhaustive: never = workload.value;
-        throw new Error(String(exhaustive));
-      }
-      }
-    })();
-    const lanes = measurementLanes({ mode: mode.value, q2Placement: q2Placement.value, swaCache: swaCache.value });
+    const lanes = measurementLanes({ mode: mode.value, q2Placement: q2Placement.value, swaCache: swaCache.value }).length;
+    if (q2Placement.value !== undefined) {
+      return selectedModels.value.length * lanes * (2 + repeats.value * 3);
+    }
+    const text = includeText.value ? 1 + repeats.value * 4 + Number(diagnostics.value) : 0;
+    const images = includeImages.value ? 1 + repeats.value : 0;
     // The tool call and its continuation run once per model, in the first lane.
-    const toolCalls = workload.value === 'text' && !comparing.value ? 2 : 0;
-    return selectedModels.value.length * (perModel * lanes.length + toolCalls);
+    const toolCalls = includeText.value && !comparing.value ? 2 : 0;
+    return selectedModels.value.length * (lanes * (text + images) + toolCalls);
   });
   const runner = createPerformanceRunner({
     service,
@@ -338,16 +336,9 @@ export function useLlamaCppDiagnostics() {
       return;
     }
     // Capture the form before any await, including capability detection.
-    const createPlan = (() => {
-      switch (workload.value) {
-      case 'vision': return createVisionPerformancePlan;
-      case 'text': return createPerformancePlan;
-      default: {
-        const exhaustive: never = workload.value;
-        throw new Error(String(exhaustive));
-      }
-      }
-    })();
+    const createPlan = includeText.value
+      ? (includeImages.value ? createCombinedPerformancePlan : createPerformancePlan)
+      : createVisionPerformancePlan;
     let plan = createPlan({
       id: nanoid(),
       createdAt: new Date().toISOString(),
@@ -471,7 +462,8 @@ export function useLlamaCppDiagnostics() {
     contextTokens,
     visionBf16Storage,
     profileConflict,
-    workload,
+    includeText,
+    includeImages,
     canInterruptCurrent,
     interruptionPending,
     interruptCurrent,

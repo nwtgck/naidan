@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { performancePlan } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
-import { createPerformancePlan } from './plan';
+import { createCombinedPerformancePlan, createPerformancePlan, createVisionPerformancePlan } from './plan';
 import { planSchema } from './types';
 
 describe('versioned English performance workload', () => {
@@ -117,4 +117,47 @@ it.each(['standard', 'gpu-profile', 'both'] as const)('keeps the tool result adj
     { modelIndex: 1, lane, scenario: 'tool-continuation', dependsOn: pairs[2]!.id },
   ]);
   expect(planSchema.safeParse({ ...plan, steps: plan.steps.filter(step => step.id !== pairs[3]!.id) }).success).toBe(false);
+});
+
+it('combines the normal text and image steps in the same model-lane order', () => {
+  const source = performancePlan({ models: 2, repeats: 2, diagnostics: 'placement', mode: 'both' });
+  const text = createPerformancePlan(source);
+  const image = createVisionPerformancePlan(source);
+  const combined = createCombinedPerformancePlan(source);
+  expect(combined.protocol).toBe('targeted-text-vision-en-v1');
+  expect(combined.visionFixture).toEqual(image.visionFixture);
+  expect(combined.steps.filter(step => !step.vision)).toEqual(text.steps);
+  expect(combined.steps.filter(step => step.vision).map(({ id: _id, ...step }) => step))
+    .toEqual(image.steps.map(({ id: _id, ...step }) => step));
+  expect(new Set(combined.steps.map(step => step.id)).size).toBe(combined.steps.length);
+  const scopes = combined.models.flatMap((_, index) => ['standard', 'gpu-profile'].map(lane =>
+    combined.steps.filter(step => step.modelIndex === index && step.lane === lane)));
+  expect(combined.steps).toEqual(scopes.flat());
+  for (const scope of scopes) {
+    expect(scope.slice(0, -3).every(step => step.vision === undefined)).toBe(true);
+    expect(scope.slice(-3).map(step => step.vision?.residency)).toEqual(['cold', 'warm', 'warm']);
+  }
+});
+
+it('rejects missing, duplicate, reordered or cross-lane combined steps', () => {
+  const plan = createCombinedPerformancePlan(performancePlan({ mode: 'both' }));
+  const [first, second, ...tail] = plan.steps;
+  const continuation = plan.steps.find(step => step.scenario === 'continuation')!;
+  const cold = plan.steps.find(step => step.vision?.residency === 'cold')!;
+  const warm = plan.steps.find(step => step.vision?.residency === 'warm')!;
+  const invalid = [
+    [second!, first!, ...tail],
+    [first!, { ...second!, id: first!.id }, ...tail],
+    plan.steps.filter(step => step !== cold),
+    plan.steps.map(step => step === cold ? warm : step === warm ? cold : step),
+    plan.steps.map(step => step === cold ? { ...step, lane: 'gpu-profile' as const } : step),
+    plan.steps.map(step => step === continuation ? { ...step, sequence: 'fresh' as const, dependsOn: undefined } : step),
+    plan.steps.map(step => step === continuation ? { ...step, dependsOn: first!.id } : step),
+  ];
+  for (const steps of invalid) {
+    expect(planSchema.safeParse({ ...plan, steps }).success).toBe(false);
+  }
+  expect(planSchema.safeParse({ ...plan, visionFixture: undefined }).success).toBe(false);
+  expect(() => createCombinedPerformancePlan({ ...plan, settings: { ...plan.settings, q2Placement: 'ab' } })).toThrow('text-only plan');
+  expect(() => createCombinedPerformancePlan({ ...plan, settings: { ...plan.settings, swaCache: 'ab' } })).toThrow('text-only plan');
 });
