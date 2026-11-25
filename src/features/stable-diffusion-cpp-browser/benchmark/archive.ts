@@ -166,9 +166,8 @@ must not be compared as equivalent work. Automatic companion selection is based
 on the local structural inventory, not proof of a supported trained model.
 `;
 
-/** Existing ZIP core, no production JSZip import. Store entries and stream out
- * with backpressure. Browser download below buffers only the bounded evidence,
- * never model weights. */
+/** Compress entries and stream them with backpressure. Browser download below
+ * buffers only the bounded evidence, never model weights. */
 export function createBenchmarkArchive({ snapshot, includePrompts, includeInputImages, exportedAt }: { snapshot: BenchmarkSnapshot, includePrompts: boolean, includeInputImages: 'omit' | 'include', exportedAt: string }) {
   const manifest = benchmarkManifest({ snapshot, includePrompts, includeInputImages, exportedAt });
   const output = createReadableZipOutput({ highWaterMarkBytes: 256 * 1024 });
@@ -176,7 +175,7 @@ export function createBenchmarkArchive({ snapshot, includePrompts, includeInputI
   const writer = new StreamingZipWriter({ output: output.sink, centralDirectoryStore: directory, compressionCodec: createWebZipCompressionCodec() });
   const modifiedAt = new Date(exportedAt);
   const json = ({ value }: { value: unknown }) => new Blob([JSON.stringify(value, undefined, 2) + '\n'], { type: 'application/json' });
-  const add = async ({ name, content }: { name: string, content: Blob }) => writer.addFile({ name, modifiedAt, compression: 'store', stream: content.stream() });
+  const add = async ({ name, content }: { name: string, content: Blob }) => writer.addFile({ name, modifiedAt, compression: 'deflate', stream: content.stream() });
   // Observe producer failures; the consumer receives the same stream error.
   const completed = (async () => {
     try {

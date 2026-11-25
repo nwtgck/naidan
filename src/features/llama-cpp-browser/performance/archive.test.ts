@@ -6,6 +6,7 @@ import { createPerformanceArchiveStream, performanceArchive } from './archive';
 import { summarizePerformance, performanceFindings, trialRates } from './summary';
 import { runtimeBuildEvidence } from './runtime-evidence';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
+import { createBlobZipSource, createWebZipCompressionCodec, StreamingZipReader } from '@/utils/zip-stream';
 import type { PerformanceSnapshot } from './types';
 import { performanceTools } from './tool-continuation';
 import { createPerformancePlan } from './plan';
@@ -641,6 +642,25 @@ describe('interrupted observations in the actual ZIP', () => {
 });
 
 describe('Diagnostics streaming archive', () => {
+  it('compresses both document and line-streamed entries', async () => {
+    const blob = await performanceArchive({ snapshot: snapshot() });
+    const reader = new StreamingZipReader({
+      source: createBlobZipSource({ blob }),
+      compressionCodec: createWebZipCompressionCodec(),
+    });
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    const names: string[] = [];
+    for await (const entry of reader.entries()) {
+      expect(entry.compression).toBe('deflate');
+      names.push(entry.name);
+    }
+    expect(names).toEqual(expect.arrayContaining(['README.md', 'trials.jsonl', 'summary.csv']));
+  });
+
   it('validates before exposing a stream and does not mutate or reread the live snapshot', async () => {
     const source = snapshot();
     using cleanup = {

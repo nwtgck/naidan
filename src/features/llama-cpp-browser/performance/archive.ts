@@ -587,14 +587,14 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
   const directory = createMemoryZipCentralDirectoryStore();
   const writer = new StreamingZipWriter({ output: output.sink, centralDirectoryStore: directory, compressionCodec: createWebZipCompressionCodec() });
   const modifiedAt = new Date();
-  const add = async ({ name, text }: { name: string, text: string }) => writer.addFile({ name, modifiedAt, compression: 'store', stream: new Blob([text]).stream() });
+  const add = async ({ name, text }: { name: string, text: string }) => writer.addFile({ name, modifiedAt, compression: 'deflate', stream: new Blob([text]).stream() });
   const addLines = async <T>({ name, values, format }: { name: string, values: T[], format: ({ value }: { value: T }) => string }) => {
     let index = 0;
     const encoder = new TextEncoder();
     await writer.addFile({
       name,
       modifiedAt,
-      compression: 'store',
+      compression: 'deflate',
       stream: new ReadableStream<Uint8Array>({
         pull(controller) {
           signal.throwIfAborted();

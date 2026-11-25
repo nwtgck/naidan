@@ -14,8 +14,7 @@ vi.mock('@/utils/stream-download', () => ({ downloadReadableStream: download }))
 async function collectArchive({ snapshot, includeInputAudio, includeInputText }: { snapshot: SpeechInvestigationSnapshot, includeInputAudio: 'on' | 'off', includeInputText: 'on' | 'off' }) {
   const archive = createSpeechInvestigationArchive({ collection: collectionFromSnapshot({ snapshot }), includeInputAudio, includeInputText, signal: new AbortController().signal });
   const bytes = await new Response(archive.stream).arrayBuffer();
-  expect(bytes.byteLength).toBe(archive.size);
-  expect(archive.size).toBeLessThanOrEqual(speechInvestigationCollectionLimits.zipBytes);
+  expect(bytes.byteLength).toBeLessThanOrEqual(speechInvestigationCollectionLimits.zipBytes);
   return { archive, zip: await JSZip.loadAsync(bytes) };
 }
 
@@ -78,10 +77,9 @@ describe('speech investigation ZIP', () => {
   it('includes opted-in exact original/submitted WAV bytes and instruction bodies without reading Blob.arrayBuffer', async () => {
     const { snapshot, wav, recorder } = terminalFixture({ task: 'dialogue' });
     const fullRead = vi.spyOn(wav, 'arrayBuffer').mockRejectedValue(new Error('No full source copy allowed'));
-    const { stream, size } = createSpeechInvestigationArchive({ collection: collectionFromSnapshot({ snapshot }), includeInputAudio: 'on', includeInputText: 'on', signal: new AbortController().signal });
+    const { stream } = createSpeechInvestigationArchive({ collection: collectionFromSnapshot({ snapshot }), includeInputAudio: 'on', includeInputText: 'on', signal: new AbortController().signal });
     recorder.clear();
     const bytes = await new Response(stream).arrayBuffer();
-    expect(bytes.byteLength).toBe(size);
     expect(fullRead).not.toHaveBeenCalled();
     const zip = await JSZip.loadAsync(bytes);
     for (const name of ['source/audio.wav', trialPrefix + 'audio/input.wav', trialPrefix + 'audio/output.wav']) {
@@ -174,15 +172,15 @@ describe('speech investigation ZIP', () => {
     expect(recorder.snapshot()!.events).toHaveLength(2);
   });
 
-  it('passes the exact bounded size and cancellable stream to the existing download fallback boundary', async () => {
+  it('passes a cancellable stream without a declared ZIP length to the existing download boundary', async () => {
     const { snapshot } = terminalFixture({ task: 'recognition' });
-    download.mockImplementationOnce(async ({ stream, size, filename }: { stream: ReadableStream<Uint8Array>, size: number, filename: string }) => {
-      expect((await new Response(stream).arrayBuffer()).byteLength).toBe(size);
-      expect(size).toBeLessThanOrEqual(speechInvestigationCollectionLimits.zipBytes);
+    download.mockImplementationOnce(async ({ stream, size, filename }: { stream: ReadableStream<Uint8Array>, size: number | undefined, filename: string }) => {
+      expect(size).toBeUndefined();
+      expect((await new Response(stream).arrayBuffer()).byteLength).toBeLessThanOrEqual(speechInvestigationCollectionLimits.zipBytes);
       expect(filename).toMatch(/^naidan-speech-investigation-/);
     });
     const signal = new AbortController().signal;
     await downloadSpeechInvestigation({ collection: collectionFromSnapshot({ snapshot }), includeInputAudio: 'off', includeInputText: 'off', signal });
-    expect(download).toHaveBeenLastCalledWith(expect.objectContaining({ signal, size: expect.any(Number), stream: expect.any(ReadableStream) }));
+    expect(download).toHaveBeenLastCalledWith(expect.objectContaining({ signal, size: undefined, stream: expect.any(ReadableStream) }));
   });
 });

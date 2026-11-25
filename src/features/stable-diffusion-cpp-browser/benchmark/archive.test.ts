@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { expect, it } from 'vitest';
 import JSZip from 'jszip';
+import { createBlobZipSource, createWebZipCompressionCodec, StreamingZipReader } from '@/utils/zip-stream';
 import { benchmarkArchiveBlob, benchmarkManifest, benchmarkAggregate, createBenchmarkArchive } from './archive';
 import { createBenchmarkRunner } from './runner';
 import { metricFixture, planFixture } from './test-fixtures';
@@ -48,6 +49,15 @@ return runner.snapshot()!;
 it('exports validated immutable settings, per-model directories and real PNG bytes; no filename becomes a ZIP path', async () => {
   const snapshot = await snapshotFixture();
   const blob = await benchmarkArchiveBlob({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T01:00:00.000Z', signal: new AbortController().signal });
+  const reader = new StreamingZipReader({ source: createBlobZipSource({ blob }), compressionCodec: createWebZipCompressionCodec() });
+  await using _cleanup = {
+    async [Symbol.asyncDispose]() {
+      await reader.close();
+    },
+  };
+  for await (const entry of reader.entries()) {
+    expect(entry.compression).toBe('deflate');
+  }
   const zip = await JSZip.loadAsync(await blob.arrayBuffer(), { checkCRC32: true });
   const manifestText = await zip.file('manifest.json')!.async('string');
   const manifest = manifestSchema.parse(JSON.parse(manifestText));

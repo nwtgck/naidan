@@ -14,6 +14,7 @@ import type { Mocked } from 'vitest';
 import type { Settings, ChatMeta } from '@/01-models/types';
 import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
+import { createBlobZipSource, createWebZipCompressionCodec, StreamingZipReader } from '@/utils/zip-stream';
 
 installSecretEqualityTester();
 
@@ -744,17 +745,19 @@ ${JSON.stringify({
       });
 
       const { stream } = await service.exportData({});
-
-      const chunks: Uint8Array[] = [];
-      const reader = stream.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
+      const blob = await new Response(stream).blob();
+      const reader = new StreamingZipReader({ source: createBlobZipSource({ blob }), compressionCodec: createWebZipCompressionCodec() });
+      await using _cleanup = {
+        async [Symbol.asyncDispose]() {
+          await reader.close();
+        },
+      };
+      for await (const entry of reader.entries()) {
+        if (!entry.isDirectory) {
+          expect(entry.compression).toBe('deflate');
         }
-        chunks.push(value!);
       }
-      const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
+      const zip = await JSZip.loadAsync(await blob.arrayBuffer(), { checkCRC32: true });
 
       const files = Object.keys(zip.files);
       const rootFolder = files.find(f => f.startsWith('naidan-data-'))!;
@@ -765,6 +768,9 @@ ${JSON.stringify({
       expect(files.some(f => f.includes('chat-contents/'))).toBe(true);
       expect(files.some(f => f.includes('binary-objects/'))).toBe(true);
       expect(files).toContain(`${rootFolder}settings.json`);
+      const attachment = files.find(path => path.endsWith(`/${UUID_A1}.bin`));
+      expect(attachment).toBeDefined();
+      expect(await zip.file(attachment!)!.async('string')).toBe('hello');
     });
 
     it('exports complex message attributes (thinking, toolCalls, results)', async () => {
