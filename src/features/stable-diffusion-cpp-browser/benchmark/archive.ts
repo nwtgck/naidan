@@ -1,5 +1,6 @@
 import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/utils/zip-stream/memory';
 import { StreamingZipWriter, createWebZipCompressionCodec } from '@/utils/zip-stream';
+import { createAbortableByteStream } from '@/utils/abortable-byte-stream';
 import { manifestSchema, aggregateSchema } from './types';
 import type { BenchmarkSnapshot } from './types';
 import { medianMilliseconds } from './measurements';
@@ -166,16 +167,37 @@ must not be compared as equivalent work. Automatic companion selection is based
 on the local structural inventory, not proof of a supported trained model.
 `;
 
-/** Compress entries and stream them with backpressure. Browser download below
- * buffers only the bounded evidence, never model weights. */
-export function createBenchmarkArchive({ snapshot, includePrompts, includeInputImages, exportedAt }: { snapshot: BenchmarkSnapshot, includePrompts: boolean, includeInputImages: 'omit' | 'include', exportedAt: string }) {
+/** Compress and stream the evidence with backpressure and a bounded ZIP size. */
+export function createBenchmarkArchive({ snapshot, includePrompts, includeInputImages, exportedAt, signal }: { snapshot: BenchmarkSnapshot, includePrompts: boolean, includeInputImages: 'omit' | 'include', exportedAt: string, signal: AbortSignal }) {
+  signal.throwIfAborted();
   const manifest = benchmarkManifest({ snapshot, includePrompts, includeInputImages, exportedAt });
+  const lifetime = new AbortController();
+  const combined = AbortSignal.any([signal, lifetime.signal]);
   const output = createReadableZipOutput({ highWaterMarkBytes: 256 * 1024 });
   const directory = createMemoryZipCentralDirectoryStore();
-  const writer = new StreamingZipWriter({ output: output.sink, centralDirectoryStore: directory, compressionCodec: createWebZipCompressionCodec() });
+  const stream = createAbortableByteStream({ stream: output.stream, signal: combined, onCancel: () => lifetime.abort() });
+  let bytes = 0;
+  const writer = new StreamingZipWriter({
+    output: {
+      async write({ chunk }) {
+        combined.throwIfAborted();
+        bytes += chunk.byteLength;
+        if (bytes > 256 * 1024 ** 2) {
+          throw new Error('Benchmark archive exceeds the 256 MiB evidence limit');
+        }
+        await output.sink.write({ chunk });
+      },
+    },
+    centralDirectoryStore: directory,
+    compressionCodec: createWebZipCompressionCodec(),
+  });
   const modifiedAt = new Date(exportedAt);
   const json = ({ value }: { value: unknown }) => new Blob([JSON.stringify(value, undefined, 2) + '\n'], { type: 'application/json' });
-  const add = async ({ name, content }: { name: string, content: Blob }) => writer.addFile({ name, modifiedAt, compression: 'deflate', stream: content.stream() });
+  const add = async ({ name, content }: { name: string, content: Blob }) => {
+    combined.throwIfAborted();
+    const source = createAbortableByteStream({ stream: content.stream(), signal: combined, onCancel: undefined });
+    await writer.addFile({ name, modifiedAt, compression: 'deflate', stream: source });
+  };
   // Observe producer failures; the consumer receives the same stream error.
   const completed = (async () => {
     try {
@@ -206,6 +228,7 @@ export function createBenchmarkArchive({ snapshot, includePrompts, includeInputI
       await writer.finalize();
       await output.close();
     } catch (error) {
+      lifetime.abort(error);
       await output.abort({ reason: error }).catch(() => undefined);
       throw error;
     } finally {
@@ -213,43 +236,7 @@ export function createBenchmarkArchive({ snapshot, includePrompts, includeInputI
     }
   })();
   void completed.catch(() => undefined);
-  return { stream: output.stream, completed };
-}
-
-export async function benchmarkArchiveBlob({ snapshot, includePrompts, includeInputImages, exportedAt, signal }: { snapshot: BenchmarkSnapshot, includePrompts: boolean, includeInputImages: 'omit' | 'include', exportedAt: string, signal: AbortSignal }): Promise<Blob> {
-  signal.throwIfAborted();
-  const archive = createBenchmarkArchive({ snapshot, includePrompts, includeInputImages, exportedAt });
-  const reader = archive.stream.getReader();
-  const chunks: Uint8Array<ArrayBuffer>[] = [];
-  let bytes = 0;
-  const abort = () => {
-    void reader.cancel(signal.reason).catch(() => undefined);
-  };
-  signal.addEventListener('abort', abort, { once: true });
-  try {
-    if (signal.aborted) {
-      abort();
-    }
-    while (true) {
-      const part = await reader.read();
-      signal.throwIfAborted();
-      if (part.done) {
-        break;
-      }
-      bytes += part.value.byteLength;
-      if (bytes > 256 * 1024 ** 2) {
-        throw new Error('Benchmark archive exceeds the 256 MiB evidence limit');
-      }
-      chunks.push(Uint8Array.from(part.value));
-    }
-    await archive.completed;
-    signal.throwIfAborted();
-    return new Blob(chunks, { type: 'application/zip' });
-  } finally {
-    signal.removeEventListener('abort', abort);
-    await reader.cancel().catch(() => undefined);
-    reader.releaseLock();
-  }
+  return { stream, completed };
 }
 
 export const TEST_ONLY = {

@@ -2,6 +2,7 @@ import { computed, watch, onScopeDispose } from 'vue';
 import { nanoid } from 'nanoid';
 import rawConfiguration from 'virtual:stable-diffusion-cpp-browser/config';
 import { ensureStrings } from '@/strings';
+import { downloadReadableStream } from '@/utils/stream-download';
 import { createBenchmarkForm } from './benchmark-form';
 import type { ImageBenchmarkView } from './benchmark-view';
 import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
@@ -9,7 +10,7 @@ import { configurationSchema, getImageRuntimeFeatures } from './types';
 import { createImageEngineClient } from '@/features/stable-diffusion-cpp-browser/inference/engine';
 import { createBenchmarkRunner } from './benchmark/runner';
 import { createBenchmarkPlan, benchmarkParameters } from './benchmark/plan';
-import { benchmarkArchiveBlob } from './benchmark/archive';
+import { createBenchmarkArchive } from './benchmark/archive';
 
 export function useImageBenchmark({ generation }: { generation: ImageGenerationView }): ImageBenchmarkView {
   const config = configurationSchema.parse(rawConfiguration);
@@ -159,17 +160,10 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     const control = new AbortController();
     exportControl = control;
     try {
-      const blob = await benchmarkArchiveBlob({ snapshot, includePrompts: form.includePrompts.value, includeInputImages: form.includeInputImages.value, exportedAt: new Date().toISOString(), signal: control.signal });
+      const archive = createBenchmarkArchive({ snapshot, includePrompts: form.includePrompts.value, includeInputImages: form.includeInputImages.value, exportedAt: new Date().toISOString(), signal: control.signal });
+      await downloadReadableStream({ stream: archive.stream, filename: `naidan-image-benchmark-${snapshot.plan.id}.zip`, size: undefined, signal: control.signal });
+      await archive.completed;
       control.signal.throwIfAborted();
-      const url = URL.createObjectURL(blob);
-      try {
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `naidan-image-benchmark-${snapshot.plan.id}.zip`;
-        link.click();
-      } finally {
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }
       const text = await ensureStrings.imageBenchmark__archive_saved();
       if (!disposed) {
         form.feedback.value = text;
