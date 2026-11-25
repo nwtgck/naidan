@@ -472,7 +472,9 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
           // delivery preserves observations before success/failure closes the
           // request, without waiting for a separate proxy callback acknowledgement.
           const measuredContext = accepted.measurement !== undefined && (diagnostic.event === 'context-start' || diagnostic.event === 'context-retry' || diagnostic.event === 'context-ready');
-          const measuredSetting = accepted.measurement !== undefined && diagnostic.event === 'native-info' && (diagnostic.nativeMetric !== undefined || diagnostic.nativeFlashAttention !== undefined || diagnostic.loadedModelDescriptor !== undefined);
+          const measuredSetting = accepted.measurement !== undefined && diagnostic.event === 'native-info'
+            && (diagnostic.nativeMetric !== undefined || diagnostic.nativeFlashAttention !== undefined || diagnostic.loadedModelDescriptor !== undefined
+              || (accepted.measurement.swaCacheMode !== undefined && diagnostic.slidingWindowTokens !== undefined));
           if (measuredContext || measuredSetting || (accepted.measurement !== undefined && diagnostic.modelExecution !== undefined)) {
             postWorkerNotification({ endpoint: undefined, schema: diagnosticSchema, value: diagnostic });
           }

@@ -1,4 +1,4 @@
-import { isDiagnosticsEditValid, type DiagnosticsQueryConfig } from '@/features/llama-cpp-browser/diagnostics/query-parameters';
+import { conflictingSwaCacheSettings, isDiagnosticsEditValid, type DiagnosticsQueryConfig } from '@/features/llama-cpp-browser/diagnostics/query-parameters';
 import { diagnosticsModelSelection, resolveDiagnosticsModels, type DiagnosticsModelSelection } from '@/features/llama-cpp-browser/diagnostics/model-selection';
 import { buildAllowsGpuProfiling, gpuProfilingUnavailableReason } from '@/features/llama-cpp-browser/performance/profiling-mode';
 import { resolvePerformanceModelInput } from '@/features/llama-cpp-browser/performance/model-input';
@@ -30,6 +30,9 @@ export function useLlamaCppDiagnostics() {
   const modelDraft = ref('');
   const diagnostics = ref(true);
   const q2Placement = ref<DiagnosticsQueryConfig['q2Placement']>();
+  const swaCache = ref<DiagnosticsQueryConfig['swaCache']>();
+  const swaCacheConflicts = shallowRef<string[]>([]);
+  const comparing = computed(() => q2Placement.value !== undefined || swaCache.value !== undefined);
   const hosted = buildAllowsGpuProfiling();
   const mode = ref<MeasurementMode>(hosted ? 'gpu-profile' : 'standard');
   const capabilities = shallowRef<ProfileCapabilities>();
@@ -42,7 +45,7 @@ export function useLlamaCppDiagnostics() {
   const contextTokens = ref<number>();
   const visionBf16Storage = ref<RuntimeOptions['visionBf16Storage']>();
   const profileExplicit = ref(false);
-  const profileConflict = computed(() => q2Placement.value === undefined && profileExplicit.value && mode.value !== 'standard' && profile.value !== 'auto' && profile.value !== 'webgpu-wasm64-jspi');
+  const profileConflict = computed(() => !comparing.value && profileExplicit.value && mode.value !== 'standard' && profile.value !== 'auto' && profile.value !== 'webgpu-wasm64-jspi');
   const defaults = computed(() => ({
     workload: 'text' as const,
     mode: profilingSupported.value ? 'gpu-profile' as const : 'standard' as const,
@@ -58,18 +61,20 @@ export function useLlamaCppDiagnostics() {
   }));
   function applyConfiguration({ config }: { config: DiagnosticsQueryConfig }): void {
     const { modelIds: _modelIds, allModels: _allModels, modelFilter, workload: kind, mode: measurementMode, repeats: count, maxTokens: limit,
-      timeoutMinutes: timeout, placement, q2Placement: placementComparison, profile: preference, contextTokens: context, visionBf16Storage: storage, notes: memo, ...unhandled } = config;
+      timeoutMinutes: timeout, placement, q2Placement: placementComparison, swaCache: cacheComparison, profile: preference, contextTokens: context, visionBf16Storage: storage, notes: memo, ...unhandled } = config;
     unhandled satisfies Record<PropertyKey, never>;
     modelSelection.value = diagnosticsModelSelection({ config });
     query.value = modelFilter ?? defaults.value.modelFilter;
     q2Placement.value = placementComparison;
-    workload.value = placementComparison !== undefined ? 'text' : (kind ?? defaults.value.workload);
-    mode.value = measurementMode ?? defaults.value.mode;
-    modeInitialized = measurementMode !== undefined;
+    swaCache.value = cacheComparison;
+    swaCacheConflicts.value = conflictingSwaCacheSettings({ config });
+    workload.value = comparing.value ? 'text' : (kind ?? defaults.value.workload);
+    mode.value = cacheComparison !== undefined ? 'standard' : (measurementMode ?? defaults.value.mode);
+    modeInitialized = cacheComparison !== undefined || measurementMode !== undefined;
     repeats.value = count ?? defaults.value.repeats;
     maxTokens.value = limit ?? defaults.value.maxTokens;
     timeoutMinutes.value = timeout ?? defaults.value.timeoutMinutes;
-    diagnostics.value = placement ?? defaults.value.placement;
+    diagnostics.value = cacheComparison === undefined && (placement ?? defaults.value.placement);
     profile.value = preference ?? defaults.value.profile;
     profileExplicit.value = preference !== undefined;
     contextTokens.value = context;
@@ -78,7 +83,7 @@ export function useLlamaCppDiagnostics() {
   }
   function configurationEdited({ config }: { config: DiagnosticsQueryConfig }): void {
     // Only explicit actions, not probes or inventory updates, establish intent.
-    modeInitialized = config.mode !== undefined;
+    modeInitialized = swaCache.value !== undefined || config.mode !== undefined;
     profileExplicit.value = config.profile !== undefined;
   }
   const running = ref(false), stopping = ref(false), exporting = ref(false), loading = ref(false), error = ref('');
@@ -107,13 +112,14 @@ export function useLlamaCppDiagnostics() {
   const otherWork = computed(() => !running.value && (serviceState.value.status === 'working' || queue.jobs.value.some(job => jobIsBusy({ job }))));
   const valid = computed(() => !draftResolution.value.errors.length && selectedModels.value.length > 0 && selectedModels.value.length === draftResolution.value.selected.length
     && notes.value.length <= 10000 && new Set(selectedModels.value.map(model => model.modelId)).size === selectedModels.value.length
+    && !swaCacheConflicts.value.length
     && !profileConflict.value && runtimeOptionsSchema.safeParse({ profile: profile.value, contextTokens: contextTokens.value, visionBf16Storage: visionBf16Storage.value }).success
     // The runner accepts millisecond precision; the page/URL accepts whole
     // minutes. Do not run a fractional draft that the URL codec rejected.
     && isDiagnosticsEditValid({ patch: { timeoutMinutes: timeoutMinutes.value } })
     && protocolSchema.safeParse({ mode: mode.value, repeats: repeats.value, maxTokens: maxTokens.value, timeoutMs: timeoutMinutes.value * 60000 }).success);
   const canStart = computed(() => inventoryReady.value && !running.value && !exporting.value && !loading.value && !otherWork.value && valid.value
-    && (q2Placement.value !== undefined || mode.value === 'standard' || profilingSupported.value));
+    && (comparing.value || mode.value === 'standard' || profilingSupported.value));
   const callCount = computed(() => {
     const perModel = (() => {
       switch (workload.value) {
@@ -125,9 +131,9 @@ export function useLlamaCppDiagnostics() {
       }
       }
     })();
-    const lanes = measurementLanes({ mode: mode.value, q2Placement: q2Placement.value });
+    const lanes = measurementLanes({ mode: mode.value, q2Placement: q2Placement.value, swaCache: swaCache.value });
     // The tool call and its continuation run once per model, in the first lane.
-    const toolCalls = workload.value === 'text' && q2Placement.value === undefined ? 2 : 0;
+    const toolCalls = workload.value === 'text' && !comparing.value ? 2 : 0;
     return selectedModels.value.length * (perModel * lanes.length + toolCalls);
   });
   const runner = createPerformanceRunner({
@@ -353,6 +359,7 @@ export function useLlamaCppDiagnostics() {
         timeoutMs: timeoutMinutes.value * 60000,
         diagnostics: diagnostics.value ? 'placement' : 'none',
         ...(q2Placement.value === undefined ? {} : { q2Placement: q2Placement.value }),
+        ...(swaCache.value === undefined ? {} : { swaCache: swaCache.value }),
       },
       options: { profile: profile.value, ...(contextTokens.value !== undefined ? { contextTokens: contextTokens.value } : {}), ...(visionBf16Storage.value !== undefined ? { visionBf16Storage: visionBf16Storage.value } : {}) },
       notes: notes.value,
@@ -381,7 +388,7 @@ export function useLlamaCppDiagnostics() {
     try {
       // The comparison pins the ordinary profile. Let each scope report any
       // load or capability failure into that arm's archive evidence.
-      if (plan.settings.q2Placement === undefined) {
+      if (plan.settings.q2Placement === undefined && plan.settings.swaCache === undefined) {
         const capabilities = await service.probeProfiles({ signal: control.signal });
         control.signal.throwIfAborted();
         if (plan.settings.mode === 'gpu-profile' || plan.settings.mode === 'both') {
@@ -469,7 +476,10 @@ export function useLlamaCppDiagnostics() {
     interruptionPending,
     interruptCurrent,
     mode,
+    comparing,
     q2Placement,
+    swaCache,
+    swaCacheConflicts,
     profilingUnavailableReason,
     profilingSupported,
     modelDraft,

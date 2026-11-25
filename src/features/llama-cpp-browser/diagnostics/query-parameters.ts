@@ -90,6 +90,7 @@ export const diagnosticsQueryParameters = {
   timeoutMinutes: parameter({ key: 'timeoutMinutes', codec: integer({ minimum: 1, maximum: 60 }) }),
   placement: parameter({ key: 'placement', codec: flag }),
   q2Placement: parameter({ key: 'q2Placement', codec: choice({ values: ['ab'] }) }),
+  swaCache: parameter({ key: 'swaCache', codec: choice({ values: ['ab'] }) }),
   profile: parameter({ key: 'profile', codec: choice({ values: selectableProfiles }) }),
   contextTokens: parameter({ key: 'contextTokens', codec: integer({ minimum: minimumChatContextTokens, maximum: maximumChatContextTokens }) }),
   visionBf16Storage: parameter({ key: 'visionBf16Storage', codec: choice({ values: visionBf16StorageSchema.options }) }),
@@ -143,6 +144,22 @@ export function isDiagnosticsEditValid({ patch }: { patch: DiagnosticsQueryConfi
   const encoded = serializeDiagnosticsQuery({ config: patch });
   const parsed = parseDiagnosticsQuery({ query: encoded as LocationQuery });
   return fields.every(field => patch[field] === undefined || parsed[field] !== undefined);
+}
+
+/** Identify explicit URL settings that would change the SWA comparison. */
+export function conflictingSwaCacheSettings({ config }: { config: DiagnosticsQueryConfig }): string[] {
+  if (config.swaCache === undefined) {
+    return [];
+  }
+  const { q2Placement, workload, mode, placement, profile } = config;
+  const conflicts = {
+    q2Placement: q2Placement !== undefined,
+    workload: workload === 'vision',
+    mode: mode !== undefined && mode !== 'standard',
+    placement: placement === true,
+    profile: profile !== undefined && profile !== 'auto' && profile !== 'webgpu-wasm64-jspi',
+  } satisfies Partial<Record<keyof Registry, boolean>>;
+  return Object.entries(conflicts).flatMap(([field, conflict]) => conflict ? [field] : []);
 }
 
 export const TEST_ONLY = {

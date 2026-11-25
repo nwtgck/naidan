@@ -905,6 +905,25 @@ describe('measured generation operation ownership', () => {
     expect(worker.releaseRuntime).toHaveBeenCalledTimes(2);
   });
 
+  it('forwards SWA cache mode only within the two isolated measurement scopes', async () => {
+    for (const swaCacheMode of ['full', 'compact'] as const) {
+      await service.runPerformanceOperation({
+        options: { profile: 'webgpu-wasm64-jspi' },
+        signal: undefined,
+        operation: async ({ scope }) => {
+          await scope.generate({ input: input(), sequence: 'fresh', swaCacheMode, onEvent: () => {}, onSummary: () => {}, signal: scope.signal });
+        },
+      });
+    }
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    expect(worker.generate.mock.calls.map(([call]) => call.request.measurement)).toEqual([
+      { sequence: 'fresh', observation: undefined, swaCacheMode: 'full' },
+      { sequence: 'fresh', observation: undefined, swaCacheMode: 'compact' },
+      undefined,
+    ]);
+    expect(worker.dispose).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps unrelated requests outside the measured interval and rejects an escaped scope', async () => {
     let escaped: LlamaCppPerformanceScope | undefined;
     const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();

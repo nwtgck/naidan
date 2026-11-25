@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { parseQuery, stringifyQuery } from 'vue-router';
-import { diagnosticsQueryParameters, parseDiagnosticsQuery, serializeDiagnosticsQuery, isDiagnosticsEditValid } from './query-parameters';
+import { conflictingSwaCacheSettings, diagnosticsQueryParameters, parseDiagnosticsQuery, serializeDiagnosticsQuery, isDiagnosticsEditValid } from './query-parameters';
 
 describe('disposable diagnostics URL configuration', () => {
   it('ignores unknown, obsolete, version and inherited parameters independently', () => {
@@ -52,6 +52,7 @@ describe('disposable diagnostics URL configuration', () => {
       timeoutMinutes: 60,
       placement: false,
       q2Placement: 'ab' as const,
+      swaCache: 'ab' as const,
       profile: 'cpu-wasm32' as const,
       contextTokens: 1048576,
       visionBf16Storage: 'retain-checked' as const,
@@ -64,11 +65,23 @@ line 1
     expect(parseDiagnosticsQuery({ query: { contextTokens: '511', visionBf16Storage: 'old' } })).toEqual({});
   });
 
-  it('accepts only one explicit Q2 A/B value', () => {
-    expect(parseDiagnosticsQuery({ query: parseQuery('q2Placement=ab') })).toEqual({ q2Placement: 'ab' });
-    for (const query of ['', 'q2Placement', 'q2Placement=gpu', 'q2Placement=AB', 'q2Placement=ab&q2Placement=ab']) {
+  it.each(['q2Placement', 'swaCache'] as const)('accepts only one explicit A/B value for %s', key => {
+    expect(parseDiagnosticsQuery({ query: parseQuery(`${key}=ab`) })).toEqual({ [key]: 'ab' });
+    for (const query of ['', key, `${key}=on`, `${key}=AB`, `${key}=ab&${key}=ab`]) {
       expect(parseDiagnosticsQuery({ query: parseQuery(query) })).toEqual({});
     }
+  });
+
+  it('preserves conflicting SWA settings in the URL and detects them together', () => {
+    const query = parseQuery('swaCache=ab&q2Placement=ab&workload=vision&mode=both&placement=1&profile=cpu-wasm32');
+    const config = parseDiagnosticsQuery({ query });
+    expect(serializeDiagnosticsQuery({ config })).toEqual(query);
+    expect(conflictingSwaCacheSettings({ config })).toEqual(['q2Placement', 'workload', 'mode', 'placement', 'profile']);
+  });
+
+  it.each(['swaCache=ab', 'swaCache=ab&workload=text&mode=standard&placement=0&profile=auto', 'swaCache=ab&profile=webgpu-wasm64-jspi',
+    'q2Placement=ab&workload=vision&mode=both&placement=1&profile=cpu-wasm32'])('accepts compatible or implicit SWA settings and keeps Q2 behavior for %s', query => {
+    expect(conflictingSwaCacheSettings({ config: parseDiagnosticsQuery({ query: parseQuery(query) }) })).toEqual([]);
   });
 
   it('keeps text within its limits and never writes invalid local numeric edits', () => {

@@ -2,14 +2,29 @@ import { visionFixture, visionPrompt, visionProtocol } from './vision-plan';
 import { gpuProfilingProfile, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
 import { measurementLanes, performanceProtocol, planSchema, type MeasurementLane, type MeasurementMode, type PerformancePlan, type PerformanceStep } from './types';
 import { toolCallPrompt, toolCallTokenLimit, toolContinuationTokenLimit, toolResult } from './tool-continuation';
+import { swaCacheProtocol, swaCacheSteps } from './swa-cache';
+import { libraryPrompt, shortPrompt } from './text-prompts';
 
-// Public, versioned English fixtures. Changing these changes the workload, so
-// retain both the protocol identity and exact input messages in every archive.
-const shortPrompt = 'Explain in English how a language model can generate text locally inside a web browser. Describe the mechanism, practical benefits, and limitations in that order. Use paragraphs rather than bullet points, and include a concrete example.';
-const longPrompt = `The following records describe a fictional public library. Summarize the changes in usage and propose practical improvements in English, using only the information provided. Do not invent additional facts.\n\n${Array.from({ length: 12 }, (_, index) => `Week ${index + 1}: Reading seats were busy on weekday afternoons, while many seats remained empty in the mornings. More families visited during the weekend. Returned books were mainly sorted before closing time, and a dedicated shelf was introduced for reserved books. After the quiet reading room was separated from the collaborative workspace, visitors asked for clearer signs explaining where conversation was allowed. Consultations about electronic resources required an appointment. Staff summarized the topics of these consultations without recording information that could identify individual visitors.`).join('\n')}`;
+const longPrompt = libraryPrompt({ weeks: 12 });
 const followUp = 'Choose the most important limitation from your previous explanation and describe a concrete way to reduce its impact. Answer in English.';
 
 export function createPerformancePlan({ id, createdAt, models, settings, options, notes }: { id: PerformancePlan['id'], createdAt: PerformancePlan['createdAt'], models: PerformancePlan['models'], settings: PerformancePlan['settings'], options: PerformancePlan['options'], notes: PerformancePlan['notes'] }): PerformancePlan {
+  if (new Set(models.map(model => model.modelId)).size !== models.length) {
+    throw new Error('Duplicate modelId');
+  }
+  if (settings.swaCache !== undefined) {
+    return planSchema.parse({
+      version: 1,
+      protocol: swaCacheProtocol,
+      id,
+      createdAt,
+      models,
+      notes,
+      settings: { ...settings, mode: 'standard', diagnostics: 'none' },
+      options: { ...options, profile: 'webgpu-wasm64-jspi' },
+      steps: swaCacheSteps({ modelCount: models.length, repeats: settings.repeats, maxTokens: settings.maxTokens }),
+    });
+  }
   const steps: PerformanceStep[] = [];
   const q2Placement = settings.q2Placement !== undefined;
   const diagnostics = q2Placement ? 'placement' : settings.diagnostics;
@@ -100,9 +115,6 @@ export function createPerformancePlan({ id, createdAt, models, settings, options
     notes,
     steps,
   });
-  if (new Set(models.map(model => model.modelId)).size !== models.length) {
-    throw new Error('Duplicate modelId');
-  }
   return plan;
 }
 
@@ -143,15 +155,15 @@ export function createVisionPerformancePlan({ id, createdAt, models, settings, o
   });
 }
 
-export function performanceLanes({ mode, q2Placement }: { mode: MeasurementMode | undefined, q2Placement?: 'ab' | undefined }): MeasurementLane[] {
-  return measurementLanes({ mode, q2Placement });
+export function performanceLanes({ mode, q2Placement, swaCache }: { mode: MeasurementMode | undefined, q2Placement?: 'ab' | undefined, swaCache?: 'ab' | undefined }): MeasurementLane[] {
+  return measurementLanes({ mode, q2Placement, swaCache });
 }
 
 export function q2PlacementForLane({ lane }: { lane: MeasurementLane | undefined }): 'baseline' | 'gpu' | undefined {
   switch (lane) {
   case 'q2-baseline': return 'baseline';
   case 'q2-gpu': return 'gpu';
-  case 'standard': case 'gpu-profile': case undefined: return undefined;
+  case 'standard': case 'gpu-profile': case 'swa-full': case 'swa-compact': case undefined: return undefined;
   default: {
     const exhaustive: never = lane;
     throw new Error(String(exhaustive));
@@ -162,7 +174,7 @@ export function q2PlacementForLane({ lane }: { lane: MeasurementLane | undefined
 export function optionsForLane({ plan, lane }: { plan: PerformancePlan, lane: MeasurementLane }): RuntimeOptions {
   switch (lane) {
   case 'gpu-profile': return { ...plan.options, profile: gpuProfilingProfile };
-  case 'standard': case 'q2-baseline': case 'q2-gpu': return { ...plan.options };
+  case 'standard': case 'q2-baseline': case 'q2-gpu': case 'swa-full': case 'swa-compact': return { ...plan.options };
   default: {
     const exhaustive: never = lane;
     throw new Error(String(exhaustive));

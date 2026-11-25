@@ -9,9 +9,9 @@ import { maximumExecutionIntervals, planSchema, snapshotSchema, type Measurement
 import { summarizePerformance, performanceFindings } from './summary';
 import type { Q8DiagnosticClient } from './q8-diagnostic-worker-types';
 
-function setup({ models = 1, diagnostics = 'none', mode, repeats = 1, workload, q2Placement }: { repeats?: number, models?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode, workload?: 'baseline' | 'tool-continuation', q2Placement?: 'ab' } = {}) {
+function setup({ models = 1, diagnostics = 'none', mode, repeats = 1, workload, q2Placement, swaCache }: { repeats?: number, models?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode, workload?: 'baseline' | 'tool-continuation', q2Placement?: 'ab', swaCache?: 'ab' } = {}) {
   const original = performancePlan({ models, diagnostics, mode, repeats, workload });
-  const plan = q2Placement === undefined ? original : createPerformancePlan({ ...original, settings: { ...original.settings, q2Placement } });
+  const plan = q2Placement === undefined && swaCache === undefined ? original : createPerformancePlan({ ...original, settings: { ...original.settings, q2Placement, swaCache } });
   const order: string[] = [];
   let clock = 0, hidden = false;
   const generate = vi.fn<LlamaCppPerformanceScope['generate']>(async ({ input, sequence, onEvent, onSummary }) => {
@@ -70,6 +70,28 @@ function setup({ models = 1, diagnostics = 'none', mode, repeats = 1, workload, 
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+it('isolates SWA cache capacity by scope and measures the real long-prompt continuation in each arm', async () => {
+  const test = setup({ swaCache: 'ab' });
+  await test.start();
+  expect(test.order).toEqual([
+    'acquire', ...Array<string>(5).fill('user/m0'), 'release',
+    'acquire', ...Array<string>(5).fill('user/m0'), 'release',
+  ]);
+  expect(test.service.runPerformanceOperation.mock.calls.map(([{ options }]) => options.profile)).toEqual(['webgpu-wasm64-jspi', 'webgpu-wasm64-jspi']);
+  const calls = test.generate.mock.calls.map(([{ input, sequence, observation, swaCacheMode }]) => ({ input, sequence, observation, swaCacheMode }));
+  const full = calls.slice(0, 5);
+  expect(full.map(call => call.swaCacheMode)).toEqual(Array<string>(5).fill('full'));
+  expect(calls.slice(5)).toEqual(full.map(call => ({ ...call, swaCacheMode: 'compact' })));
+  expect(full.map(call => call.sequence)).toEqual(['fresh', 'fresh', 'fresh', 'continue', 'fresh']);
+  expect(full.every(call => call.observation === undefined)).toBe(true);
+  expect(full[3]?.input.messages.slice(0, 2)).toMatchObject([full[2]!.input.messages[0]!, { role: 'assistant', content: 'answer' }]);
+  const snapshot = snapshotSchema.parse(test.runner.snapshot());
+  expect(summarizePerformance({ snapshot }).filter(row => row.scenario === 'continuation')).toMatchObject([
+    { swaCacheMode: 'full', reusedTokens: 32 }, { swaCacheMode: 'compact', reusedTokens: 32 },
+  ]);
+  expect(performanceFindings({ snapshot }).map(row => row.swaCacheMode)).toEqual(['full', 'compact']);
 });
 
 describe('Q2 placement comparison', () => {

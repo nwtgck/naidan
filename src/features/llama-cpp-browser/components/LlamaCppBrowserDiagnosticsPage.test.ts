@@ -169,6 +169,47 @@ describe('in-app llama Diagnostics page', () => {
     expect(router.currentRoute.value.query.q2Placement).toBe('ab');
   });
 
+  it('uses one Start action for both SWA cache settings on the ordinary Wasm64 profile', async () => {
+    await router.replace('/llama-cpp-browser/diagnostics?swaCache=ab');
+    wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: 'user/m0' } });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="llama-performance-swa-ab"]').text()).toBe('SWA A/B');
+    expect(wrapper.get<HTMLFieldSetElement>('[data-testid="llama-performance-workload"]').element.disabled).toBe(true);
+    expect(wrapper.find('[data-testid="llama-performance-diagnostic"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('1 models · 10 generations including preparation');
+    expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    await saveManually();
+    expect(mocks.runPerformanceOperation.mock.calls.map(([{ options }]) => options.profile)).toEqual(['webgpu-wasm64-jspi', 'webgpu-wasm64-jspi']);
+    const { snapshot } = mocks.archive.mock.calls[0]![0];
+    expect(snapshot.plan.protocol).toBe('swa-cache-en-v1');
+    expect(snapshot.plan.settings).toMatchObject({ swaCache: 'ab', mode: 'standard', diagnostics: 'none' });
+    expect(snapshot.plan.steps).toHaveLength(10);
+    expect(snapshot.trials).toHaveLength(10);
+    expect(wrapper.text()).toContain('SWA A · full');
+    expect(wrapper.text()).toContain('SWA B · compact');
+    expect(router.currentRoute.value.query).toEqual({ swaCache: 'ab' });
+  });
+
+  it('blocks inconsistent SWA settings until they are reset', async () => {
+    await router.replace('/llama-cpp-browser/diagnostics?swaCache=ab&q2Placement=ab&workload=vision');
+    wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: 'user/m0' } });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="llama-diagnostics-swa-conflict"]').text()).toContain('q2Placement, workload');
+    const start = wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-start"]');
+    expect(start.element.disabled).toBe(true);
+    await start.trigger('click');
+    expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.query).toEqual({ swaCache: 'ab', q2Placement: 'ab', workload: 'vision' });
+
+    await wrapper.get('[data-testid="llama-diagnostics-reset"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({});
+    expect(wrapper.find('[data-testid="llama-diagnostics-swa-conflict"]').exists()).toBe(false);
+    expect(start.element.disabled).toBe(false);
+  });
+
   it('stops on leaving the page and does not auto-download cancellation', async () => {
     mocks.runPerformanceOperation.mockImplementationOnce(({ signal }) => new Promise((_, reject) => {
       signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });

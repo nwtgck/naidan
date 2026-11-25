@@ -87,6 +87,25 @@ it('requires identical input in both Q2 lanes and a placement observation after 
   expect(planSchema.safeParse({ ...plan, options: { profile: 'cpu-wasm32' } }).success).toBe(false);
 });
 
+it('compares both SWA modes with identical ordered long inputs and lane-local continuations', () => {
+  const source = performancePlan({ models: 2, repeats: 2 });
+  const plan = createPerformancePlan({ ...source, settings: { ...source.settings, swaCache: 'ab' } });
+  expect(plan).toMatchObject({ protocol: 'swa-cache-en-v1', settings: { mode: 'standard', diagnostics: 'none', swaCache: 'ab' }, options: { profile: 'webgpu-wasm64-jspi' } });
+  expect(plan.steps).toHaveLength(36);
+  for (const modelIndex of [0, 1]) {
+    const full = plan.steps.filter(step => step.modelIndex === modelIndex && step.lane === 'swa-full');
+    const compact = plan.steps.filter(step => step.modelIndex === modelIndex && step.lane === 'swa-compact');
+    expect(full.map(step => step.scenario)).toEqual(['initial', 'short', 'long', 'continuation', 'short', 'short', 'long', 'continuation', 'short']);
+    expect(full[2]?.prompt).toContain('Week 32:');
+    expect(full[3]?.dependsOn).toBe(full[2]?.id);
+    expect(compact[3]?.dependsOn).toBe(compact[2]?.id);
+    expect(compact.map(step => [step.scenario, step.prompt, step.maxTokens])).toEqual(full.map(step => [step.scenario, step.prompt, step.maxTokens]));
+  }
+  const steps = plan.steps.map((step, index) => index === 12 ? { ...step, dependsOn: plan.steps[2]!.id } : step);
+  expect(planSchema.safeParse({ ...plan, steps }).success).toBe(false);
+  expect(planSchema.safeParse({ ...plan, settings: { ...plan.settings, q2Placement: 'ab' } }).success).toBe(false);
+});
+
 it.each(['standard', 'gpu-profile', 'both'] as const)('keeps the tool result adjacent to its real call and in one lane in %s mode', mode => {
   const plan = performancePlan({ models: 2, repeats: 3, mode, workload: 'tool-continuation' });
   const pairs = plan.steps.filter(step => step.scenario === 'tool-call' || step.scenario === 'tool-continuation');

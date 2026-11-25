@@ -41,6 +41,11 @@ export function observeMeasurementMemory({ worker, now }: { worker: Pick<Worker,
         appendSetting({ setting: { observedMs: Math.max(0, now()), loadedModelDescriptor: { ...diagnostic.loadedModelDescriptor } } });
         return;
       }
+      if (diagnostic.event === 'native-info' && diagnostic.stage === 'session' && diagnostic.slidingWindowTokens !== undefined) {
+        const slidingWindowTokens = diagnostic.slidingWindowTokens;
+        appendSetting({ setting: { observedMs: Math.max(0, now()), swaCacheMode: slidingWindowTokens > 0 ? 'compact' : 'full', slidingWindowTokens } });
+        return;
+      }
       if (diagnostic.event === 'context-start' || diagnostic.event === 'context-retry' || diagnostic.event === 'context-ready') {
         // A retry begins the next attempt; requested/resolved records from the
         // failed attempt remain separate. No derived effective state is retained.
@@ -89,6 +94,11 @@ export function observeMeasurementMemory({ worker, now }: { worker: Pick<Worker,
           return;
         }
         appendSetting({ setting: { observedMs: Math.max(0, now()), nativeMetric, nativeValue, batchTokens: diagnostic.batchTokens, nativeSingleTokenValue: diagnostic.nativeSingleTokenValue } });
+        break;
+      case 'kv_base_cells': case 'kv_swa_cells':
+        if (Number.isSafeInteger(nativeValue) && nativeValue > 0) {
+          appendSetting({ setting: { observedMs: Math.max(0, now()), nativeMetric, nativeValue, contextAttempt: activeContextAttempt } });
+        }
         break;
       case undefined: break;
       default: {

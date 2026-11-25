@@ -8,6 +8,7 @@ import type { Q8DiagnosticClient } from './q8-diagnostic-worker-types';
 import { q8DiagnosticWorkerResultSchema } from './q8-diagnostic-worker-types';
 import { q8KernelBenchmarkProgressSchema } from './q8-kernel-schema';
 import { performanceTools, toolCallForContinuation } from './tool-continuation';
+import { swaCacheModeForLane } from './swa-cache';
 
 /** No chat store, alternate inference loop, rendering or archive work here. */
 export function createPerformanceRunner({ service, now, date, hidden, waitUntilVisible, publish, runKernelDiagnostic }: {
@@ -145,7 +146,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       try {
         const image = plan.protocol === visionProtocol ? await (await import('./vision-fixture')).createVisionFixture() : undefined;
         control.signal.throwIfAborted();
-        const lanes = performanceLanes({ mode: plan.settings.mode, q2Placement: plan.settings.q2Placement });
+        const lanes = performanceLanes({ mode: plan.settings.mode, q2Placement: plan.settings.q2Placement, swaCache: plan.settings.swaCache });
         for (const { modelIndex, model, lane } of plan.models.flatMap((model, modelIndex) => lanes.map(lane => ({ modelIndex, model, lane })))) {
           if (control.signal.aborted) {
             break;
@@ -153,6 +154,8 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
           const steps = stepsByLane.get(`${modelIndex}/${lane}`) ?? [];
           const options = optionsForLane({ plan, lane });
           const q2Placement = q2PlacementForLane({ lane });
+          const swaCacheMode = swaCacheModeForLane({ lane });
+          const comparison = q2Placement !== undefined || swaCacheMode !== undefined;
           let runtimeSegment = 0;
           let remaining = steps;
           let resuming: PerformanceTrial | undefined;
@@ -329,6 +332,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           trial.output = await scope.generate({
                             input,
                             ...(q2Placement === undefined ? {} : { q2Placement }),
+                            ...(swaCacheMode === undefined ? {} : { swaCacheMode }),
                             sequence: step.sequence,
                             observation,
                             onVisionAdmission: ({ admission }) => {
@@ -441,7 +445,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           const metrics = trial.summary?.performance;
                           const gpuStatus = metrics?.gpuProfile?.status;
                           switch (lane) {
-                          case 'standard': case 'q2-baseline': case 'q2-gpu': break;
+                          case 'standard': case 'q2-baseline': case 'q2-gpu': case 'swa-full': case 'swa-compact': break;
                           case 'gpu-profile':
                             switch (gpuStatus) {
                             case undefined: case 'unavailable': trial.warnings.push('gpu-profile-missing');
@@ -572,13 +576,13 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
               }
               const skipReason = modelSkip ?? (toolSkip && errorCode({ error }) === 'template-unsupported' ? toolSkip : undefined);
               const errorMessage = error instanceof Error ? error.message : String(error);
-              const segment = q2Placement === undefined ? {} : { runtimeSegment };
+              const segment = comparison ? { runtimeSegment } : {};
               if (!skipReason) {
                 activeSnapshot.modelErrors.push({ modelIndex, lane, ...segment, error: errorMessage });
               }
               for (const step of steps) {
                 if (!trialsByStep.has(step.id)) {
-                  skip({ step, options, ...segment, error: skipReason ?? (control.signal.aborted ? 'cancelled' : q2Placement === undefined ? 'model-operation-failed' : errorMessage), skipReason });
+                  skip({ step, options, ...segment, error: skipReason ?? (control.signal.aborted ? 'cancelled' : comparison ? errorMessage : 'model-operation-failed'), skipReason });
                 }
               }
               notify();

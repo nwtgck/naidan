@@ -15,7 +15,18 @@ import { generateInputSchema, profileSchema, runtimeOptionsSchema } from '@/feat
 import type { WorkerProxy, WorkerCapability } from '@/utils/worker-transport';
 import type { ModelDirectoryInput, GenerateInput, GenerationResult, GenerationCallback, GenerationEvent, LocalModel, Progress } from '@/features/llama-cpp-browser/types';
 
-const workerGenerateBaseSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), measurement: z.object({ sequence: z.enum(['fresh', 'continue']), observation: z.enum(['placement', 'vision']).optional(), q2Placement: z.enum(['baseline', 'gpu']).optional() }).strict().optional(), assetBaseURL: z.url().optional(), resolvedModel: workerResolvedModelSchema, modelGraphRegistrations: modelGraphRequestRegistrationsSchema.optional() }).strict();
+const workerMeasurementSchema = z.object({
+  sequence: z.enum(['fresh', 'continue']),
+  observation: z.enum(['placement', 'vision']).optional(),
+  q2Placement: z.enum(['baseline', 'gpu']).optional(),
+  swaCacheMode: z.enum(['full', 'compact']).optional(),
+}).strict().refine(({ swaCacheMode, observation, q2Placement }) =>
+  swaCacheMode === undefined || (observation !== 'vision' && q2Placement === undefined), {
+  path: ['swaCacheMode'],
+  error: 'SWA cache measurements cannot run alongside vision or Q2 placement measurements.',
+});
+
+const workerGenerateBaseSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), measurement: workerMeasurementSchema.optional(), assetBaseURL: z.url().optional(), resolvedModel: workerResolvedModelSchema, modelGraphRegistrations: modelGraphRequestRegistrationsSchema.optional() }).strict();
 export const workerGenerateInputSchema = workerGenerateBaseSchema.refine(request => request.modelId === request.resolvedModel.modelId, { path: ['resolvedModel', 'modelId'], error: 'Resolved model does not match the requested modelId' });
 export type WorkerGenerateInput = z.infer<typeof workerGenerateInputSchema>;
 

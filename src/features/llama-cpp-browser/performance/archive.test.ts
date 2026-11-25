@@ -69,6 +69,41 @@ describe('portable performance results', () => {
     expect(readme).not.toContain('## Tool result continuation');
   });
 
+  it('preserves each SWA comparison arm and its observed cache capacity in the same archive', async () => {
+    const source = snapshot();
+    const ordinary = source.trials[0]!;
+    source.plan = createPerformancePlan({ ...source.plan, settings: { ...source.plan.settings, swaCache: 'ab' } });
+    source.trials = source.plan.steps.filter(step => step.scenario === 'initial').map(step => {
+      const compact = step.lane === 'swa-compact';
+      return {
+        ...ordinary,
+        id: step.id,
+        stepId: step.id,
+        lane: step.lane,
+        options: source.plan.options,
+        memoryDiagnostics: {
+          samples: [],
+          droppedSamples: 0,
+          nativeAllocations: [],
+          droppedNativeAllocations: 0,
+          droppedNativeSettings: 0,
+          nativeSettings: [
+            { observedMs: 1, contextAttempt: 1, nativeMetric: 'kv_swa_cells', nativeValue: compact ? 1280 : 32768 },
+            { observedMs: 2, swaCacheMode: compact ? 'compact' : 'full', slidingWindowTokens: compact ? 1024 : 0 },
+          ],
+        },
+      };
+    });
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+    expect(JSON.parse(await zip.file('manifest.json')!.async('string'))).toMatchObject({ swaCache: 'ab', mode: 'standard' });
+    expect(JSON.parse(await zip.file('summary.json')!.async('string'))).toMatchObject([{ swaCacheMode: 'full' }, { swaCacheMode: 'compact' }]);
+    const rows = (await zip.file('trials.jsonl')!.async('string')).trim().split('\n').map(row => JSON.parse(row));
+    expect(rows.map(row => row.lane)).toEqual(['swa-full', 'swa-compact']);
+    expect(JSON.parse(await zip.file(rows[1].memoryDiagnosticsFile)!.async('string')).nativeSettings).toMatchObject([
+      { nativeMetric: 'kv_swa_cells', nativeValue: 1280, contextAttempt: 1 }, { swaCacheMode: 'compact', slidingWindowTokens: 1024 },
+    ]);
+  });
+
   it('keeps optional kernel diagnostics separate from model trials and throughput summaries', async () => {
     const source = snapshot();
     const summary = summarizePerformance({ snapshot: source });

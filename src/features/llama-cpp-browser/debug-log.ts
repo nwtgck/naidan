@@ -18,7 +18,7 @@ const stageSchema = z.enum(['audio-info', 'audio-reference', 'audio-input', 'aud
 export type DiagnosticStage = z.infer<typeof stageSchema>;
 const failureKindSchema = z.enum(['native-model-load-failed', 'native-buffer-allocation', 'native-file-backed-read', 'wasm-trap', 'native-exception', 'binding-error', 'type-error', 'range-error',
   'webgpu-dispatch-limit', 'webgpu-validation', 'webgpu-device-error', 'webgpu-device-lost', 'native-graph-error', 'native-output-mismatch', 'validation-error', 'abort-error', 'javascript-error', 'unknown-exception']);
-const nativeMetricSchema = z.enum(['n_ctx', 'n_ctx_seq', 'n_batch', 'n_ubatch', 'n_seq_max', 'graph_nodes', 'graph_splits', 'compute_buffer_mib', 'model_buffer_mib', 'kv_buffer_mib', 'recurrent_buffer_mib']);
+const nativeMetricSchema = z.enum(['n_ctx', 'n_ctx_seq', 'n_batch', 'n_ubatch', 'n_seq_max', 'graph_nodes', 'graph_splits', 'kv_base_cells', 'kv_swa_cells', 'compute_buffer_mib', 'model_buffer_mib', 'kv_buffer_mib', 'recurrent_buffer_mib']);
 
 const eventSchema = z.enum(['import-start', 'import-complete', 'runtime-ready', 'load-complete',
   'load-start', 'file-read-performance', 'model-reused', 'context-start', 'context-ready', 'context-retry', 'cache-reuse', 'checkpoint-created', 'checkpoint-restored', 'checkpoint-skipped', 'prefill-start', 'prefill-complete', 'generation-start', 'sampler-ready', 'first-token-sampled', 'generation-performance', 'generation-progress', 'generation-complete', 'cancelled', 'released', 'failed', 'operation-start', 'operation-complete', 'operation-waiting', 'native-error', 'native-info', 'native-node-start', 'native-node-complete']);
@@ -642,6 +642,16 @@ function nativeInfoDiagnostic({ message }: { message: unknown }): Diagnostic | u
     return undefined;
   }
   const line = message.replace(/\r?\n$/, '');
+  const cells = line.startsWith('llama_kv_cache_iswa: creating')
+    ? /^llama_kv_cache_iswa: creating[ \t]+(non-SWA|SWA) KV cache, size = (\d+) cells$/.exec(line)
+    : null;
+  if (cells) {
+    const nativeValue = Number(cells[2]);
+    if (!Number.isSafeInteger(nativeValue) || nativeValue < 1) {
+      return undefined;
+    }
+    return { event: 'native-info', nativeMetric: cells[1] === 'SWA' ? 'kv_swa_cells' : 'kv_base_cells', nativeValue };
+  }
   const context = /^llama_context: (n_ctx|n_ctx_seq|n_batch|n_ubatch|n_seq_max)[ \t]+= (\d+)$/.exec(line);
   if (context) {
     const nativeValue = Number(context[2]);

@@ -6,9 +6,11 @@ import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@
 import { StreamingZipWriter, createWebZipCompressionCodec } from '@/utils/zip-stream';
 import { performanceProtocol, snapshotSchema, type PerformanceSnapshot } from './types';
 import { summarizePerformance, performanceFindings, trialRates } from './summary';
+import { swaCacheProtocol } from './swa-cache';
 
 function archiveReadme({ protocol, q2Placement }: { protocol: PerformanceSnapshot['plan']['protocol'], q2Placement: PerformanceSnapshot['plan']['settings']['q2Placement'] }): string {
-  const textSchedule = protocol !== visionProtocol && q2Placement === undefined;
+  const swaCache = protocol === swaCacheProtocol;
+  const textSchedule = protocol !== visionProtocol && q2Placement === undefined && !swaCache;
   const toolRoundTrip = textSchedule && protocol === performanceProtocol;
   return `# Naidan llama.cpp browser performance / ${protocol}
 
@@ -136,7 +138,23 @@ for that arm. The initial call starts a fresh Worker. Browser and driver caches
 can still be warm. Check per-arm errors and placement evidence before comparing
 rates.
 
-`}GPU-profile attempts, including their ordinary-looking generation rates, are
+`}${swaCache ? `SWA A/B is selected by swaCache=ab. Each model runs swa-full and then
+swa-compact in separate WebGPU wasm64 JSPI Workers. Browser and driver caches can
+remain warm. The fixed schedule starts with a short input. Each repeat runs the
+short input, a 32-week long input, a continuation of its actual response, and the
+same fresh short input again. Continue only within the same arm. Compare the
+complete message inputs in outputs/<id>.json, including the actual assistant
+content and reasoning inherited from the parent. Different parent responses
+produce different continuation workloads even when their token counts agree.
+Compare prompt, reuse, and generated counts and the parent finish reason as well.
+Prompts may tokenize to different lengths on different models.
+Look for swaCacheMode in summary.json and the memory diagnostics' nativeSettings.
+kv_base_cells and kv_swa_cells record native allocation attempts. Match each to
+its context-ready event by contextAttempt. Check both arm errors and the effective
+context size, SWA window, microbatch, and Flash Attention setting before drawing
+comparisons. GPU buffer requests do not measure peak physical GPU memory.
+
+` : ''}GPU-profile attempts, including their ordinary-looking generation rates, are
 instrumented and excluded from summary.json and findings.json. summary.csv keeps
 those rates only in explicitly instrumented columns. GPU pass sums are NOT
 request wall time: do not subtract them to derive CPU time or utilization.
@@ -385,6 +403,9 @@ would not measure live residency. Missing records/counters mean unavailable, not
 nativeSettings preserves native context/batch/sequence sizes (token/count units)
 and graph node/split counts in observed order, including retry attempts. Graph
 batchTokens and nativeSingleTokenValue retain the upstream comparison where present.
+For SWA contexts, kv_base_cells and kv_swa_cells are allocation row counts, not
+token occupancy. An SWA A/B request records its effective cache mode separately
+from the requested lane. Its slidingWindowTokens is zero for full retention.
 nativeSettings can contain loadedModelDescriptor from bounded getters on the loaded
 LM, collected once per resident model only when measurement is requested and
 re-emitted for each measured request. source=loaded-model-native-api identifies the native API, not a
@@ -586,6 +607,7 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
             id: snapshot.plan.id,
             mode: snapshot.plan.settings.mode ?? 'standard',
             ...(snapshot.plan.settings.q2Placement === undefined ? {} : { q2Placement: snapshot.plan.settings.q2Placement }),
+            ...(snapshot.plan.settings.swaCache === undefined ? {} : { swaCache: snapshot.plan.settings.swaCache }),
             status: snapshot.status,
             modelErrors: snapshot.modelErrors,
             exportedAt: modifiedAt.toISOString(),

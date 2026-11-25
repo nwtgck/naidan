@@ -6,16 +6,20 @@ import { z } from 'zod';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
 import { generateInputSchema, generationResultSchema, gpuProfilingProfile, modelSchema, progressSchema, runtimeOptionsSchema, toolCallSchema } from '@/features/llama-cpp-browser/types';
 import { toolCallPrompt, toolCallTokenLimit, toolContinuationTokenLimit, toolResult } from './tool-continuation';
+import { swaCacheLanes, swaCacheProtocol, swaCacheSteps } from './swa-cache';
 
 export const maximumExecutionIntervals = 8192;
 
 export const performanceProtocol = 'targeted-text-en-v5' as const;
 export const measurementModeSchema = z.enum(['gpu-profile', 'standard', 'both']);
-export const measurementLaneSchema = z.enum(['standard', 'gpu-profile', 'q2-baseline', 'q2-gpu']);
+export const measurementLaneSchema = z.enum(['standard', 'gpu-profile', 'q2-baseline', 'q2-gpu', ...swaCacheLanes]);
 export type MeasurementMode = z.infer<typeof measurementModeSchema>;
 export type MeasurementLane = z.infer<typeof measurementLaneSchema>;
 
-export function measurementLanes({ mode, q2Placement }: { mode: MeasurementMode | undefined, q2Placement?: 'ab' | undefined }): MeasurementLane[] {
+export function measurementLanes({ mode, q2Placement, swaCache }: { mode: MeasurementMode | undefined, q2Placement?: 'ab' | undefined, swaCache?: 'ab' | undefined }): MeasurementLane[] {
+  if (swaCache !== undefined) {
+    return [...swaCacheLanes];
+  }
   if (q2Placement !== undefined) {
     return ['q2-baseline', 'q2-gpu'];
   }
@@ -40,6 +44,7 @@ export const protocolSchema = z.object({
   timeoutMs: z.number().int().min(1000).max(3600000),
   diagnostics: z.enum(['none', 'placement']).optional(),
   q2Placement: z.literal('ab').optional(),
+  swaCache: z.literal('ab').optional(),
 }).strict();
 const textMessageSchema = z.discriminatedUnion('role', [
   z.object({ role: z.literal('user'), content: z.string() }).strict(),
@@ -62,7 +67,7 @@ export const stepSchema = z.object({
 }).strict();
 export const planSchema = z.object({
   version: z.literal(1),
-  protocol: z.enum(['targeted-text-en-v3', 'targeted-text-en-v4', performanceProtocol, visionProtocol]),
+  protocol: z.enum(['targeted-text-en-v3', 'targeted-text-en-v4', performanceProtocol, visionProtocol, swaCacheProtocol]),
   visionFixture: visionFixtureSchema.optional(),
   id: idSchema,
   createdAt: z.string(),
@@ -73,6 +78,11 @@ export const planSchema = z.object({
   steps: z.array(stepSchema).min(1),
 }).strict().superRefine((plan, context) => {
   const q2Placement = plan.settings.q2Placement !== undefined;
+  const swaCache = plan.settings.swaCache !== undefined;
+  if (swaCache !== (plan.protocol === swaCacheProtocol) || (swaCache && (q2Placement || plan.settings.mode !== 'standard'
+    || plan.settings.diagnostics !== 'none' || plan.options.profile !== 'webgpu-wasm64-jspi'))) {
+    context.addIssue({ code: 'custom', message: 'SWA cache comparison requires the ordinary text WebGPU profile and exclusive lanes' });
+  }
   if (q2Placement && (plan.protocol !== performanceProtocol || plan.settings.mode !== 'standard' || plan.settings.diagnostics !== 'placement'
     || plan.options.profile !== 'webgpu-wasm64-jspi')) {
     context.addIssue({ code: 'custom', message: 'Q2 placement comparison requires the ordinary text WebGPU profile' });
@@ -102,7 +112,19 @@ export const planSchema = z.object({
   if ((plan.protocol === visionProtocol) !== (plan.visionFixture !== undefined)) {
     context.addIssue({ code: 'custom', message: 'Image protocol requires its fixed fixture metadata' });
   }
-  const allowed = measurementLanes({ mode: plan.settings.mode, q2Placement: plan.settings.q2Placement });
+  const allowed = measurementLanes({ mode: plan.settings.mode, q2Placement: plan.settings.q2Placement, swaCache: plan.settings.swaCache });
+  if (swaCache) {
+    const expected = swaCacheSteps({ modelCount: plan.models.length, repeats: plan.settings.repeats, maxTokens: plan.settings.maxTokens });
+    if (expected.length !== plan.steps.length || expected.some((step, index) => {
+      const actual = plan.steps[index];
+      return !actual || actual.id !== step.id || actual.modelIndex !== step.modelIndex || actual.lane !== step.lane
+        || actual.scenario !== step.scenario || actual.position !== step.position || actual.repetition !== step.repetition
+        || actual.prompt !== step.prompt || actual.maxTokens !== step.maxTokens || actual.dependsOn !== step.dependsOn
+        || actual.role !== step.role || actual.sequence !== step.sequence;
+    })) {
+      context.addIssue({ code: 'custom', message: 'SWA cache comparison requires the same ordered text workloads for both cache modes' });
+    }
+  }
   if (q2Placement) {
     const expected = [
       { scenario: 'initial', position: 'initial', repetition: 0, maxTokens: Math.min(8, plan.settings.maxTokens) },
