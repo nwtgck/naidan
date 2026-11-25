@@ -8,6 +8,7 @@ import { createAbiCaller } from 'llama-cpp-browser-core/llama-cpp/host/abi';
 import * as artifacts from './artifacts';
 import { readGpuRequests } from './webgpu-request-diagnostics';
 import { attachCore, createCore, type Core } from './core';
+import { inspectQ2Placement } from '@/features/llama-cpp-browser/worker/q2-placement';
 
 describe('native call adaptation', () => {
   let core: Core;
@@ -26,6 +27,46 @@ describe('native call adaptation', () => {
   });
 
   afterEach(() => vi.restoreAllMocks());
+
+  it('selects a Q2 expert from a real metadata-only GGUF using the installed Wasm ABI', async () => {
+    const { api, module } = core;
+    const params = core.allocRecord({ name: 'ggml_init_params' });
+    const allocations = [params];
+    let context = 0n, gguf = 0n;
+    const path = '/indexed-q2-metadata.gguf';
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        if (module.FS.analyzePath(path, false).exists) {
+          module.FS.unlink(path);
+        }
+        if (gguf !== 0n) {
+          await api.gguf_free(gguf);
+        }
+        if (context !== 0n) {
+          await api.ggml_free(context);
+        }
+        for (const pointer of allocations) {
+          core.free({ pointer });
+        }
+      },
+    };
+    core.setField({ name: 'ggml_init_params', pointer: params, field: 'mem_size', value: 64n * 1024n });
+    core.setField({ name: 'ggml_init_params', pointer: params, field: 'no_alloc', value: 1 });
+    context = await api.ggml_init(params);
+    expect(context).not.toBe(0n);
+    const weights = await api.ggml_new_tensor_3d(context, core.constant({ name: 'GGML_TYPE_Q2_0' }), 640n, 2560n, 512n);
+    const tensorName = 'blk.7.ffn_down_exps.weight';
+    const name = core.utf8({ text: tensorName });
+    const file = core.utf8({ text: path });
+    allocations.push(name, file);
+    await api.ggml_set_name(weights, name);
+    gguf = await api.gguf_init_empty();
+    await api.gguf_add_tensor(gguf, weights);
+    expect(await api.gguf_write_to_file(gguf, file, 1)).toBeTruthy();
+    expect(module.FS.readFile(path).byteLength).toBeLessThan(1024);
+    const buft = await api.ggml_backend_dev_buffer_type(await api.ggml_backend_dev_get(0n));
+    await expect(inspectQ2Placement({ core, device: { buft, maxAllocation: 268435456n }, paths: [path], allocations, signal: undefined })).resolves.toEqual([tensorName]);
+  });
 
   it('allows optional allocations to decline without hiding native traps', () => {
     let allocate = (): number => 0;
@@ -246,6 +287,16 @@ describe('native call adaptation', () => {
     };
     context = await core.api.ggml_init(params);
     const tensor = await core.api.ggml_new_tensor_1d(context, core.constant({ name: 'GGML_TYPE_F32' }), 16n);
+    const weight = await core.api.ggml_new_tensor_3d(context, core.constant({ name: 'GGML_TYPE_Q2_0' }), 64n, 4n, 2n);
+    const input = await core.api.ggml_new_tensor_3d(context, core.constant({ name: 'GGML_TYPE_F32' }), 64n, 1n, 1n);
+    const ids = await core.api.ggml_new_tensor_2d(context, core.constant({ name: 'GGML_TYPE_I32' }), 1n, 1n);
+    const indexedProduct = await core.api.ggml_mul_mat_id(context, weight, input, ids);
+    const weightName = core.utf8({ text: 'blk.0.ffn_down_exps.weight' });
+    try {
+      await core.api.ggml_set_name(weight, weightName);
+    } finally {
+      core.free({ pointer: weightName });
+    }
     const buft = await core.api.ggml_backend_dev_buffer_type(await core.api.ggml_backend_dev_get(0n));
     buffer = await core.api.ggml_backend_alloc_ctx_tensors_from_buft(context, buft);
     expect(buffer).not.toBe(0n);
@@ -260,6 +311,13 @@ describe('native call adaptation', () => {
       shape: [16, 1, 1, 1],
       storage: 'host',
       webgpuSupport: 'unavailable',
+    });
+    expect(metadata.sourceWeight).toBeUndefined();
+    expect(reader.read({ tensor: indexedProduct })).toMatchObject({
+      op: 'GGML_OP_MUL_MAT_ID',
+      storage: 'host',
+      inputs: [{ type: 'GGML_TYPE_Q2_0', shape: [64, 4, 2, 1] }, { type: 'GGML_TYPE_F32', shape: [64, 1, 1, 1] }],
+      sourceWeight: { name: 'blk.0.ffn_down_exps.weight', storage: 'host' },
     });
     expect(await bound.api.ggml_backend_dev_count()).toBeGreaterThan(0n);
     expect(invoked).toHaveBeenCalledWith('_ggml_backend_dev_count');

@@ -147,6 +147,25 @@ describe('in-app llama Diagnostics page', () => {
     expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(2);
   });
 
+  it('uses the existing Start and ZIP buttons for an explicit Q2 A/B URL', async () => {
+    await router.replace('/llama-cpp-browser/diagnostics?q2Placement=ab&mode=both&profile=cpu-wasm32&workload=vision');
+    wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: 'user/m0' } });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="llama-performance-q2-ab"]').text()).toBe('Q2 A/B');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-text"]').element.checked).toBe(true);
+    expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    await saveManually();
+
+    expect(mocks.runPerformanceOperation.mock.calls.map(([{ options }]) => options.profile)).toEqual(['webgpu-wasm64-jspi', 'webgpu-wasm64-jspi']);
+    const { snapshot } = mocks.archive.mock.calls[0]![0];
+    expect(snapshot.plan.settings).toMatchObject({ q2Placement: 'ab', mode: 'standard', diagnostics: 'placement' });
+    expect(snapshot.trials).toHaveLength(10);
+    expect(wrapper.text()).toContain('Q2 A · baseline');
+    expect(wrapper.text()).toContain('Q2 B · GPU');
+    expect(router.currentRoute.value.query.q2Placement).toBe('ab');
+  });
+
   it('stops on leaving the page and does not auto-download cancellation', async () => {
     mocks.runPerformanceOperation.mockImplementationOnce(({ signal }) => new Promise((_, reject) => {
       signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });

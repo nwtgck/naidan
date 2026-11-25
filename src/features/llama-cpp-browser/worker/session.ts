@@ -20,6 +20,7 @@ import { loadProjector, loadProjectorForBackend, type ResidentProjector } from "
 import { probeNewContextSequenceRemoval, type SequenceRemoval } from './cache-capabilities';
 import { disposePromptCheckpoint, type PromptCheckpoint } from './prompt-checkpoint';
 import { prefillBatchTokens, prefillMicroBatchTokens } from './prefill-config';
+import { inspectQ2Placement, resolveQ2PlacementDevice, setQ2PlacementOverrides } from './q2-placement';
 
 export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid', checkpoint: PromptCheckpoint | undefined,
   // A one-use proof, published only after the new-context probe has cleared
@@ -28,7 +29,7 @@ export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid', che
 };
 
 type ResidentChatMetadata = { requestedContextTokens: number, vocab: bigint, contextTokens: number, memory: bigint, nativeRollbackTokens: number, prefillBatchTokens: number };
-type ResidentModel = { releaseFiles: (() => void) | undefined, descriptor?: LoadedModelDescriptor, census?: ReturnType<typeof createBackendCensus>, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, modelId: string, sourceId: string | undefined, files: ModelFile[], projector: ResidentProjector | undefined, chatMetadata: ResidentChatMetadata | undefined, contextProjector: 'absent' | 'present' | undefined };
+type ResidentModel = { releaseFiles: (() => void) | undefined, descriptor?: LoadedModelDescriptor, census?: ReturnType<typeof createBackendCensus>, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, modelId: string, sourceId: string | undefined, files: ModelFile[], projector: ResidentProjector | undefined, chatMetadata: ResidentChatMetadata | undefined, contextProjector: 'absent' | 'present' | undefined, q2Placement: NonNullable<WorkerGenerateInput['measurement']>['q2Placement'] };
 let runtime: { core: Core, profile: LlamaCppProfile, requestedProfile: RuntimeOptions['profile'], assetBaseURL: string | undefined } | undefined;
 let resident: ResidentModel | undefined;
 
@@ -285,6 +286,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   checkCancelled();
   const api = core.api;
   const directory = request.resolvedModel.directory;
+  const q2Placement = request.measurement?.q2Placement;
   if (purpose.kind !== 'chat' && !directory.projectorFile) {
     throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
   }
@@ -304,7 +306,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   const sameIdentity = resident !== undefined && (sourceId !== undefined || resident.sourceId !== undefined
     ? sourceId !== undefined && resident.sourceId === sourceId
     : resident.modelId === request.modelId);
-  let unchanged = sameIdentity && resident !== undefined && resident.files.length === directory.files.length;
+  let unchanged = sameIdentity && resident !== undefined && resident.q2Placement === q2Placement && resident.files.length === directory.files.length;
   if (unchanged && resident) {
     for (let index = 0; index < directory.files.length; index++) {
       const next = directory.files[index]!;
@@ -335,6 +337,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     const allocations: bigint[] = [];
     let callback: number | bigint | undefined;
     let model = 0n;
+    let readingMetadata = q2Placement !== undefined;
     const reportFileReads = (() => {
       const debug = request.debug ?? 'off';
       switch (debug) {
@@ -350,6 +353,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     const started = performance.now();
     logDiagnostic({ diagnostic: { event: "load-start", profile } });
     try {
+      const placementDevice = q2Placement === undefined ? undefined : await resolveQ2PlacementDevice({ core, profile });
       for (const [index, entry] of weights.entries()) {
         checkCancelled();
         const access = await openModelFileAccess({ entry });
@@ -374,13 +378,24 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
           },
         });
         shardReads.push(traced.counters);
+        const cached = readCache.wrap({ source: traced.source });
         mounts.push(mountReadOnlyFile({
           core,
           path: `/models/${entry.relativePath}`,
-          source: readCache.wrap({ source: traced.source }),
+          // Keep the model cache cold until both arms have read the GGUF metadata.
+          source: placementDevice ? { size: cached.size, read: ({ destination, offset }) => readingMetadata ? traced.source.read({ destination, offset }) : cached.read({ destination, offset }) } : cached,
           maxChunkBytes: 8 * 1024 * 1024,
         }));
       }
+      checkCancelled();
+      const targetWeights = placementDevice ? await inspectQ2Placement({
+        core,
+        device: placementDevice,
+        paths: mounts.map(mount => mount.path),
+        allocations,
+        signal,
+      }) : undefined;
+      readingMetadata = false;
       checkCancelled();
       const params = core.allocRecord({ name: "llama_model_params" });
       allocations.push(params);
@@ -392,6 +407,9 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         check_tensors: 0,
       })) {
         core.setField({ name: "llama_model_params", pointer: params, field: field, value: value });
+      }
+      if (q2Placement === 'gpu' && placementDevice && targetWeights) {
+        setQ2PlacementOverrides({ core, params, names: targetWeights, buft: placementDevice.buft, allocations });
       }
       let lastProgress = 0;
       callback = core.module.addFunction((amount: number) => {
@@ -449,7 +467,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
           }
         };
       }
-      resident = { releaseFiles, model, projector: undefined, context: 0n, sequenceRemoval: undefined, slidingWindow: 0, cache: { tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'unknown' }, modelId: request.modelId, sourceId, files: directory.files, chatMetadata: undefined, contextProjector: undefined };
+      resident = { releaseFiles, model, projector: undefined, context: 0n, sequenceRemoval: undefined, slidingWindow: 0, cache: { tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'unknown' }, modelId: request.modelId, sourceId, files: directory.files, chatMetadata: undefined, contextProjector: undefined, q2Placement };
       model = 0n;
       sampleMemoryDiagnostics({ core, checkpoint: 'model-loaded' });
       onProgress({ progress: { phase: "loading", completed: 1, total: 1 } });

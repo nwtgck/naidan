@@ -11,11 +11,14 @@ export const maximumExecutionIntervals = 8192;
 
 export const performanceProtocol = 'targeted-text-en-v5' as const;
 export const measurementModeSchema = z.enum(['gpu-profile', 'standard', 'both']);
-export const measurementLaneSchema = z.enum(['standard', 'gpu-profile']);
+export const measurementLaneSchema = z.enum(['standard', 'gpu-profile', 'q2-baseline', 'q2-gpu']);
 export type MeasurementMode = z.infer<typeof measurementModeSchema>;
 export type MeasurementLane = z.infer<typeof measurementLaneSchema>;
 
-export function measurementLanes({ mode }: { mode: MeasurementMode | undefined }): MeasurementLane[] {
+export function measurementLanes({ mode, q2Placement }: { mode: MeasurementMode | undefined, q2Placement?: 'ab' | undefined }): MeasurementLane[] {
+  if (q2Placement !== undefined) {
+    return ['q2-baseline', 'q2-gpu'];
+  }
   switch (mode) {
   case 'both': return ['standard', 'gpu-profile'];
   case 'standard': case undefined: return ['standard'];
@@ -36,6 +39,7 @@ export const protocolSchema = z.object({
   maxTokens: z.number().int().min(1).max(512),
   timeoutMs: z.number().int().min(1000).max(3600000),
   diagnostics: z.enum(['none', 'placement']).optional(),
+  q2Placement: z.literal('ab').optional(),
 }).strict();
 const textMessageSchema = z.discriminatedUnion('role', [
   z.object({ role: z.literal('user'), content: z.string() }).strict(),
@@ -68,6 +72,11 @@ export const planSchema = z.object({
   notes: z.string().max(10000),
   steps: z.array(stepSchema).min(1),
 }).strict().superRefine((plan, context) => {
+  const q2Placement = plan.settings.q2Placement !== undefined;
+  if (q2Placement && (plan.protocol !== performanceProtocol || plan.settings.mode !== 'standard' || plan.settings.diagnostics !== 'placement'
+    || plan.options.profile !== 'webgpu-wasm64-jspi')) {
+    context.addIssue({ code: 'custom', message: 'Q2 placement comparison requires the ordinary text WebGPU profile' });
+  }
   if (plan.options.profile === gpuProfilingProfile) {
     context.addIssue({ code: 'custom', message: 'Select the profiling measurement mode, not a diagnostic chat profile' });
   }
@@ -93,7 +102,30 @@ export const planSchema = z.object({
   if ((plan.protocol === visionProtocol) !== (plan.visionFixture !== undefined)) {
     context.addIssue({ code: 'custom', message: 'Image protocol requires its fixed fixture metadata' });
   }
-  const allowed = measurementLanes({ mode: plan.settings.mode });
+  const allowed = measurementLanes({ mode: plan.settings.mode, q2Placement: plan.settings.q2Placement });
+  if (q2Placement) {
+    const expected = [
+      { scenario: 'initial', position: 'initial', repetition: 0, maxTokens: Math.min(8, plan.settings.maxTokens) },
+      ...Array.from({ length: plan.settings.repeats }, (_, index) => [
+        { scenario: 'short', position: 'before', repetition: index + 1, maxTokens: plan.settings.maxTokens },
+        { scenario: 'long', position: 'workload', repetition: index + 1, maxTokens: Math.min(8, plan.settings.maxTokens) },
+        { scenario: 'short', position: 'after', repetition: index + 1, maxTokens: plan.settings.maxTokens },
+      ]).flat(),
+      { scenario: 'placement', position: 'diagnostic', repetition: 0, maxTokens: 2 },
+    ];
+    const laneLength = expected.length;
+    const modelLength = laneLength * allowed.length;
+    if (plan.steps.length !== plan.models.length * modelLength || plan.steps.some((step, index) => {
+      const lane = allowed[Math.floor((index % modelLength) / laneLength)];
+      const shape = expected[index % laneLength];
+      return !shape || step.modelIndex !== Math.floor(index / modelLength) || step.lane !== lane
+        || step.role !== 'measurement' || step.dependsOn !== undefined || step.sequence !== 'fresh'
+        || step.scenario !== shape.scenario || step.position !== shape.position || step.repetition !== shape.repetition || step.maxTokens !== shape.maxTokens
+        || (lane === 'q2-gpu' && step.prompt !== plan.steps[index - laneLength]?.prompt);
+    })) {
+      context.addIssue({ code: 'custom', message: 'Q2 placement comparison requires both matching text workloads for every model' });
+    }
+  }
   if (plan.protocol === visionProtocol) {
     const expected = plan.models.flatMap((_, modelIndex) => allowed.flatMap(lane => Array.from({ length: plan.settings.repeats + 1 }, (_, repetition) => ({ modelIndex, lane, repetition }))));
     if (plan.settings.diagnostics !== 'none' || expected.length !== plan.steps.length || expected.some((value, index) => {
@@ -159,7 +191,7 @@ export const planSchema = z.object({
     seen.set(step.id, step);
     previous = step;
   }
-  if (previous?.scenario === 'tool-call' || (plan.protocol === performanceProtocol && toolCalls.size !== plan.models.length)) {
+  if (previous?.scenario === 'tool-call' || (plan.protocol === performanceProtocol && !q2Placement && toolCalls.size !== plan.models.length)) {
     context.addIssue({ code: 'custom', message: 'Expected one tool round trip per model' });
   }
 });
@@ -248,7 +280,12 @@ export const snapshotSchema = z.object({
   }).strict(),
   status: z.enum(['running', 'completed', 'cancelled']),
   trials: z.array(trialSchema),
-  modelErrors: z.array(z.object({ modelIndex: z.number().int().nonnegative(), lane: measurementLaneSchema.optional(), error: z.string() }).strict()),
+  modelErrors: z.array(z.object({
+    modelIndex: z.number().int().nonnegative(),
+    lane: measurementLaneSchema.optional(),
+    runtimeSegment: z.number().int().nonnegative().optional(),
+    error: z.string(),
+  }).strict()),
 }).strict();
 export type PerformancePlan = z.infer<typeof planSchema>;
 export type PerformanceStep = z.infer<typeof stepSchema>;

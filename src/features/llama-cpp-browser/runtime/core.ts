@@ -369,23 +369,35 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
           shape: [0, 1, 2, 3].map(axis => index({ value: data.getBigInt64(axis * 8, true) })),
         };
       };
+      const tensorName = ({ tensor }: { tensor: bigint }): string => cstring({ pointer: tensor + fields.name!.offset, limit: Math.min(fields.name!.size, 96) });
+      const bufferInfo = ({ tensor }: { tensor: bigint }) => {
+        const buffer = ptr({ data: view({ tensor, field: 'buffer' }), offset: 0 });
+        return {
+          buffer: buffer === 0n ? 'unallocated' : cstring({ pointer: BigInt(bufferName({ args: [buffer] })), limit: 160 }),
+          storage: buffer === 0n ? 'unknown' as const : bufferHost({ args: [buffer] }) ? 'host' as const : 'device' as const,
+        };
+      };
       const read = ({ tensor }: { tensor: bigint }) => {
         const op = ops.get(view({ tensor, field: 'op' }).getInt32(0, true)) ?? 'unknown';
-        const buffer = ptr({ data: view({ tensor, field: 'buffer' }), offset: 0 });
         const sources = view({ tensor, field: 'src' });
-        const inputs = [0, 1].flatMap(axis => {
-          const source = ptr({ data: sources, offset: axis * pointerBytes });
-          return source === 0n ? [] : [tensorInfo({ tensor: source })];
-        });
+        const source0 = ptr({ data: sources, offset: 0 });
+        const source1 = ptr({ data: sources, offset: pointerBytes });
+        const firstInput = source0 === 0n ? undefined : tensorInfo({ tensor: source0 });
+        const inputs = firstInput === undefined ? [] : [firstInput];
+        if (source1 !== 0n) {
+          inputs.push(tensorInfo({ tensor: source1 }));
+        }
+        const sourceWeight = op === 'GGML_OP_MUL_MAT_ID' && firstInput?.type === 'GGML_TYPE_Q2_0'
+          ? { name: tensorName({ tensor: source0 }), ...bufferInfo({ tensor: source0 }) } : undefined;
         return {
           op,
           description: cstring({ pointer: BigInt(description({ args: [tensor] })), limit: 96 }),
           compute: (view({ tensor, field: 'flags' }).getInt32(0, true) & computeFlag) !== 0,
           ...tensorInfo({ tensor }),
           inputs,
-          name: cstring({ pointer: tensor + fields.name!.offset, limit: Math.min(fields.name!.size, 96) }),
-          buffer: buffer === 0n ? 'unallocated' : cstring({ pointer: BigInt(bufferName({ args: [buffer] })), limit: 160 }),
-          storage: buffer === 0n ? 'unknown' as const : bufferHost({ args: [buffer] }) ? 'host' as const : 'device' as const,
+          name: tensorName({ tensor }),
+          ...bufferInfo({ tensor }),
+          ...(sourceWeight === undefined ? {} : { sourceWeight }),
           webgpuSupport: !devices.length ? 'unavailable' as const : devices.some(device => supports({ args: [device, tensor] })) ? 'supported' as const : 'unsupported' as const,
           metadataOnly: ['GGML_OP_NONE', 'GGML_OP_VIEW', 'GGML_OP_RESHAPE', 'GGML_OP_PERMUTE', 'GGML_OP_TRANSPOSE'].includes(op),
         };

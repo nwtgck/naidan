@@ -11,7 +11,9 @@ const followUp = 'Choose the most important limitation from your previous explan
 
 export function createPerformancePlan({ id, createdAt, models, settings, options, notes }: { id: PerformancePlan['id'], createdAt: PerformancePlan['createdAt'], models: PerformancePlan['models'], settings: PerformancePlan['settings'], options: PerformancePlan['options'], notes: PerformancePlan['notes'] }): PerformancePlan {
   const steps: PerformanceStep[] = [];
-  const lanes = performanceLanes({ mode: settings.mode });
+  const q2Placement = settings.q2Placement !== undefined;
+  const diagnostics = q2Placement ? 'placement' : settings.diagnostics;
+  const lanes = performanceLanes({ mode: settings.mode, q2Placement: settings.q2Placement });
   let baselineIndex = 0;
   for (const { modelIndex, lane } of models.flatMap((_, modelIndex) => lanes.map(lane => ({ modelIndex, lane })))) {
     const add = ({ scenario, position, repetition, dependsOn, prompt, maxTokens }: { scenario: PerformanceStep['scenario'], position: PerformanceStep['position'], repetition: PerformanceStep['repetition'], dependsOn?: PerformanceStep['dependsOn'], prompt: PerformanceStep['prompt'], maxTokens: PerformanceStep['maxTokens'] }): string => {
@@ -37,7 +39,9 @@ export function createPerformancePlan({ id, createdAt, models, settings, options
     for (let repetition = 1; repetition <= settings.repeats; repetition++) {
       const parent = add({ scenario: 'short', position: 'before', repetition, dependsOn: undefined, prompt: shortPrompt, maxTokens: settings.maxTokens });
       // Reuse a measurement's real response rather than generate another parent.
-      add({ scenario: 'continuation', position: 'workload', repetition, dependsOn: parent, prompt: followUp, maxTokens: Math.min(16, settings.maxTokens) });
+      if (!q2Placement) {
+        add({ scenario: 'continuation', position: 'workload', repetition, dependsOn: parent, prompt: followUp, maxTokens: Math.min(16, settings.maxTokens) });
+      }
       // This probes input evaluation, not a second long decode throughput test.
       // Its first graph shape is explicitly not claimed to be warmed.
       add({ scenario: 'long', position: 'workload', repetition, dependsOn: undefined, prompt: longPrompt, maxTokens: Math.min(8, settings.maxTokens) });
@@ -45,19 +49,19 @@ export function createPerformancePlan({ id, createdAt, models, settings, options
       // into an apparently more precise median of exchangeable repetitions.
       add({ scenario: 'short', position: 'after', repetition, dependsOn: undefined, prompt: shortPrompt, maxTokens: settings.maxTokens });
     }
-    switch (settings.diagnostics) {
+    switch (diagnostics) {
     case 'placement':
-      add({ scenario: 'placement', position: 'diagnostic', repetition: 0, dependsOn: undefined, prompt: longPrompt, maxTokens: 2 });
+      add({ scenario: 'placement', position: 'diagnostic', repetition: 0, dependsOn: undefined, prompt: q2Placement ? shortPrompt : longPrompt, maxTokens: 2 });
       break;
     case 'none': case undefined: break;
     default: {
-      const exhaustive: never = settings.diagnostics;
+      const exhaustive: never = diagnostics;
       throw new Error(String(exhaustive));
     }
     }
     // Complete the ordinary trials first so a tool-template failure has no effect
     // on their evidence. Paired mode runs the tool round trip in the standard lane.
-    if (lane === lanes[0]) {
+    if (!q2Placement && lane === lanes[0]) {
       const id = `m${modelIndex}-tool-call`;
       steps.push({
         id,
@@ -85,7 +89,17 @@ export function createPerformancePlan({ id, createdAt, models, settings, options
       });
     }
   }
-  const plan = planSchema.parse({ version: 1, protocol: performanceProtocol, id, createdAt, models, settings, options: settings.mode === 'both' || settings.mode === 'gpu-profile' ? { ...options, profile: 'webgpu-wasm64-jspi' } : options, notes, steps });
+  const plan = planSchema.parse({
+    version: 1,
+    protocol: performanceProtocol,
+    id,
+    createdAt,
+    models,
+    settings: q2Placement ? { ...settings, mode: 'standard', diagnostics } : settings,
+    options: q2Placement || settings.mode === 'both' || settings.mode === 'gpu-profile' ? { ...options, profile: 'webgpu-wasm64-jspi' } : options,
+    notes,
+    steps,
+  });
   if (new Set(models.map(model => model.modelId)).size !== models.length) {
     throw new Error('Duplicate modelId');
   }
@@ -129,14 +143,26 @@ export function createVisionPerformancePlan({ id, createdAt, models, settings, o
   });
 }
 
-export function performanceLanes({ mode }: { mode: MeasurementMode | undefined }): MeasurementLane[] {
-  return measurementLanes({ mode });
+export function performanceLanes({ mode, q2Placement }: { mode: MeasurementMode | undefined, q2Placement?: 'ab' | undefined }): MeasurementLane[] {
+  return measurementLanes({ mode, q2Placement });
+}
+
+export function q2PlacementForLane({ lane }: { lane: MeasurementLane | undefined }): 'baseline' | 'gpu' | undefined {
+  switch (lane) {
+  case 'q2-baseline': return 'baseline';
+  case 'q2-gpu': return 'gpu';
+  case 'standard': case 'gpu-profile': case undefined: return undefined;
+  default: {
+    const exhaustive: never = lane;
+    throw new Error(String(exhaustive));
+  }
+  }
 }
 
 export function optionsForLane({ plan, lane }: { plan: PerformancePlan, lane: MeasurementLane }): RuntimeOptions {
   switch (lane) {
   case 'gpu-profile': return { ...plan.options, profile: gpuProfilingProfile };
-  case 'standard': return { ...plan.options };
+  case 'standard': case 'q2-baseline': case 'q2-gpu': return { ...plan.options };
   default: {
     const exhaustive: never = lane;
     throw new Error(String(exhaustive));

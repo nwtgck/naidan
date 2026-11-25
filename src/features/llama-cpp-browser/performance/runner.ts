@@ -1,5 +1,5 @@
 import { visionProtocol } from './vision-plan';
-import { optionsForLane, performanceLanes } from './plan';
+import { optionsForLane, performanceLanes, q2PlacementForLane } from './plan';
 import { nanoid } from 'nanoid';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
 import { type GenerateInput, type RuntimeOptions, errorCode } from '@/features/llama-cpp-browser/types';
@@ -29,12 +29,13 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       publish({ snapshot, current });
     }
   };
-  const skip = ({ step, options, error, skipReason }: { step: PerformanceStep, options: RuntimeOptions, error: string, skipReason?: PerformanceTrial['skipReason'] }): void => {
+  const skip = ({ step, options, error, skipReason, runtimeSegment }: { step: PerformanceStep, options: RuntimeOptions, error: string, skipReason?: PerformanceTrial['skipReason'], runtimeSegment?: number }): void => {
     const trial: PerformanceTrial = {
       id: nanoid(),
       stepId: step.id,
       modelIndex: step.modelIndex,
       lane: step.lane ?? 'standard',
+      ...(runtimeSegment === undefined ? {} : { runtimeSegment }),
       status: 'skipped',
       startedAt: date(),
       input: [],
@@ -144,12 +145,14 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       try {
         const image = plan.protocol === visionProtocol ? await (await import('./vision-fixture')).createVisionFixture() : undefined;
         control.signal.throwIfAborted();
-        for (const { modelIndex, model, lane } of plan.models.flatMap((model, modelIndex) => performanceLanes({ mode: plan.settings.mode }).map(lane => ({ modelIndex, model, lane })))) {
+        const lanes = performanceLanes({ mode: plan.settings.mode, q2Placement: plan.settings.q2Placement });
+        for (const { modelIndex, model, lane } of plan.models.flatMap((model, modelIndex) => lanes.map(lane => ({ modelIndex, model, lane })))) {
           if (control.signal.aborted) {
             break;
           }
           const steps = stepsByLane.get(`${modelIndex}/${lane}`) ?? [];
           const options = optionsForLane({ plan, lane });
+          const q2Placement = q2PlacementForLane({ lane });
           let runtimeSegment = 0;
           let remaining = steps;
           let resuming: PerformanceTrial | undefined;
@@ -325,6 +328,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           local.signal.throwIfAborted();
                           trial.output = await scope.generate({
                             input,
+                            ...(q2Placement === undefined ? {} : { q2Placement }),
                             sequence: step.sequence,
                             observation,
                             onVisionAdmission: ({ admission }) => {
@@ -437,7 +441,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           const metrics = trial.summary?.performance;
                           const gpuStatus = metrics?.gpuProfile?.status;
                           switch (lane) {
-                          case 'standard': break;
+                          case 'standard': case 'q2-baseline': case 'q2-gpu': break;
                           case 'gpu-profile':
                             switch (gpuStatus) {
                             case undefined: case 'unavailable': trial.warnings.push('gpu-profile-missing');
@@ -567,12 +571,14 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                 }
               }
               const skipReason = modelSkip ?? (toolSkip && errorCode({ error }) === 'template-unsupported' ? toolSkip : undefined);
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              const segment = q2Placement === undefined ? {} : { runtimeSegment };
               if (!skipReason) {
-                activeSnapshot.modelErrors.push({ modelIndex, lane, error: error instanceof Error ? error.message : String(error) });
+                activeSnapshot.modelErrors.push({ modelIndex, lane, ...segment, error: errorMessage });
               }
               for (const step of steps) {
                 if (!trialsByStep.has(step.id)) {
-                  skip({ step, options, error: skipReason ?? (control.signal.aborted ? 'cancelled' : 'model-operation-failed'), skipReason });
+                  skip({ step, options, ...segment, error: skipReason ?? (control.signal.aborted ? 'cancelled' : q2Placement === undefined ? 'model-operation-failed' : errorMessage), skipReason });
                 }
               }
               notify();
@@ -583,7 +589,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
             resuming.interruption.recovery = 'stopped';
           }
         }
-        if (plan.protocol !== visionProtocol && runKernelDiagnostic && !control.signal.aborted && performanceLanes({ mode: plan.settings.mode }).includes('gpu-profile')) {
+        if (plan.protocol !== visionProtocol && runKernelDiagnostic && !control.signal.aborted && lanes.includes('gpu-profile')) {
           const diagnostic: NonNullable<PerformanceSnapshot['q8KernelDiagnostic']> = { status: 'running', startedMs: elapsed(), hiddenObserved: hidden() };
           activeSnapshot.q8KernelDiagnostic = diagnostic;
           notify();

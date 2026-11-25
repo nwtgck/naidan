@@ -8,6 +8,7 @@ import { runtimeBuildEvidence } from './runtime-evidence';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
 import type { PerformanceSnapshot } from './types';
 import { performanceTools } from './tool-continuation';
+import { createPerformancePlan } from './plan';
 
 function snapshot(): PerformanceSnapshot {
   const plan = performancePlan();
@@ -38,6 +39,33 @@ function snapshot(): PerformanceSnapshot {
 }
 
 describe('portable performance results', () => {
+  it('exports Q2 speed and placement observations with distinct arm identifiers', async () => {
+    const source = snapshot();
+    const ordinary = source.trials[0]!;
+    source.plan = createPerformancePlan({ ...source.plan, settings: { ...source.plan.settings, q2Placement: 'ab' } });
+    source.trials = source.plan.steps.filter(step => step.scenario === 'initial' || step.scenario === 'placement').map(step => ({
+      ...ordinary,
+      id: step.id,
+      stepId: step.id,
+      lane: step.lane,
+      options: source.plan.options,
+      exclusion: step.scenario === 'placement' ? ['instrumented'] : [],
+    }));
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+    const summary = JSON.parse(await zip.file('summary.json')!.async('string'));
+    expect(summary).toHaveLength(2);
+    expect(summary).toMatchObject([{ q2Placement: 'baseline', scenario: 'initial' }, { q2Placement: 'gpu', scenario: 'initial' }]);
+    const csv = await zip.file('summary.csv')!.async('string');
+    expect(csv).toContain('"standard","q2-baseline","webgpu-wasm64-jspi"');
+    expect(csv).toContain('"standard","q2-gpu","webgpu-wasm64-jspi"');
+    expect(JSON.parse(await zip.file('backend-placement.json')!.async('string'))).toMatchObject([
+      { lane: 'q2-baseline', status: 'succeeded' },
+      { lane: 'q2-gpu', status: 'succeeded' },
+    ]);
+    expect((await zip.file('gpu-profile.jsonl')!.async('string')).trim()).toBe('');
+    expect(JSON.parse(await zip.file('manifest.json')!.async('string'))).toMatchObject({ q2Placement: 'ab' });
+  });
+
   it('keeps optional kernel diagnostics separate from model trials and throughput summaries', async () => {
     const source = snapshot();
     const summary = summarizePerformance({ snapshot: source });

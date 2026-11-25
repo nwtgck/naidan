@@ -89,6 +89,7 @@ export const diagnosticsQueryParameters = {
   maxTokens: parameter({ key: 'maxTokens', codec: integer({ minimum: 1, maximum: 512 }) }),
   timeoutMinutes: parameter({ key: 'timeoutMinutes', codec: integer({ minimum: 1, maximum: 60 }) }),
   placement: parameter({ key: 'placement', codec: flag }),
+  q2Placement: parameter({ key: 'q2Placement', codec: choice({ values: ['ab'] }) }),
   profile: parameter({ key: 'profile', codec: choice({ values: selectableProfiles }) }),
   contextTokens: parameter({ key: 'contextTokens', codec: integer({ minimum: minimumChatContextTokens, maximum: maximumChatContextTokens }) }),
   visionBf16Storage: parameter({ key: 'visionBf16Storage', codec: choice({ values: visionBf16StorageSchema.options }) }),

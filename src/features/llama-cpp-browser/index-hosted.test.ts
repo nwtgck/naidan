@@ -886,6 +886,25 @@ describe('measured generation operation ownership', () => {
     expect(service.getOptions()).toEqual({ profile: 'auto' });
   });
 
+  it('forwards Q2 placement only within each comparison scope', async () => {
+    for (const q2Placement of ['baseline', 'gpu'] as const) {
+      await service.runPerformanceOperation({
+        options: { profile: 'webgpu-wasm64-jspi' },
+        signal: undefined,
+        operation: async ({ scope }) => {
+          await scope.generate({ input: input(), sequence: 'fresh', q2Placement, onEvent: () => {}, onSummary: () => {}, signal: scope.signal });
+        },
+      });
+    }
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    expect(worker.generate.mock.calls.map(([call]) => call.request.measurement)).toEqual([
+      { sequence: 'fresh', observation: undefined, q2Placement: 'baseline' },
+      { sequence: 'fresh', observation: undefined, q2Placement: 'gpu' },
+      undefined,
+    ]);
+    expect(worker.releaseRuntime).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps unrelated requests outside the measured interval and rejects an escaped scope', async () => {
     let escaped: LlamaCppPerformanceScope | undefined;
     const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();

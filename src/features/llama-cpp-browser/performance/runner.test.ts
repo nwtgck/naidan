@@ -4,12 +4,14 @@ import type { LlamaCppBrowserService, LlamaCppPerformanceScope } from '@/feature
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { performanceEnvironment, performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import { createPerformanceRunner } from './runner';
+import { createPerformancePlan } from './plan';
 import { maximumExecutionIntervals, planSchema, snapshotSchema, type MeasurementMode } from './types';
 import { summarizePerformance, performanceFindings } from './summary';
 import type { Q8DiagnosticClient } from './q8-diagnostic-worker-types';
 
-function setup({ models = 1, diagnostics = 'none', mode, repeats = 1, workload }: { repeats?: number, models?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode, workload?: 'baseline' | 'tool-continuation' } = {}) {
-  const plan = performancePlan({ models, diagnostics, mode, repeats, workload });
+function setup({ models = 1, diagnostics = 'none', mode, repeats = 1, workload, q2Placement }: { repeats?: number, models?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode, workload?: 'baseline' | 'tool-continuation', q2Placement?: 'ab' } = {}) {
+  const original = performancePlan({ models, diagnostics, mode, repeats, workload });
+  const plan = q2Placement === undefined ? original : createPerformancePlan({ ...original, settings: { ...original.settings, q2Placement } });
   const order: string[] = [];
   let clock = 0, hidden = false;
   const generate = vi.fn<LlamaCppPerformanceScope['generate']>(async ({ input, sequence, onEvent, onSummary }) => {
@@ -68,6 +70,61 @@ function setup({ models = 1, diagnostics = 'none', mode, repeats = 1, workload }
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe('Q2 placement comparison', () => {
+  it('uses fresh scopes with matching requests and a separate final placement observation', async () => {
+    const test = setup({ mode: 'both', q2Placement: 'ab' });
+    await test.start();
+    expect(test.order).toEqual([
+      'acquire', ...Array<string>(5).fill('user/m0'), 'release',
+      'acquire', ...Array<string>(5).fill('user/m0'), 'release',
+    ]);
+    expect(test.service.runPerformanceOperation.mock.calls.map(([{ options }]) => options.profile)).toEqual(['webgpu-wasm64-jspi', 'webgpu-wasm64-jspi']);
+    const args = test.generate.mock.calls.map(([{ input, observation, sequence, q2Placement }]) => ({ input, observation, sequence, q2Placement }));
+    const [baseline, gpu] = [args.slice(0, 5), args.slice(5)];
+    expect(baseline.map(value => value.q2Placement)).toEqual(Array<string>(5).fill('baseline'));
+    expect(gpu).toEqual(baseline.map(value => ({ ...value, q2Placement: 'gpu' })));
+    expect(gpu.map(value => value.observation)).toEqual([undefined, undefined, undefined, undefined, 'placement']);
+    expect(gpu.every(value => value.sequence === 'fresh')).toBe(true);
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    const summary = summarizePerformance({ snapshot });
+    expect(summary).toHaveLength(8);
+    expect(summary.map(group => group.q2Placement)).toEqual(['baseline', 'baseline', 'baseline', 'baseline', 'gpu', 'gpu', 'gpu', 'gpu']);
+    const findings = performanceFindings({ snapshot });
+    expect(findings.map(row => [row.q2Placement, row.beforeAttempt, row.afterAttempt])).toEqual([
+      ['baseline', snapshot.trials[1]?.id, snapshot.trials[3]?.id],
+      ['gpu', snapshot.trials[6]?.id, snapshot.trials[8]?.id],
+    ]);
+  });
+
+  it('archives an unsupported arm and a failed placement diagnostic while retaining other scopes', async () => {
+    const test = setup({ models: 2, q2Placement: 'ab' });
+    const ordinary = test.generate.getMockImplementation()!;
+    test.generate.mockImplementation(async args => {
+      if (args.input.modelId === 'user/m0' && args.q2Placement === 'baseline') {
+        throw new Error('Q2 placement requires a newer runtime');
+      }
+      if (args.input.modelId === 'user/m1' && args.q2Placement === 'gpu' && args.observation === 'placement') {
+        throw new Error('Placement census unavailable');
+      }
+      return ordinary(args);
+    });
+    await test.start();
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(test.service.runPerformanceOperation).toHaveBeenCalledTimes(4);
+    expect(snapshot.status).toBe('completed');
+    expect(snapshot.modelErrors).toEqual([
+      { modelIndex: 0, lane: 'q2-baseline', runtimeSegment: 0, error: 'Q2 placement requires a newer runtime' },
+      { modelIndex: 1, lane: 'q2-gpu', runtimeSegment: 0, error: 'Placement census unavailable' },
+    ]);
+    expect(snapshot.trials.map(trial => trial.status)).toEqual([
+      'failed', 'skipped', 'skipped', 'skipped', 'skipped',
+      ...Array<string>(14).fill('succeeded'), 'failed',
+    ]);
+    expect(snapshot.trials[1]).toMatchObject({ lane: 'q2-baseline', runtimeSegment: 0, error: 'Q2 placement requires a newer runtime' });
+    expect(summarizePerformance({ snapshot }).filter(group => group.modelIndex === 1 && group.q2Placement === 'gpu')).toHaveLength(4);
+  });
 });
 
 describe('tool result continuation measurement', () => {

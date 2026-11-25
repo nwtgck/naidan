@@ -29,6 +29,7 @@ export function useLlamaCppDiagnostics() {
   const repeats = ref(1), maxTokens = ref(64), timeoutMinutes = ref(15), notes = ref('');
   const modelDraft = ref('');
   const diagnostics = ref(true);
+  const q2Placement = ref<DiagnosticsQueryConfig['q2Placement']>();
   const hosted = buildAllowsGpuProfiling();
   const mode = ref<MeasurementMode>(hosted ? 'gpu-profile' : 'standard');
   const capabilities = shallowRef<ProfileCapabilities>();
@@ -41,7 +42,7 @@ export function useLlamaCppDiagnostics() {
   const contextTokens = ref<number>();
   const visionBf16Storage = ref<RuntimeOptions['visionBf16Storage']>();
   const profileExplicit = ref(false);
-  const profileConflict = computed(() => profileExplicit.value && mode.value !== 'standard' && profile.value !== 'auto' && profile.value !== 'webgpu-wasm64-jspi');
+  const profileConflict = computed(() => q2Placement.value === undefined && profileExplicit.value && mode.value !== 'standard' && profile.value !== 'auto' && profile.value !== 'webgpu-wasm64-jspi');
   const defaults = computed(() => ({
     workload: 'text' as const,
     mode: profilingSupported.value ? 'gpu-profile' as const : 'standard' as const,
@@ -57,11 +58,12 @@ export function useLlamaCppDiagnostics() {
   }));
   function applyConfiguration({ config }: { config: DiagnosticsQueryConfig }): void {
     const { modelIds: _modelIds, allModels: _allModels, modelFilter, workload: kind, mode: measurementMode, repeats: count, maxTokens: limit,
-      timeoutMinutes: timeout, placement, profile: preference, contextTokens: context, visionBf16Storage: storage, notes: memo, ...unhandled } = config;
+      timeoutMinutes: timeout, placement, q2Placement: placementComparison, profile: preference, contextTokens: context, visionBf16Storage: storage, notes: memo, ...unhandled } = config;
     unhandled satisfies Record<PropertyKey, never>;
     modelSelection.value = diagnosticsModelSelection({ config });
     query.value = modelFilter ?? defaults.value.modelFilter;
-    workload.value = kind ?? defaults.value.workload;
+    q2Placement.value = placementComparison;
+    workload.value = placementComparison !== undefined ? 'text' : (kind ?? defaults.value.workload);
     mode.value = measurementMode ?? defaults.value.mode;
     modeInitialized = measurementMode !== undefined;
     repeats.value = count ?? defaults.value.repeats;
@@ -110,19 +112,20 @@ export function useLlamaCppDiagnostics() {
     // minutes. Do not run a fractional draft that the URL codec rejected.
     && isDiagnosticsEditValid({ patch: { timeoutMinutes: timeoutMinutes.value } })
     && protocolSchema.safeParse({ mode: mode.value, repeats: repeats.value, maxTokens: maxTokens.value, timeoutMs: timeoutMinutes.value * 60000 }).success);
-  const canStart = computed(() => inventoryReady.value && !running.value && !exporting.value && !loading.value && !otherWork.value && valid.value && (mode.value === 'standard' || profilingSupported.value));
+  const canStart = computed(() => inventoryReady.value && !running.value && !exporting.value && !loading.value && !otherWork.value && valid.value
+    && (q2Placement.value !== undefined || mode.value === 'standard' || profilingSupported.value));
   const callCount = computed(() => {
     const perModel = (() => {
       switch (workload.value) {
       case 'vision': return 1 + repeats.value;
-      case 'text': return 1 + repeats.value * 4 + (diagnostics.value ? 1 : 0);
+      case 'text': return q2Placement.value !== undefined ? 2 + repeats.value * 3 : 1 + repeats.value * 4 + (diagnostics.value ? 1 : 0);
       default: {
         const exhaustive: never = workload.value;
         throw new Error(String(exhaustive));
       }
       }
     })();
-    return selectedModels.value.length * perModel * measurementLanes({ mode: mode.value }).length;
+    return selectedModels.value.length * perModel * measurementLanes({ mode: mode.value, q2Placement: q2Placement.value }).length;
   });
   const runner = createPerformanceRunner({
     service,
@@ -340,7 +343,14 @@ export function useLlamaCppDiagnostics() {
       id: nanoid(),
       createdAt: new Date().toISOString(),
       models: selectedModels.value,
-      settings: { mode: mode.value, repeats: repeats.value, maxTokens: maxTokens.value, timeoutMs: timeoutMinutes.value * 60000, diagnostics: diagnostics.value ? 'placement' : 'none' },
+      settings: {
+        mode: mode.value,
+        repeats: repeats.value,
+        maxTokens: maxTokens.value,
+        timeoutMs: timeoutMinutes.value * 60000,
+        diagnostics: diagnostics.value ? 'placement' : 'none',
+        ...(q2Placement.value === undefined ? {} : { q2Placement: q2Placement.value }),
+      },
       options: { profile: profile.value, ...(contextTokens.value !== undefined ? { contextTokens: contextTokens.value } : {}), ...(visionBf16Storage.value !== undefined ? { visionBf16Storage: visionBf16Storage.value } : {}) },
       notes: notes.value,
     });
@@ -366,27 +376,31 @@ export function useLlamaCppDiagnostics() {
     let acceptWakeLock = true;
     let startedRunner = false;
     try {
-      const capabilities = await service.probeProfiles({ signal: control.signal });
-      control.signal.throwIfAborted();
-      if (plan.settings.mode === 'gpu-profile' || plan.settings.mode === 'both') {
-        for (const required of [gpuProfilingProfile, 'webgpu-wasm64-jspi'] as const) {
-          const entry = capabilities.profiles.find(entry => entry.profile === required);
-          switch (entry?.status) {
-          case 'available': break;
-          case 'unavailable': throw new Error(`GPU profiling is unavailable: ${entry.reason}`);
-          case undefined: throw new Error('GPU profiling is unavailable: profiling-artifact');
-          default: {
-            const exhaustive: never = entry;
-            throw new Error(String(exhaustive));
-          }
+      // The comparison pins the ordinary profile. Let each scope report any
+      // load or capability failure into that arm's archive evidence.
+      if (plan.settings.q2Placement === undefined) {
+        const capabilities = await service.probeProfiles({ signal: control.signal });
+        control.signal.throwIfAborted();
+        if (plan.settings.mode === 'gpu-profile' || plan.settings.mode === 'both') {
+          for (const required of [gpuProfilingProfile, 'webgpu-wasm64-jspi'] as const) {
+            const entry = capabilities.profiles.find(entry => entry.profile === required);
+            switch (entry?.status) {
+            case 'available': break;
+            case 'unavailable': throw new Error(`GPU profiling is unavailable: ${entry.reason}`);
+            case undefined: throw new Error('GPU profiling is unavailable: profiling-artifact');
+            default: {
+              const exhaustive: never = entry;
+              throw new Error(String(exhaustive));
+            }
+            }
           }
         }
+        const concrete = resolveProfilePreference({ preference: plan.options.profile, capabilities });
+        if (!concrete || (plan.options.profile === 'auto' && !usesWebGpu({ profile: concrete }))) {
+          throw new Error('WebGPU is unavailable. Select an explicit CPU profile only for a CPU measurement.');
+        }
+        plan = { ...plan, options: { ...plan.options, profile: concrete } };
       }
-      const concrete = resolveProfilePreference({ preference: plan.options.profile, capabilities });
-      if (!concrete || (plan.options.profile === 'auto' && !usesWebGpu({ profile: concrete }))) {
-        throw new Error('WebGPU is unavailable. Select an explicit CPU profile only for a CPU measurement.');
-      }
-      plan = { ...plan, options: { ...plan.options, profile: concrete } };
       try {
         // Optional browser cooperation must not block starting or stopping a run.
         void navigator.wakeLock?.request('screen').then(lock => {
@@ -452,6 +466,7 @@ export function useLlamaCppDiagnostics() {
     interruptionPending,
     interruptCurrent,
     mode,
+    q2Placement,
     profilingUnavailableReason,
     profilingSupported,
     modelDraft,

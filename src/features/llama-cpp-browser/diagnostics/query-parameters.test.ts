@@ -51,6 +51,7 @@ describe('disposable diagnostics URL configuration', () => {
       maxTokens: 512,
       timeoutMinutes: 60,
       placement: false,
+      q2Placement: 'ab' as const,
       profile: 'cpu-wasm32' as const,
       contextTokens: 1048576,
       visionBf16Storage: 'retain-checked' as const,
@@ -61,6 +62,13 @@ line 1
     expect(Object.keys(diagnosticsQueryParameters)).toHaveLength(Object.keys(config).length + 1);
     expect(parseDiagnosticsQuery({ query: parseQuery(stringifyQuery(serializeDiagnosticsQuery({ config }))) })).toEqual(config);
     expect(parseDiagnosticsQuery({ query: { contextTokens: '511', visionBf16Storage: 'old' } })).toEqual({});
+  });
+
+  it('accepts only one explicit Q2 A/B value', () => {
+    expect(parseDiagnosticsQuery({ query: parseQuery('q2Placement=ab') })).toEqual({ q2Placement: 'ab' });
+    for (const query of ['', 'q2Placement', 'q2Placement=gpu', 'q2Placement=AB', 'q2Placement=ab&q2Placement=ab']) {
+      expect(parseDiagnosticsQuery({ query: parseQuery(query) })).toEqual({});
+    }
   });
 
   it('keeps text within its limits and never writes invalid local numeric edits', () => {

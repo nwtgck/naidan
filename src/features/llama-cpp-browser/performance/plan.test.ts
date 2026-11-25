@@ -69,6 +69,24 @@ describe('standard and profiling workload lanes', () => {
   });
 });
 
+it('requires identical input in both Q2 lanes and a placement observation after the speed trials', () => {
+  const source = performancePlan({ models: 2, repeats: 2, mode: 'both' });
+  const plan = createPerformancePlan({ ...source, settings: { ...source.settings, q2Placement: 'ab' }, options: { profile: 'cpu-wasm32' } });
+  expect(plan.options.profile).toBe('webgpu-wasm64-jspi');
+  expect(plan.steps).toHaveLength(32);
+  for (const modelIndex of [0, 1]) {
+    const steps = plan.steps.filter(step => step.modelIndex === modelIndex);
+    expect(steps.map(step => [step.lane, step.scenario])).toEqual(['q2-baseline', 'q2-gpu'].flatMap(lane =>
+      ['initial', 'short', 'long', 'short', 'short', 'long', 'short', 'placement'].map(scenario => [lane, scenario])));
+  }
+  expect(planSchema.safeParse({ ...plan, steps: plan.steps.slice(1) }).success).toBe(false);
+  expect(planSchema.safeParse({
+    ...plan,
+    steps: plan.steps.map((step, index) => index === 8 ? { ...step, prompt: 'different input' } : step),
+  }).success).toBe(false);
+  expect(planSchema.safeParse({ ...plan, options: { profile: 'cpu-wasm32' } }).success).toBe(false);
+});
+
 it.each(['standard', 'gpu-profile', 'both'] as const)('keeps the tool result adjacent to its real call and in one lane in %s mode', mode => {
   const plan = performancePlan({ models: 2, repeats: 3, mode, workload: 'tool-continuation' });
   const pairs = plan.steps.filter(step => step.scenario === 'tool-call' || step.scenario === 'tool-continuation');

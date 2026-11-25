@@ -782,7 +782,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
         let open = true;
         let pending: Promise<GenerationResult> | undefined;
         let failure: { error: unknown } | undefined;
-        const generate: LlamaCppPerformanceScope['generate'] = ({ input, sequence, observation, onVisionAdmission, onEvent, onSummary, onMemoryDiagnostics, onProgress, signal }) => {
+        const generate: LlamaCppPerformanceScope['generate'] = ({ input, sequence, observation, q2Placement, onVisionAdmission, onEvent, onSummary, onMemoryDiagnostics, onProgress, signal }) => {
           if (!open) {
             throw new Error('The performance operation is closed.');
           }
@@ -810,7 +810,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
               const request = await acceptedRequest;
               local.signal.throwIfAborted();
               return await worker.generate({
-                request: { ...request, options: { ...await requestOptions, profile: concreteOptions.profile }, measurement: { sequence, observation } },
+                request: { ...request, options: { ...await requestOptions, profile: concreteOptions.profile }, measurement: { sequence, observation, ...(q2Placement === undefined ? {} : { q2Placement }) } },
                 onVisionAdmission,
                 onEvent,
                 onSummary,

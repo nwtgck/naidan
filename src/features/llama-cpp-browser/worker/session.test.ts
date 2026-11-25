@@ -10,6 +10,7 @@ import type { loadProjector, loadProjectorForBackend } from './projector';
 import type { WorkerGenerateInput } from './types';
 import * as modelReadModule from '@/features/llama-cpp-browser/runtime/model-read-cache';
 import * as modelFileModule from './model-file-access';
+import * as q2PlacementModule from './q2-placement';
 import type { ModelFileSource } from '@/features/llama-cpp-browser/runtime/model-file-source';
 import { prepareSession, prepareGenerationSession, prepareAudioSession, releaseSession } from './session';
 
@@ -92,6 +93,49 @@ beforeEach(() => {
 
 afterEach(async () => {
   await releaseSession({ releaseRuntime: true });
+});
+
+describe('Q2 placement measurement sessions', () => {
+  it('leaves ordinary requests alone, inspects both arms, and reloads on a policy change', async () => {
+    const device = { buft: 30n, maxAllocation: 268435456n };
+    using lookup = vi.spyOn(q2PlacementModule, 'resolveQ2PlacementDevice').mockResolvedValue(device);
+    using inspect = vi.spyOn(q2PlacementModule, 'inspectQ2Placement').mockResolvedValue(['blk.1.ffn_down_exps.weight']);
+    using overrides = vi.spyOn(q2PlacementModule, 'setQ2PlacementOverrides').mockImplementation(() => {});
+    using mount = vi.spyOn(readOnlyModule, 'mountReadOnlyFile').mockImplementation(({ path }) => ({ path, remove: () => {} }));
+    const load = async ({ measurement }: { measurement: WorkerGenerateInput['measurement'] }) => prepareGenerationSession({
+      request: { ...request({ debug: 'off' }), measurement },
+      signal: undefined,
+      onProgress: () => {},
+    });
+    await load({ measurement: undefined });
+    expect(lookup).not.toHaveBeenCalled();
+    expect(inspect).not.toHaveBeenCalled();
+    expect(overrides).not.toHaveBeenCalled();
+    await load({ measurement: { sequence: 'fresh', q2Placement: 'baseline' } });
+    await load({ measurement: { sequence: 'fresh', q2Placement: 'baseline' } });
+    expect(inspect).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ device, paths: ['/models/model.gguf'] }));
+    expect(overrides).not.toHaveBeenCalled();
+    await load({ measurement: { sequence: 'fresh', q2Placement: 'gpu' } });
+    expect(lookup).toHaveBeenCalledTimes(2);
+    expect(inspect).toHaveBeenCalledTimes(2);
+    expect(overrides).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ names: ['blk.1.ffn_down_exps.weight'], buft: 30n }));
+    await load({ measurement: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(4);
+    expect(host.core!.api.llama_model_free).toHaveBeenCalledTimes(3);
+    expect(mount).toHaveBeenCalledTimes(4);
+    expect(inspect).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves the admission failure before opening weights or starting a model load', async () => {
+    using load = vi.spyOn(modelFileModule, 'openModelFileAccess');
+    await expect(prepareGenerationSession({
+      request: { ...request({ debug: 'off' }), measurement: { sequence: 'fresh', q2Placement: 'gpu' } },
+      signal: undefined,
+      onProgress: () => {},
+    })).rejects.toThrow('Q2 placement: requires a WebGPU runtime');
+    expect(load).not.toHaveBeenCalled();
+    expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();
+  });
 });
 
 describe('resident projector debug changes', () => {

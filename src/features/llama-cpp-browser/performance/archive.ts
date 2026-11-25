@@ -6,7 +6,7 @@ import { StreamingZipWriter, createWebZipCompressionCodec } from '@/utils/zip-st
 import { performanceProtocol, snapshotSchema, type PerformanceSnapshot } from './types';
 import { summarizePerformance, performanceFindings, trialRates } from './summary';
 
-function archiveReadme({ protocol }: { protocol: PerformanceSnapshot['plan']['protocol'] }): string {
+function archiveReadme({ protocol, q2Placement }: { protocol: PerformanceSnapshot['plan']['protocol'], q2Placement: PerformanceSnapshot['plan']['settings']['q2Placement'] }): string {
   return `# Naidan llama.cpp browser performance / ${protocol}
 
 ## Start here
@@ -124,7 +124,16 @@ The ordinary lane in both always uses webgpu-wasm64-jspi, matching the diagnosti
 profile's memory width and suspension strategy. Standalone cannot select the GPU
 profiling runtime. Hosted includes development serving as well as production.
 
-GPU-profile attempts, including their ordinary-looking generation rates, are
+${q2Placement === undefined ? '' : `Q2 A/B is selected by q2Placement=ab. Both lanes use webgpu-wasm64-jspi.
+Each model runs q2-baseline and then q2-gpu in separate Worker scopes with the
+same initial, short and long prompts and limits. Each lane ends with a separate
+two-token placement observation. Find the arm in the lane column of summary.csv
+and in backend-placement.json. summary.json and findings.json record q2Placement
+for that arm. The initial call starts a fresh Worker. Browser and driver caches
+can still be warm. Check per-arm errors and placement evidence before comparing
+rates.
+
+`}GPU-profile attempts, including their ordinary-looking generation rates, are
 instrumented and excluded from summary.json and findings.json. summary.csv keeps
 those rates only in explicitly instrumented columns. GPU pass sums are NOT
 request wall time: do not subtract them to derive CPU time or utilization.
@@ -199,7 +208,7 @@ first-use graph/pipeline work; it is NOT a warmed-prefill claim. Increase blocks
 only when a specific comparison needs confirmation, not to hide chronological drift.
 The input is English. Results are not interchangeable with standard-text-v1
 (Japanese) or standard-text-en-v2 (a different schedule and output budget).
-${protocol === performanceProtocol ? `
+${protocol === performanceProtocol && q2Placement === undefined ? `
 ## Tool result continuation
 One additional pair per selected model runs after the baseline in its lane. Paired
 mode puts it in the standard lane. The first request gives the model a synthetic
@@ -563,7 +572,7 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
   const json = ({ value }: { value: unknown }) => JSON.stringify(value, undefined, 2) + '\n';
   const completed = (async () => {
     try {
-      await add({ name: 'README.md', text: archiveReadme({ protocol: snapshot.plan.protocol }) });
+      await add({ name: 'README.md', text: archiveReadme({ protocol: snapshot.plan.protocol, q2Placement: snapshot.plan.settings.q2Placement }) });
       await add({
         name: 'manifest.json',
         text: json({
@@ -571,6 +580,7 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
             version: 1,
             id: snapshot.plan.id,
             mode: snapshot.plan.settings.mode ?? 'standard',
+            ...(snapshot.plan.settings.q2Placement === undefined ? {} : { q2Placement: snapshot.plan.settings.q2Placement }),
             status: snapshot.status,
             modelErrors: snapshot.modelErrors,
             exportedAt: modifiedAt.toISOString(),
