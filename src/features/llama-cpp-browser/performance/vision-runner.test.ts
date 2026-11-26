@@ -260,6 +260,46 @@ describe('combined text and image workload', () => {
     expect(snapshot.trials.at(-3)).toMatchObject({ status: 'succeeded', runtimeSegment: 1, vision: { residency: 'cold' }, warnings: ['runtime-restarted'] });
     expect(snapshot.trials.at(-1)).toMatchObject({ status: 'succeeded', runtimeSegment: 1, vision: { residency: 'warm' }, exclusion: [] });
   });
+
+  it('measures images in a fresh scope after a text prompt exceeds the context', async () => {
+    const test = setupCombined({ models: 1 });
+    const ordinary = test.generate.getMockImplementation()!;
+    const long = test.plan.steps.find(step => step.scenario === 'long')!;
+    test.generate.mockImplementation(async args => {
+      if (args.input.messages.at(-1)?.content === long.prompt) {
+        throw new LlamaCppBrowserError({ code: 'context-full' });
+      }
+      return ordinary(args);
+    });
+    await test.start();
+    expect(test.service.runPerformanceOperation).toHaveBeenCalledTimes(2);
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.trials.find(trial => trial.stepId === long.id)).toMatchObject({
+      status: 'failed',
+      error: 'context-full',
+      runtimeSegment: 0,
+    });
+    expect(snapshot.modelErrors).toHaveLength(1);
+    const images = snapshot.trials.filter(trial => trial.vision);
+    expect(images).toHaveLength(3);
+    expect(images.every(trial => trial.status === 'succeeded' && trial.runtimeSegment === 1)).toBe(true);
+    expect(images[0]?.warnings).toContain('runtime-restarted');
+  });
+
+  it('keeps remaining images skipped when the image itself exceeds the context', async () => {
+    const test = setupCombined({ models: 1 });
+    const ordinary = test.generate.getMockImplementation()!;
+    test.generate.mockImplementation(async args => {
+      if (args.observation === 'vision') {
+        throw new LlamaCppBrowserError({ code: 'context-full' });
+      }
+      return ordinary(args);
+    });
+    await test.start();
+    expect(test.service.runPerformanceOperation).toHaveBeenCalledOnce();
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.trials.filter(trial => trial.vision).map(trial => trial.status)).toEqual(['failed', 'skipped', 'skipped']);
+  });
 });
 
 it('records an explicit native skip and proceeds to other models without counting it as a successful image run', async () => {

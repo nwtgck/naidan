@@ -165,6 +165,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
           // existing service only AFTER it retires the Worker and releases its lane.
           while (remaining.length && !control.signal.aborted) {
             let interrupted: PerformanceTrial | undefined;
+            let textContextFull = false;
             try {
               await visible({ modelIndex, lane, runtimeSegment });
               control.signal.throwIfAborted();
@@ -423,6 +424,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           trial.status = 'succeeded';
                         } catch (error) {
                           const code = errorCode({ error });
+                          textContextFull = !step.vision && code === 'context-full' && !local.signal.aborted;
                           if (toolWorkload && code === 'template-unsupported' && !local.signal.aborted) {
                             toolSkip = 'tool-template-unsupported';
                           }
@@ -591,6 +593,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
               const skipReason = modelSkip ?? (toolSkip && errorCode({ error }) === 'template-unsupported' ? toolSkip : undefined);
               const errorMessage = error instanceof Error ? error.message : String(error);
               const combined = plan.protocol === combinedProtocol;
+              const recoverImages = combined && !control.signal.aborted && (textContextFull || skipReason === 'tool-template-unsupported');
               const segment = comparison || combined ? { runtimeSegment } : {};
               if (!skipReason) {
                 activeSnapshot.modelErrors.push({ modelIndex, lane, ...segment, error: errorMessage });
@@ -600,7 +603,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                 if (trialsByStep.has(step.id)) {
                   continue;
                 }
-                if (combined && step.vision && skipReason === 'tool-template-unsupported' && !control.signal.aborted) {
+                if (step.vision && recoverImages) {
                   imageSteps.push(step);
                   continue;
                 }
