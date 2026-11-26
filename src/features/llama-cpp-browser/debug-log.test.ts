@@ -50,6 +50,32 @@ describe('private browser diagnostics', () => {
     expect(listener.mock.calls).toEqual(expected.map(diagnostic => [{ diagnostic }]));
   });
 
+  it('observes native base and SWA row counts without writing to the console with debug off', () => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const listener = vi.fn();
+    const unsubscribe = subscribeDiagnostics({ listener, debug: 'off' });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        unsubscribe();
+      },
+    };
+    for (const message of [
+      'llama_kv_cache_iswa: creating non-SWA KV cache, size = 32768 cells',
+      'llama_kv_cache_iswa: creating     SWA KV cache, size = 1280 cells\n',
+      'llama_kv_cache_iswa: creating SWA KV cache, size = 9007199254740992 cells',
+      `\
+llama_kv_cache_iswa: creating SWA KV cache, size = 1280 cells
+private`,
+    ]) {
+      logNativeDiagnostic({ message });
+    }
+    expect(listener.mock.calls).toEqual([
+      [{ diagnostic: { event: 'native-info', nativeMetric: 'kv_base_cells', nativeValue: 32768 } }],
+      [{ diagnostic: { event: 'native-info', nativeMetric: 'kv_swa_cells', nativeValue: 1280 } }],
+    ]);
+    expect(debug).not.toHaveBeenCalled();
+  });
+
   it.each([
     undefined, 128, {},
     'llama_kv_cache: private device KV buffer size = 128.00 MiB',

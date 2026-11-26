@@ -32,6 +32,11 @@ export const backendCensusSchema = z.object({
     type: z.string().max(96),
     shape: z.array(z.number().int().nonnegative()).length(4),
     inputs: z.array(z.object({ type: z.string().max(96), shape: z.array(z.number().int().nonnegative()).length(4) }).strict()).max(2),
+    sourceWeight: z.object({
+      name: z.string().max(96),
+      buffer: z.string().max(160),
+      storage: z.enum(['host', 'device', 'unknown']),
+    }).strict().optional(),
     buffer: z.string().max(160),
     storage: z.enum(['host', 'device', 'unknown']),
     webgpuSupport: z.enum(['supported', 'unsupported', 'unavailable']),

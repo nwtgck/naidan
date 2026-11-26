@@ -573,7 +573,7 @@ export class ImportExportService {
       await writer.addFile({
         name: path,
         modifiedAt,
-        compression: 'store',
+        compression: 'deflate',
         stream: createAbortableByteStream({ stream, signal: abort.signal, onCancel: undefined }),
       });
     };

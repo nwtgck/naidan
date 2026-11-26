@@ -1,0 +1,1 @@
+export const llamaCppDiagnostics__swa_cache_url_conflict = ({ parameters }: { parameters: string }): string => `SWA A/B não pode ser usado com estes parâmetros da URL: ${parameters}. Remova-os ou redefina as configurações.`;

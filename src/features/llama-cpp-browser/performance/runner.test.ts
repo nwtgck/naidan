@@ -4,12 +4,14 @@ import type { LlamaCppBrowserService, LlamaCppPerformanceScope } from '@/feature
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { performanceEnvironment, performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import { createPerformanceRunner } from './runner';
+import { createPerformancePlan } from './plan';
 import { maximumExecutionIntervals, planSchema, snapshotSchema, type MeasurementMode } from './types';
 import { summarizePerformance, performanceFindings } from './summary';
 import type { Q8DiagnosticClient } from './q8-diagnostic-worker-types';
 
-function setup({ models = 1, diagnostics = 'none', mode, repeats = 1 }: { repeats?: number, models?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode } = {}) {
-  const plan = performancePlan({ models, diagnostics, mode, repeats });
+function setup({ models = 1, diagnostics = 'none', mode, repeats = 1, workload, q2Placement, swaCache }: { repeats?: number, models?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode, workload?: 'baseline' | 'tool-continuation', q2Placement?: 'ab', swaCache?: 'ab' } = {}) {
+  const original = performancePlan({ models, diagnostics, mode, repeats, workload });
+  const plan = q2Placement === undefined && swaCache === undefined ? original : createPerformancePlan({ ...original, settings: { ...original.settings, q2Placement, swaCache } });
   const order: string[] = [];
   let clock = 0, hidden = false;
   const generate = vi.fn<LlamaCppPerformanceScope['generate']>(async ({ input, sequence, onEvent, onSummary }) => {
@@ -68,6 +70,169 @@ function setup({ models = 1, diagnostics = 'none', mode, repeats = 1 }: { repeat
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+it('isolates SWA cache capacity by scope and measures the real long-prompt continuation in each arm', async () => {
+  const test = setup({ swaCache: 'ab' });
+  await test.start();
+  expect(test.order).toEqual([
+    'acquire', ...Array<string>(5).fill('user/m0'), 'release',
+    'acquire', ...Array<string>(5).fill('user/m0'), 'release',
+  ]);
+  expect(test.service.runPerformanceOperation.mock.calls.map(([{ options }]) => options.profile)).toEqual(['webgpu-wasm64-jspi', 'webgpu-wasm64-jspi']);
+  const calls = test.generate.mock.calls.map(([{ input, sequence, observation, swaCacheMode }]) => ({ input, sequence, observation, swaCacheMode }));
+  const full = calls.slice(0, 5);
+  expect(full.map(call => call.swaCacheMode)).toEqual(Array<string>(5).fill('full'));
+  expect(calls.slice(5)).toEqual(full.map(call => ({ ...call, swaCacheMode: 'compact' })));
+  expect(full.map(call => call.sequence)).toEqual(['fresh', 'fresh', 'fresh', 'continue', 'fresh']);
+  expect(full.every(call => call.observation === undefined)).toBe(true);
+  expect(full[3]?.input.messages.slice(0, 2)).toMatchObject([full[2]!.input.messages[0]!, { role: 'assistant', content: 'answer' }]);
+  const snapshot = snapshotSchema.parse(test.runner.snapshot());
+  expect(summarizePerformance({ snapshot }).filter(row => row.scenario === 'continuation')).toMatchObject([
+    { swaCacheMode: 'full', reusedTokens: 32 }, { swaCacheMode: 'compact', reusedTokens: 32 },
+  ]);
+  expect(performanceFindings({ snapshot }).map(row => row.swaCacheMode)).toEqual(['full', 'compact']);
+});
+
+describe('Q2 placement comparison', () => {
+  it('uses fresh scopes with matching requests and a separate final placement observation', async () => {
+    const test = setup({ mode: 'both', q2Placement: 'ab' });
+    await test.start();
+    expect(test.order).toEqual([
+      'acquire', ...Array<string>(5).fill('user/m0'), 'release',
+      'acquire', ...Array<string>(5).fill('user/m0'), 'release',
+    ]);
+    expect(test.service.runPerformanceOperation.mock.calls.map(([{ options }]) => options.profile)).toEqual(['webgpu-wasm64-jspi', 'webgpu-wasm64-jspi']);
+    const args = test.generate.mock.calls.map(([{ input, observation, sequence, q2Placement }]) => ({ input, observation, sequence, q2Placement }));
+    const [baseline, gpu] = [args.slice(0, 5), args.slice(5)];
+    expect(baseline.map(value => value.q2Placement)).toEqual(Array<string>(5).fill('baseline'));
+    expect(gpu).toEqual(baseline.map(value => ({ ...value, q2Placement: 'gpu' })));
+    expect(gpu.map(value => value.observation)).toEqual([undefined, undefined, undefined, undefined, 'placement']);
+    expect(gpu.every(value => value.sequence === 'fresh')).toBe(true);
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    const summary = summarizePerformance({ snapshot });
+    expect(summary).toHaveLength(8);
+    expect(summary.map(group => group.q2Placement)).toEqual(['baseline', 'baseline', 'baseline', 'baseline', 'gpu', 'gpu', 'gpu', 'gpu']);
+    const findings = performanceFindings({ snapshot });
+    expect(findings.map(row => [row.q2Placement, row.beforeAttempt, row.afterAttempt])).toEqual([
+      ['baseline', snapshot.trials[1]?.id, snapshot.trials[3]?.id],
+      ['gpu', snapshot.trials[6]?.id, snapshot.trials[8]?.id],
+    ]);
+  });
+
+  it('archives an unsupported arm and a failed placement diagnostic while retaining other scopes', async () => {
+    const test = setup({ models: 2, q2Placement: 'ab' });
+    const ordinary = test.generate.getMockImplementation()!;
+    test.generate.mockImplementation(async args => {
+      if (args.input.modelId === 'user/m0' && args.q2Placement === 'baseline') {
+        throw new Error('Q2 placement requires a newer runtime');
+      }
+      if (args.input.modelId === 'user/m1' && args.q2Placement === 'gpu' && args.observation === 'placement') {
+        throw new Error('Placement census unavailable');
+      }
+      return ordinary(args);
+    });
+    await test.start();
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(test.service.runPerformanceOperation).toHaveBeenCalledTimes(4);
+    expect(snapshot.status).toBe('completed');
+    expect(snapshot.modelErrors).toEqual([
+      { modelIndex: 0, lane: 'q2-baseline', runtimeSegment: 0, error: 'Q2 placement requires a newer runtime' },
+      { modelIndex: 1, lane: 'q2-gpu', runtimeSegment: 0, error: 'Placement census unavailable' },
+    ]);
+    expect(snapshot.trials.map(trial => trial.status)).toEqual([
+      'failed', 'skipped', 'skipped', 'skipped', 'skipped',
+      ...Array<string>(14).fill('succeeded'), 'failed',
+    ]);
+    expect(snapshot.trials[1]).toMatchObject({ lane: 'q2-baseline', runtimeSegment: 0, error: 'Q2 placement requires a newer runtime' });
+    expect(summarizePerformance({ snapshot }).filter(group => group.modelIndex === 1 && group.q2Placement === 'gpu')).toHaveLength(4);
+  });
+});
+
+describe('tool result continuation measurement', () => {
+  const rawArguments = `{"passage":"${'Text in the archive. '.repeat(24)}","label": "archive"}`;
+  const call = { id: '', type: 'function' as const, function: { name: 'record_sample', arguments: rawArguments } };
+
+  it('replays actual arguments byte for byte and sends the short result in the same runtime', async () => {
+    const test = setup({ workload: 'tool-continuation' });
+    const ordinary = test.generate.getMockImplementation()!;
+    test.generate.mockImplementation(async ({ input, sequence, onSummary, onEvent, ...rest }) => {
+      if (input.tools && sequence === 'fresh') {
+        onSummary({ diagnostic: performanceReport() });
+        return { content: '', reasoningContent: 'choose the tool', toolCalls: [call], finishReason: 'stop' };
+      }
+      return ordinary({ input, sequence, onSummary, onEvent, ...rest });
+    });
+    await test.start();
+
+    expect(test.service.runPerformanceOperation).toHaveBeenCalledOnce();
+    expect(test.generate).toHaveBeenCalledTimes(7);
+    expect(test.generate.mock.calls.slice(0, 5).every(([{ input }]) => input.tools === undefined)).toBe(true);
+    const [preparation, continuation] = test.generate.mock.calls.slice(-2).map(([args]) => args);
+    expect(continuation).toMatchObject({
+      sequence: 'continue',
+      input: {
+        tools: preparation!.input.tools,
+        debug: 'off',
+        messages: [
+          preparation!.input.messages[0],
+          { role: 'assistant', content: '', reasoning_content: 'choose the tool', tool_calls: [{ ...call, id: 'perfcall1' }] },
+          { role: 'tool', content: '{"ok":true}', name: 'record_sample', tool_call_id: 'perfcall1' },
+        ],
+      },
+    });
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.trials.at(-1)).toMatchObject({
+      runtimeSegment: 0,
+      status: 'succeeded',
+      input: continuation!.input.messages,
+      tools: continuation!.input.tools,
+      firstReceivedMs: 100,
+      firstReasoningMs: 100,
+      firstTextMs: 200,
+      summary: { performance: { reusedTokens: 32 } },
+    });
+    expect(summarizePerformance({ snapshot }).map(group => group.scenario)).toContain('tool-continuation');
+    expect(summarizePerformance({ snapshot }).map(group => group.scenario)).not.toContain('tool-call');
+  });
+
+  it.each(['no call', 'invalid arguments', 'unfinished call'] as const)('preserves baseline trials and skips the result for %s', async kind => {
+    const test = setup({ workload: 'tool-continuation' });
+    const ordinary = test.generate.getMockImplementation()!;
+    test.generate.mockImplementation(async ({ input, ...rest }) => {
+      const output = await ordinary({ input, ...rest });
+      if (!input.tools || kind === 'no call') {
+        return output;
+      }
+      return kind === 'invalid arguments'
+        ? { ...output, toolCalls: [{ ...call, function: { ...call.function, arguments: '{"label": "archive"}' } }] }
+        : { ...output, toolCalls: [call], finishReason: 'length' };
+    });
+    await test.start();
+
+    expect(test.generate).toHaveBeenCalledTimes(6);
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.modelErrors).toEqual([]);
+    expect(snapshot.trials.slice(0, -1).every(trial => trial.status === 'succeeded')).toBe(true);
+    expect(snapshot.trials.at(-1)).toMatchObject({ status: 'skipped', skipReason: 'no-usable-tool-call' });
+  });
+
+  it('keeps measuring the next model if the current template rejects tool input', async () => {
+    const test = setup({ models: 2, workload: 'tool-continuation' });
+    const ordinary = test.generate.getMockImplementation()!;
+    test.generate.mockImplementation(async ({ input, ...rest }) => {
+      if (input.modelId === 'user/m0' && input.tools) {
+        throw new LlamaCppBrowserError({ code: 'template-unsupported' });
+      }
+      return ordinary({ input, ...rest });
+    });
+    await test.start();
+
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.modelErrors).toEqual([]);
+    expect(snapshot.trials.filter(trial => trial.skipReason === 'tool-template-unsupported').map(trial => trial.modelIndex)).toEqual([0, 0]);
+    expect(snapshot.trials.filter(trial => trial.modelIndex === 1 && trial.status === 'succeeded')).toHaveLength(6);
+  });
 });
 
 function setupKernelDiagnostic({ mode, run }: { mode: MeasurementMode, run: Q8DiagnosticClient['run'] }) {

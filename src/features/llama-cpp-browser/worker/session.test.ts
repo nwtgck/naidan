@@ -7,11 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { ModelDirectory, StoredModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import type { loadProjector, loadProjectorForBackend } from './projector';
-import type { WorkerGenerateInput } from './types';
+import { workerGenerateCallSchema, type WorkerGenerateInput } from './types';
 import * as modelReadModule from '@/features/llama-cpp-browser/runtime/model-read-cache';
 import * as modelFileModule from './model-file-access';
+import * as q2PlacementModule from './q2-placement';
 import type { ModelFileSource } from '@/features/llama-cpp-browser/runtime/model-file-source';
-import { prepareSession, prepareGenerationSession, prepareAudioSession, releaseSession } from './session';
+import { prepareSession, prepareGenerationSession, prepareAudioSession, prepareLiveSession, releaseSession } from './session';
 
 const host = vi.hoisted(() => ({ core: undefined as Core | undefined, directory: undefined as (Omit<ModelDirectory, 'files'> & { files: StoredModelFile[] }) | undefined, load: vi.fn<typeof loadProjector>(), loadAudio: vi.fn<typeof loadProjectorForBackend>() }));
 vi.mock('../runtime/load-runtime', () => ({ loadRuntime: async () => host.core }));
@@ -92,6 +93,49 @@ beforeEach(() => {
 
 afterEach(async () => {
   await releaseSession({ releaseRuntime: true });
+});
+
+describe('Q2 placement measurement sessions', () => {
+  it('leaves ordinary requests alone, inspects both arms, and reloads on a policy change', async () => {
+    const device = { buft: 30n, maxAllocation: 268435456n };
+    using lookup = vi.spyOn(q2PlacementModule, 'resolveQ2PlacementDevice').mockResolvedValue(device);
+    using inspect = vi.spyOn(q2PlacementModule, 'inspectQ2Placement').mockResolvedValue(['blk.1.ffn_down_exps.weight']);
+    using overrides = vi.spyOn(q2PlacementModule, 'setQ2PlacementOverrides').mockImplementation(() => {});
+    using mount = vi.spyOn(readOnlyModule, 'mountReadOnlyFile').mockImplementation(({ path }) => ({ path, remove: () => {} }));
+    const load = async ({ measurement }: { measurement: WorkerGenerateInput['measurement'] }) => prepareGenerationSession({
+      request: { ...request({ debug: 'off' }), measurement },
+      signal: undefined,
+      onProgress: () => {},
+    });
+    await load({ measurement: undefined });
+    expect(lookup).not.toHaveBeenCalled();
+    expect(inspect).not.toHaveBeenCalled();
+    expect(overrides).not.toHaveBeenCalled();
+    await load({ measurement: { sequence: 'fresh', q2Placement: 'baseline' } });
+    await load({ measurement: { sequence: 'fresh', q2Placement: 'baseline' } });
+    expect(inspect).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ device, paths: ['/models/model.gguf'] }));
+    expect(overrides).not.toHaveBeenCalled();
+    await load({ measurement: { sequence: 'fresh', q2Placement: 'gpu' } });
+    expect(lookup).toHaveBeenCalledTimes(2);
+    expect(inspect).toHaveBeenCalledTimes(2);
+    expect(overrides).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ names: ['blk.1.ffn_down_exps.weight'], buft: 30n }));
+    await load({ measurement: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(4);
+    expect(host.core!.api.llama_model_free).toHaveBeenCalledTimes(3);
+    expect(mount).toHaveBeenCalledTimes(4);
+    expect(inspect).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves the admission failure before opening weights or starting a model load', async () => {
+    using load = vi.spyOn(modelFileModule, 'openModelFileAccess');
+    await expect(prepareGenerationSession({
+      request: { ...request({ debug: 'off' }), measurement: { sequence: 'fresh', q2Placement: 'gpu' } },
+      signal: undefined,
+      onProgress: () => {},
+    })).rejects.toThrow('Q2 placement: requires a WebGPU runtime');
+    expect(load).not.toHaveBeenCalled();
+    expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();
+  });
 });
 
 describe('resident projector debug changes', () => {
@@ -1184,6 +1228,159 @@ describe('measurement-only loaded descriptor ownership', () => {
     await prepareSession({ request: measured, onProgress: () => {}, signal: undefined });
     expect(core.api.llama_model_n_layer).toHaveBeenCalledTimes(2);
     expect(descriptors().map(value => value.layers)).toEqual([64, 64, 32]);
+  });
+});
+
+function swaMeasurementFixture({ defaultFull, slidingWindowTokens }: { defaultFull: boolean, slidingWindowTokens: number | undefined }) {
+  const core = host.core!;
+  const fields = new Map<bigint, Uint8Array>();
+  const seen: number[] = [];
+  const bytes = core.bytes;
+  vi.spyOn(core, 'bytes').mockImplementation(args => fields.get(args.pointer) ?? bytes(args));
+  vi.mocked(core.api.llama_context_default_params).mockImplementation(async pointer => {
+    fields.set(pointer, Uint8Array.of(Number(defaultFull)));
+  });
+  vi.mocked(core.api.llama_init_from_model).mockImplementation(async (_model, pointer) => {
+    seen.push(fields.get(pointer)![0]!);
+    return BigInt(19 + seen.length);
+  });
+  vi.mocked(core.setField).mockImplementation(({ name, pointer, field, value }) => {
+    if (name === 'llama_context_params' && field === 'swa_full') {
+      fields.get(pointer)![0] = Number(value);
+    }
+  });
+  const nativeWindow = vi.mocked(core.api.llama_model_n_swa);
+  if (slidingWindowTokens === undefined) {
+    nativeWindow.mockRejectedValue(new Error('native window unavailable'));
+  } else {
+    nativeWindow.mockResolvedValue(slidingWindowTokens);
+  }
+  const prepare = ({ measurement }: { measurement: WorkerGenerateInput['measurement'] }) => prepareGenerationSession({
+    request: { ...request({ debug: 'off' }), measurement },
+    signal: undefined,
+    onProgress: () => {},
+  });
+  return { core, seen, prepare };
+}
+
+describe('SWA cache measurements', () => {
+  it('rejects incompatible arms in the wire schema before vision admission can run', () => {
+    const measurement = workerGenerateCallSchema.shape.measurement;
+    expect(measurement.safeParse({ sequence: 'fresh', swaCacheMode: 'full' }).success).toBe(true);
+    expect(measurement.safeParse({ sequence: 'continue', swaCacheMode: 'compact', observation: 'placement' }).success).toBe(true);
+    expect(measurement.safeParse({ sequence: 'fresh', swaCacheMode: 'compact', observation: 'vision' }).success).toBe(false);
+    expect(measurement.safeParse({ sequence: 'fresh', swaCacheMode: 'full', q2Placement: 'baseline' }).success).toBe(false);
+  });
+
+  it('sets both arms through native params and changes only the context when the mode changes', async () => {
+    const { core, seen, prepare } = swaMeasurementFixture({ defaultFull: true, slidingWindowTokens: 128 });
+    const first = await prepare({ measurement: undefined });
+    expect(first.slidingWindow).toBe(0);
+    expect(core.api.llama_model_n_swa).not.toHaveBeenCalled();
+    const receive = vi.fn();
+    const stop = subscribeDiagnostics({ debug: 'off', listener: receive });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        stop();
+      },
+    };
+
+    const full = await prepare({ measurement: { sequence: 'fresh', swaCacheMode: 'full' } });
+    expect(full.context).not.toBe(first.context);
+    expect(full.slidingWindow).toBe(0);
+    full.cache.tokens = [1];
+    full.cache.validity = 'valid';
+    full.cache.checkpoint = { pointer: 999n, bytes: 64, tokens: [1], positionMin: 0, positionMax: 0 };
+    using free = vi.spyOn(core, 'free');
+
+    const compact = await prepare({ measurement: { sequence: 'fresh', swaCacheMode: 'compact' } });
+    expect(compact.context).not.toBe(full.context);
+    expect(compact.slidingWindow).toBe(128);
+    expect(compact.cache).toEqual({ tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'probe-cleared' });
+    expect(core.api.llama_free).toHaveBeenNthCalledWith(1, first.context);
+    expect(core.api.llama_free).toHaveBeenNthCalledWith(2, full.context);
+    const checkpointFree = free.mock.calls.findIndex(([call]) => call.pointer === 999n);
+    expect(checkpointFree).toBeGreaterThanOrEqual(0);
+    expect(free.mock.invocationCallOrder[checkpointFree]).toBeLessThan(vi.mocked(core.api.llama_free).mock.invocationCallOrder[1]!);
+
+    compact.cache.tokens = [2];
+    compact.cache.validity = 'valid';
+    const reused = await prepare({ measurement: { sequence: 'continue', swaCacheMode: 'compact' } });
+    expect(reused.context).toBe(compact.context);
+    expect(reused.cache.tokens).toEqual([2]);
+    expect((await prepare({ measurement: undefined })).slidingWindow).toBe(0);
+    expect(seen).toEqual([1, 1, 0, 1]);
+    expect(vi.mocked(core.setField).mock.calls.filter(([call]) => call.field === 'swa_full').map(([call]) => call.value)).toEqual([1, 0]);
+    expect(core.api.llama_model_n_swa).toHaveBeenCalledOnce();
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    expect(core.api.llama_model_free).not.toHaveBeenCalled();
+    expect(core.api.llama_backend_free).not.toHaveBeenCalled();
+    expect(free.mock.calls.filter(([call]) => call.pointer === 999n)).toHaveLength(1);
+    expect(receive.mock.calls.flatMap(([{ diagnostic }]) => diagnostic.event === 'native-info' && diagnostic.stage === 'session' ? [diagnostic.slidingWindowTokens] : [])).toEqual([0, 128, 128]);
+  });
+
+  it('keeps an ordinary compact native default and explicitly overrides it for the full arm', async () => {
+    const { core, seen, prepare } = swaMeasurementFixture({ defaultFull: false, slidingWindowTokens: 128 });
+    expect((await prepare({ measurement: undefined })).slidingWindow).toBe(128);
+    expect((await prepare({ measurement: { sequence: 'fresh', swaCacheMode: 'full' } })).slidingWindow).toBe(0);
+    expect((await prepare({ measurement: undefined })).slidingWindow).toBe(128);
+    expect(seen).toEqual([0, 1, 0]);
+    expect(vi.mocked(core.setField).mock.calls.filter(([call]) => call.field === 'swa_full').map(([call]) => call.value)).toEqual([1]);
+  });
+
+  it.each([0, undefined])('rejects both arms for a native sliding window of %s before releasing the current context', async slidingWindowTokens => {
+    const { core, prepare } = swaMeasurementFixture({ defaultFull: true, slidingWindowTokens });
+    const first = await prepare({ measurement: undefined });
+    first.cache.validity = 'valid';
+    first.cache.checkpoint = { pointer: 999n, bytes: 64, tokens: [1], positionMin: 0, positionMax: 0 };
+    using free = vi.spyOn(core, 'free');
+    for (const swaCacheMode of ['full', 'compact'] as const) {
+      await expect(prepare({ measurement: { sequence: 'fresh', swaCacheMode } })).rejects.toThrow('unsupported-input');
+    }
+    expect(first.cache.validity).toBe('valid');
+    expect(first.cache.checkpoint?.pointer).toBe(999n);
+    expect(free).not.toHaveBeenCalledWith({ pointer: 999n });
+    expect(core.api.llama_init_from_model).toHaveBeenCalledOnce();
+    expect(core.api.llama_free).not.toHaveBeenCalled();
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+  });
+
+  it('rejects incompatible measurements before replacing the context or loading a projector', async () => {
+    const { core, prepare } = swaMeasurementFixture({ defaultFull: true, slidingWindowTokens: 128 });
+    const first = await prepare({ measurement: undefined });
+    first.cache.validity = 'valid';
+    const input = request({ debug: 'off' });
+    input.measurement = { sequence: 'fresh', swaCacheMode: 'compact' };
+    const named = { request: input, signal: undefined, onProgress: () => {} };
+    await expect(prepareLiveSession(named)).rejects.toThrow('unsupported-input');
+    await expect(prepareAudioSession({ ...named, contextTokens: 4096, audioBackend: 'profile' })).rejects.toThrow('unsupported-input');
+    await expect(prepareSession(named)).rejects.toThrow('unsupported-input');
+    await expect(prepareGenerationSession({ ...named, request: { ...input, messages: [{ role: 'user', content: [{ type: 'image', blob: new Blob(['image']) }] }] } })).rejects.toThrow('unsupported-input');
+    await expect(prepare({ measurement: { ...input.measurement, observation: 'vision' } })).rejects.toThrow('unsupported-input');
+    await expect(prepare({ measurement: { ...input.measurement, q2Placement: 'gpu' } })).rejects.toThrow('unsupported-input');
+    expect(first.cache.validity).toBe('valid');
+    expect(core.api.llama_model_n_swa).not.toHaveBeenCalled();
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    expect(core.api.llama_free).not.toHaveBeenCalled();
+    expect(host.load).not.toHaveBeenCalled();
+    expect(host.loadAudio).not.toHaveBeenCalled();
+  });
+
+  it('rejects an incompatible native field before discarding the current context', async () => {
+    const { core, prepare } = swaMeasurementFixture({ defaultFull: true, slidingWindowTokens: 128 });
+    const first = await prepare({ measurement: undefined });
+    using field = vi.spyOn(core, 'fieldLayout').mockReturnValue({ kind: 'boolean', size: 4, offset: 0n });
+    await expect(prepare({ measurement: { sequence: 'fresh', swaCacheMode: 'full' } })).rejects.toThrow('unsupported-input');
+    expect(field).toHaveBeenCalledOnce();
+    expect(core.api.llama_free).not.toHaveBeenCalled();
+    expect((await prepare({ measurement: undefined })).context).toBe(first.context);
+  });
+
+  it('stops before context creation when the native parameter does not reflect the arm', async () => {
+    const { core, prepare, seen } = swaMeasurementFixture({ defaultFull: true, slidingWindowTokens: 128 });
+    vi.mocked(core.setField).mockImplementation(() => {});
+    await expect(prepare({ measurement: { sequence: 'fresh', swaCacheMode: 'compact' } })).rejects.toThrow('did not reach the native context parameters');
+    expect(seen).toEqual([]);
   });
 });
 

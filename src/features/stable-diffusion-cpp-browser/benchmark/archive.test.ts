@@ -1,11 +1,19 @@
 // @vitest-environment node
 import { expect, it } from 'vitest';
 import JSZip from 'jszip';
-import { benchmarkArchiveBlob, benchmarkManifest, benchmarkAggregate, createBenchmarkArchive } from './archive';
+import { createBlobZipSource, createWebZipCompressionCodec, StreamingZipReader } from '@/utils/zip-stream';
+import { benchmarkManifest, benchmarkAggregate, createBenchmarkArchive } from './archive';
 import { createBenchmarkRunner } from './runner';
 import { metricFixture, planFixture } from './test-fixtures';
 import { manifestSchema } from './types';
 import type { BenchmarkSnapshot } from './types';
+
+async function readBenchmarkArchive({ snapshot, includeInputImages, exportedAt }: { snapshot: BenchmarkSnapshot, includeInputImages: 'omit' | 'include', exportedAt: string }): Promise<Blob> {
+  const archive = createBenchmarkArchive({ snapshot, includePrompts: false, includeInputImages, exportedAt, signal: new AbortController().signal });
+  const blob = await new Response(archive.stream).blob();
+  await archive.completed;
+  return blob;
+}
 
 async function snapshotFixture(): Promise<BenchmarkSnapshot> {
   let calls = 0;
@@ -47,7 +55,16 @@ return runner.snapshot()!;
 
 it('exports validated immutable settings, per-model directories and real PNG bytes; no filename becomes a ZIP path', async () => {
   const snapshot = await snapshotFixture();
-  const blob = await benchmarkArchiveBlob({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T01:00:00.000Z', signal: new AbortController().signal });
+  const blob = await readBenchmarkArchive({ snapshot, includeInputImages: 'omit', exportedAt: '2026-09-27T01:00:00.000Z' });
+  const reader = new StreamingZipReader({ source: createBlobZipSource({ blob }), compressionCodec: createWebZipCompressionCodec() });
+  await using _cleanup = {
+    async [Symbol.asyncDispose]() {
+      await reader.close();
+    },
+  };
+  for await (const entry of reader.entries()) {
+    expect(entry.compression).toBe('deflate');
+  }
   const zip = await JSZip.loadAsync(await blob.arrayBuffer(), { checkCRC32: true });
   const manifestText = await zip.file('manifest.json')!.async('string');
   const manifest = manifestSchema.parse(JSON.parse(manifestText));
@@ -125,24 +142,60 @@ it('does not reread or hash any model weights for export', async () => {
       });
     }
   }
-  await expect(benchmarkArchiveBlob({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z', signal: new AbortController().signal })).resolves.toBeInstanceOf(Blob);
+  await expect(readBenchmarkArchive({ snapshot, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z' })).resolves.toBeInstanceOf(Blob);
 });
 
 it('settles producer and consumer cancellation without orphaned ZIP work', async () => {
   const snapshot = await snapshotFixture();
-  const archive = createBenchmarkArchive({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z' });
+  const options = { snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z' } as const;
+  const archive = createBenchmarkArchive({ ...options, signal: new AbortController().signal });
   await archive.stream.cancel(new Error('cancel export'));
   await expect(archive.completed).rejects.toThrow();
   const stop = new AbortController();
   stop.abort();
-  await expect(benchmarkArchiveBlob({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z', signal: stop.signal })).rejects.toMatchObject({ name: 'AbortError' });
+  expect(() => createBenchmarkArchive({ ...options, signal: stop.signal })).toThrow(stop.signal.reason);
+});
+
+it('streams ZIP bytes while an optional image read is pending and cancels that read on abort', async () => {
+  const snapshot = await snapshotFixture();
+  const stop = new AbortController();
+  const imagePull = Promise.withResolvers<void>();
+  const cancelled = Promise.withResolvers<unknown>();
+  const file = new File(['input'], 'input.png', { type: 'image/png' });
+  Object.defineProperty(file, 'stream', {
+    value: () => new ReadableStream<Uint8Array>({
+      pull() {
+        imagePull.resolve();
+        return new Promise<void>(() => {});
+      },
+      cancel: cancelled.resolve,
+    }),
+  });
+  snapshot.plan.models[0]!.request.imageInputs = { initImage: file, strength: 0.5, referenceImages: [] };
+  const archive = createBenchmarkArchive({ snapshot, includePrompts: false, includeInputImages: 'include', exportedAt: '2026-09-27T00:00:00Z', signal: stop.signal });
+  const reader = archive.stream.getReader();
+  using _release = {
+    [Symbol.dispose]() {
+      reader.releaseLock();
+    },
+  };
+  expect(await reader.read()).toMatchObject({ done: false, value: expect.any(Uint8Array) });
+  const remaining = (async () => {
+    while (!(await reader.read()).done) { /* keep consuming */ }
+  })();
+  void remaining.catch(() => undefined);
+  await imagePull.promise;
+  stop.abort();
+  await expect(remaining).rejects.toMatchObject({ name: 'AbortError' });
+  await expect(archive.completed).rejects.toMatchObject({ name: 'AbortError' });
+  await expect(cancelled.promise).resolves.toBe(stop.signal.reason);
 });
 
 it.each(['omit', 'include'] as const)('exports input metadata and original bytes only with explicit include: %s', async inputImages => {
   const snapshot = await snapshotFixture();
   const file = new File(['original input bytes'], '../photo.png', { type: 'image/png', lastModified: 42 });
   snapshot.plan.models[0]!.request.imageInputs = { initImage: file, strength: 0.4, referenceImages: [file] };
-  const blob = await benchmarkArchiveBlob({ snapshot, includePrompts: false, includeInputImages: inputImages, exportedAt: '2026-09-27T01:00:00.000Z', signal: new AbortController().signal });
+  const blob = await readBenchmarkArchive({ snapshot, includeInputImages: inputImages, exportedAt: '2026-09-27T01:00:00.000Z' });
   const zip = await JSZip.loadAsync(await blob.arrayBuffer(), { checkCRC32: true });
   const manifest = manifestSchema.parse(JSON.parse(await zip.file('manifest.json')!.async('string')));
   expect(manifest.models[0]!.request.imageInputs).toMatchObject({ strength: 0.4, initImage: { path: 'photo.png', bytes: 20, mime: 'image/png' }, bytesIncluded: inputImages === 'include' });
@@ -166,7 +219,7 @@ it('re-exports the same completed measurement without source images and does not
   snapshot.plan.models[0]!.request.imageInputs = { initImage: undefined, strength: 0.75, referenceImages: [file] };
   const originalRecords = JSON.stringify(snapshot.runs.map(run => run.record));
   for (const includeInputImages of ['include', 'omit'] as const) {
-    const blob = await benchmarkArchiveBlob({ snapshot, includePrompts: false, includeInputImages, exportedAt: '2026-09-27T01:00:00.000Z', signal: new AbortController().signal });
+    const blob = await readBenchmarkArchive({ snapshot, includeInputImages, exportedAt: '2026-09-27T01:00:00.000Z' });
     const zip = await JSZip.loadAsync(await blob.arrayBuffer());
     const manifest = manifestSchema.parse(JSON.parse(await zip.file('manifest.json')!.async('string')));
     expect(manifest.inputImages).toBe(includeInputImages);
@@ -181,7 +234,7 @@ it('re-exports the same completed measurement without source images and does not
 it('preserves optional native sampling receipts in manifest and per-run JSON without rewriting auto', async () => {
   const snapshot = await snapshotFixture();
   snapshot.runs[0]!.record.sampling = { sampler: { id: 17, name: 'native-method' }, scheduler: { id: 8, name: 'flux' } };
-  const blob = await benchmarkArchiveBlob({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: 'now', signal: new AbortController().signal });
+  const blob = await readBenchmarkArchive({ snapshot, includeInputImages: 'omit', exportedAt: 'now' });
   const zip = await JSZip.loadAsync(await blob.arrayBuffer());
   const manifest = manifestSchema.parse(JSON.parse(await zip.file('manifest.json')!.async('string')));
   expect(manifest.runs[0]!.sampling?.scheduler.name).toBe('flux');

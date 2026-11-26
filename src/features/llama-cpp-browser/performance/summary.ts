@@ -1,7 +1,9 @@
 import { observedModelExecution, modelExecutionIdentity } from './model-execution';
 import type { ModelExecution } from './model-execution-schema';
 import { isGpuProfileTrial } from './gpu-profile-summary';
-import type { PerformanceSnapshot, PerformanceTrial } from './types';
+import { q2PlacementForLane } from './plan';
+import { swaCacheModeForLane } from './swa-cache';
+import type { PerformanceSnapshot, PerformanceStep, PerformanceTrial } from './types';
 
 export function trialRates({ trial }: { trial: PerformanceTrial }) {
   const metrics = trial.summary?.performance;
@@ -30,7 +32,7 @@ function median({ values }: { values: number[] }): number | undefined {
 export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapshot }) {
   const stepsById = new Map(snapshot.plan.steps.map(step => [step.id, step]));
   const trialsByStep = new Map(snapshot.trials.toReversed().map(trial => [trial.stepId, trial]));
-  const groups = new Map<string, { modelExecution: ModelExecution | undefined, modelIndex: number, runtimeSegment: number, runtimeRestarted: boolean, scenario: string, position: string, profile: string, contextTokens: number | undefined,
+  const groups = new Map<string, { modelExecution: ModelExecution | undefined, modelIndex: number, q2Placement?: 'baseline' | 'gpu', swaCacheMode?: 'full' | 'compact', runtimeSegment: number, runtimeRestarted: boolean, scenario: string, position: string, profile: string, contextTokens: number | undefined,
     batchTokens: number | undefined, finishReason: string | undefined, parentFinishReason: string | undefined, promptTokens: number | undefined,
     reusedTokens: number | undefined, generatedTokens: number | undefined, vision: { fixtureSha256: string | undefined, residency: 'cold' | 'warm', storage: NonNullable<NonNullable<PerformanceTrial['summary']>['performance']>['visionStorage'], files: NonNullable<NonNullable<NonNullable<PerformanceTrial['summary']>['performance']>['vision']>['files'] | undefined } | undefined, trials: PerformanceTrial[] }>();
   for (const trial of snapshot.trials) {
@@ -39,9 +41,13 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
       continue;
     }
     const metrics = trial.summary?.performance;
+    const q2Placement = q2PlacementForLane({ lane: step.lane });
+    const swaCacheMode = swaCacheModeForLane({ lane: step.lane });
     const condition = {
       modelExecution: observedModelExecution({ summary: trial.summary }),
       modelIndex: trial.modelIndex,
+      ...(q2Placement === undefined ? {} : { q2Placement }),
+      ...(swaCacheMode === undefined ? {} : { swaCacheMode }),
       runtimeSegment: trial.runtimeSegment ?? 0,
       runtimeRestarted: trial.warnings.includes('runtime-restarted'),
       scenario: step.vision ? `image-${step.vision.residency}` : step.scenario,
@@ -105,9 +111,12 @@ function warmPreparationEvidence({ trial, position }: { trial: PerformanceTrial,
 export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapshot }) {
   const stepsById = new Map(snapshot.plan.steps.map(step => [step.id, step]));
   const trialsByStep = new Map(snapshot.trials.toReversed().map(trial => [trial.stepId, trial]));
-  const afterSteps = new Map(snapshot.plan.steps.filter(step => step.position === 'after' && step.lane !== 'gpu-profile').toReversed().map(step => [`${step.modelIndex}/${step.repetition}`, step]));
+  const comparisonKey = ({ step }: { step: PerformanceStep }) => `${step.modelIndex}/${step.lane ?? 'standard'}/${step.repetition}`;
+  const afterSteps = new Map(snapshot.plan.steps.filter(step => step.position === 'after' && step.lane !== 'gpu-profile').toReversed().map(step => [comparisonKey({ step }), step]));
   return snapshot.plan.steps.filter(step => step.position === 'before' && step.lane !== 'gpu-profile').map(beforeStep => {
-    const afterStep = afterSteps.get(`${beforeStep.modelIndex}/${beforeStep.repetition}`);
+    const afterStep = afterSteps.get(comparisonKey({ step: beforeStep }));
+    const q2Placement = q2PlacementForLane({ lane: beforeStep.lane });
+    const swaCacheMode = swaCacheModeForLane({ lane: beforeStep.lane });
     const before = trialsByStep.get(beforeStep.id);
     const after = afterStep ? trialsByStep.get(afterStep.id) : undefined;
     const reasons: string[] = [], uncertainties: string[] = [];
@@ -162,6 +171,8 @@ export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapsho
     }
     return {
       modelIndex: beforeStep.modelIndex,
+      ...(q2Placement === undefined ? {} : { q2Placement }),
+      ...(swaCacheMode === undefined ? {} : { swaCacheMode }),
       repetition: beforeStep.repetition,
       beforeAttempt: before?.id,
       beforeRuntimeSegment: before?.runtimeSegment,

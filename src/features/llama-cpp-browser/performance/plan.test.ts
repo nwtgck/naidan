@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { performancePlan } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
-import { createPerformancePlan } from './plan';
+import { createCombinedPerformancePlan, createPerformancePlan, createVisionPerformancePlan } from './plan';
 import { planSchema } from './types';
 
 describe('versioned English performance workload', () => {
@@ -27,17 +27,22 @@ describe('versioned English performance workload', () => {
   });
 });
 
-it('uses six bounded calls with separate placement and a measured continuation parent', () => {
+it('keeps the bounded baseline and adds a tool round trip once per model', () => {
   const source = performancePlan();
   const plan = createPerformancePlan({ ...source, settings: { ...source.settings, repeats: 1, maxTokens: 64, diagnostics: 'placement' } });
-  expect(plan.steps.map(step => [step.scenario, step.position, step.maxTokens])).toEqual([
+  expect(plan.steps.slice(0, 6).map(step => [step.scenario, step.position, step.maxTokens])).toEqual([
     ['initial', 'initial', 8], ['short', 'before', 64], ['continuation', 'workload', 16],
     ['long', 'workload', 8], ['short', 'after', 64], ['placement', 'diagnostic', 2],
   ]);
-  expect(plan.steps.reduce((sum, step) => sum + step.maxTokens, 0)).toBe(162);
+  expect(plan.steps.slice(0, 6).reduce((sum, step) => sum + step.maxTokens, 0)).toBe(162);
   expect(plan.steps[2]!.dependsOn).toBe(plan.steps[1]!.id);
   expect(plan.steps[4]!.prompt).toBe(plan.steps[1]!.prompt);
   expect(plan.steps[4]!.sequence).toBe('fresh');
+  expect(plan.protocol).toBe('targeted-text-en-v5');
+  expect(plan.steps.slice(6)).toMatchObject([
+    { scenario: 'tool-call', sequence: 'fresh', role: 'preparation', maxTokens: 512 },
+    { scenario: 'tool-continuation', sequence: 'continue', role: 'measurement', dependsOn: plan.steps[6]!.id, maxTokens: 32 },
+  ]);
 });
 
 describe('standard and profiling workload lanes', () => {
@@ -62,4 +67,97 @@ describe('standard and profiling workload lanes', () => {
       }
     }
   });
+});
+
+it('requires identical input in both Q2 lanes and a placement observation after the speed trials', () => {
+  const source = performancePlan({ models: 2, repeats: 2, mode: 'both' });
+  const plan = createPerformancePlan({ ...source, settings: { ...source.settings, q2Placement: 'ab' }, options: { profile: 'cpu-wasm32' } });
+  expect(plan.options.profile).toBe('webgpu-wasm64-jspi');
+  expect(plan.steps).toHaveLength(32);
+  for (const modelIndex of [0, 1]) {
+    const steps = plan.steps.filter(step => step.modelIndex === modelIndex);
+    expect(steps.map(step => [step.lane, step.scenario])).toEqual(['q2-baseline', 'q2-gpu'].flatMap(lane =>
+      ['initial', 'short', 'long', 'short', 'short', 'long', 'short', 'placement'].map(scenario => [lane, scenario])));
+  }
+  expect(planSchema.safeParse({ ...plan, steps: plan.steps.slice(1) }).success).toBe(false);
+  expect(planSchema.safeParse({
+    ...plan,
+    steps: plan.steps.map((step, index) => index === 8 ? { ...step, prompt: 'different input' } : step),
+  }).success).toBe(false);
+  expect(planSchema.safeParse({ ...plan, options: { profile: 'cpu-wasm32' } }).success).toBe(false);
+});
+
+it('compares both SWA modes with identical ordered long inputs and lane-local continuations', () => {
+  const source = performancePlan({ models: 2, repeats: 2 });
+  const plan = createPerformancePlan({ ...source, settings: { ...source.settings, swaCache: 'ab' } });
+  expect(plan).toMatchObject({ protocol: 'swa-cache-en-v1', settings: { mode: 'standard', diagnostics: 'none', swaCache: 'ab' }, options: { profile: 'webgpu-wasm64-jspi' } });
+  expect(plan.steps).toHaveLength(36);
+  for (const modelIndex of [0, 1]) {
+    const full = plan.steps.filter(step => step.modelIndex === modelIndex && step.lane === 'swa-full');
+    const compact = plan.steps.filter(step => step.modelIndex === modelIndex && step.lane === 'swa-compact');
+    expect(full.map(step => step.scenario)).toEqual(['initial', 'short', 'long', 'continuation', 'short', 'short', 'long', 'continuation', 'short']);
+    expect(full[2]?.prompt).toContain('Week 32:');
+    expect(full[3]?.dependsOn).toBe(full[2]?.id);
+    expect(compact[3]?.dependsOn).toBe(compact[2]?.id);
+    expect(compact.map(step => [step.scenario, step.prompt, step.maxTokens])).toEqual(full.map(step => [step.scenario, step.prompt, step.maxTokens]));
+  }
+  const steps = plan.steps.map((step, index) => index === 12 ? { ...step, dependsOn: plan.steps[2]!.id } : step);
+  expect(planSchema.safeParse({ ...plan, steps }).success).toBe(false);
+  expect(planSchema.safeParse({ ...plan, settings: { ...plan.settings, q2Placement: 'ab' } }).success).toBe(false);
+});
+
+it.each(['standard', 'gpu-profile', 'both'] as const)('keeps the tool result adjacent to its real call and in one lane in %s mode', mode => {
+  const plan = performancePlan({ models: 2, repeats: 3, mode, workload: 'tool-continuation' });
+  const pairs = plan.steps.filter(step => step.scenario === 'tool-call' || step.scenario === 'tool-continuation');
+  const lane = mode === 'gpu-profile' ? 'gpu-profile' : 'standard';
+  expect(pairs).toMatchObject([
+    { modelIndex: 0, lane, scenario: 'tool-call' },
+    { modelIndex: 0, lane, scenario: 'tool-continuation', dependsOn: pairs[0]!.id },
+    { modelIndex: 1, lane, scenario: 'tool-call' },
+    { modelIndex: 1, lane, scenario: 'tool-continuation', dependsOn: pairs[2]!.id },
+  ]);
+  expect(planSchema.safeParse({ ...plan, steps: plan.steps.filter(step => step.id !== pairs[3]!.id) }).success).toBe(false);
+});
+
+it('combines the normal text and image steps in the same model-lane order', () => {
+  const source = performancePlan({ models: 2, repeats: 2, diagnostics: 'placement', mode: 'both' });
+  const text = createPerformancePlan(source);
+  const image = createVisionPerformancePlan(source);
+  const combined = createCombinedPerformancePlan(source);
+  expect(combined.protocol).toBe('targeted-text-vision-en-v1');
+  expect(combined.visionFixture).toEqual(image.visionFixture);
+  expect(combined.steps.filter(step => !step.vision)).toEqual(text.steps);
+  expect(combined.steps.filter(step => step.vision).map(({ id: _id, ...step }) => step))
+    .toEqual(image.steps.map(({ id: _id, ...step }) => step));
+  expect(new Set(combined.steps.map(step => step.id)).size).toBe(combined.steps.length);
+  const scopes = combined.models.flatMap((_, index) => ['standard', 'gpu-profile'].map(lane =>
+    combined.steps.filter(step => step.modelIndex === index && step.lane === lane)));
+  expect(combined.steps).toEqual(scopes.flat());
+  for (const scope of scopes) {
+    expect(scope.slice(0, -3).every(step => step.vision === undefined)).toBe(true);
+    expect(scope.slice(-3).map(step => step.vision?.residency)).toEqual(['cold', 'warm', 'warm']);
+  }
+});
+
+it('rejects missing, duplicate, reordered or cross-lane combined steps', () => {
+  const plan = createCombinedPerformancePlan(performancePlan({ mode: 'both' }));
+  const [first, second, ...tail] = plan.steps;
+  const continuation = plan.steps.find(step => step.scenario === 'continuation')!;
+  const cold = plan.steps.find(step => step.vision?.residency === 'cold')!;
+  const warm = plan.steps.find(step => step.vision?.residency === 'warm')!;
+  const invalid = [
+    [second!, first!, ...tail],
+    [first!, { ...second!, id: first!.id }, ...tail],
+    plan.steps.filter(step => step !== cold),
+    plan.steps.map(step => step === cold ? warm : step === warm ? cold : step),
+    plan.steps.map(step => step === cold ? { ...step, lane: 'gpu-profile' as const } : step),
+    plan.steps.map(step => step === continuation ? { ...step, sequence: 'fresh' as const, dependsOn: undefined } : step),
+    plan.steps.map(step => step === continuation ? { ...step, dependsOn: first!.id } : step),
+  ];
+  for (const steps of invalid) {
+    expect(planSchema.safeParse({ ...plan, steps }).success).toBe(false);
+  }
+  expect(planSchema.safeParse({ ...plan, visionFixture: undefined }).success).toBe(false);
+  expect(() => createCombinedPerformancePlan({ ...plan, settings: { ...plan.settings, q2Placement: 'ab' } })).toThrow('text-only plan');
+  expect(() => createCombinedPerformancePlan({ ...plan, settings: { ...plan.settings, swaCache: 'ab' } })).toThrow('text-only plan');
 });

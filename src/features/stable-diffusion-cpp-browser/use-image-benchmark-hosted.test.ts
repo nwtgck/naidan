@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { computed, effectScope } from 'vue';
 import JSZip from 'jszip';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import * as streamDownload from '@/utils/stream-download';
 import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view.test-support';
 import { useImageBenchmark } from './use-image-benchmark-hosted';
 import { targetFixture } from './benchmark/test-fixtures';
@@ -130,6 +131,7 @@ it.each(['reuse', 'save'])('waits for the current history %s before acquiring th
 });
 
 it('clears an obsolete archive error when export succeeds after omitting unreadable input images', async () => {
+  const download = vi.spyOn(streamDownload, 'downloadReadableStream');
   const { bench } = setup();
   await bench.start();
   await bench.download();
@@ -144,6 +146,12 @@ it('clears an obsolete archive error when export succeeds after omitting unreada
   expect(bench.feedback.value).not.toBe('');
   expect(bench.exporting.value).toBe(false);
   expect(mocks.create).toHaveBeenCalledOnce();
+  expect(download).toHaveBeenLastCalledWith({
+    stream: expect.any(ReadableStream),
+    size: undefined,
+    filename: `naidan-image-benchmark-${bench.plan.value?.id}.zip`,
+    signal: expect.any(AbortSignal),
+  });
   expect((await exportedManifest()).runs[0]?.status).toBe('succeeded');
 });
 

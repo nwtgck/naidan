@@ -20,8 +20,13 @@ export const memoryDiagnosticsSchema = z.object({
     loadedModelDescriptor: loadedModelDescriptorSchema,
   }).strict(), z.object({
     observedMs: z.number().finite().nonnegative(),
-    nativeMetric: z.enum(['n_ctx', 'n_ctx_seq', 'n_batch', 'n_ubatch', 'n_seq_max', 'graph_nodes', 'graph_splits']),
+    swaCacheMode: z.enum(['full', 'compact']),
+    slidingWindowTokens: z.number().int().nonnegative(),
+  }).strict(), z.object({
+    observedMs: z.number().finite().nonnegative(),
+    nativeMetric: z.enum(['n_ctx', 'n_ctx_seq', 'n_batch', 'n_ubatch', 'n_seq_max', 'graph_nodes', 'graph_splits', 'kv_base_cells', 'kv_swa_cells']),
     nativeValue: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    contextAttempt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
     batchTokens: z.number().int().positive().max(2147483647).optional(),
     nativeSingleTokenValue: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   }).strict(), z.object({

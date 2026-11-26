@@ -176,6 +176,7 @@ export function createBackendCensus({ core, timeDecode = false, now = () => perf
           ...entry,
           shape: [...entry.shape],
           inputs: entry.inputs.map(input => ({ ...input, shape: [...input.shape] })),
+          ...(entry.sourceWeight ? { sourceWeight: { ...entry.sourceWeight } } : {}),
           examples: [...entry.examples],
           ...(entry.completionTiming ? { completionTiming: { ...entry.completionTiming } } : {}),
         })),

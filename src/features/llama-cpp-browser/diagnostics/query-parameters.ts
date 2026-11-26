@@ -83,12 +83,15 @@ export const diagnosticsQueryParameters = {
   modelIds: parameter({ key: 'model', codec: models }),
   allModels: parameter({ key: 'all-models', codec: presence }),
   modelFilter: parameter({ key: 'modelFilter', codec: text({ maximum: 200 }) }),
-  workload: parameter({ key: 'workload', codec: choice({ values: ['text', 'vision'] }) }),
+  includeText: parameter({ key: 'text', codec: flag }),
+  includeImages: parameter({ key: 'image', codec: flag }),
   mode: parameter({ key: 'mode', codec: choice({ values: measurementModeSchema.options }) }),
   repeats: parameter({ key: 'repeats', codec: integer({ minimum: 1, maximum: 5 }) }),
   maxTokens: parameter({ key: 'maxTokens', codec: integer({ minimum: 1, maximum: 512 }) }),
   timeoutMinutes: parameter({ key: 'timeoutMinutes', codec: integer({ minimum: 1, maximum: 60 }) }),
   placement: parameter({ key: 'placement', codec: flag }),
+  q2Placement: parameter({ key: 'q2Placement', codec: choice({ values: ['ab'] }) }),
+  swaCache: parameter({ key: 'swaCache', codec: choice({ values: ['ab'] }) }),
   profile: parameter({ key: 'profile', codec: choice({ values: selectableProfiles }) }),
   contextTokens: parameter({ key: 'contextTokens', codec: integer({ minimum: minimumChatContextTokens, maximum: maximumChatContextTokens }) }),
   visionBf16Storage: parameter({ key: 'visionBf16Storage', codec: choice({ values: visionBf16StorageSchema.options }) }),
@@ -142,6 +145,23 @@ export function isDiagnosticsEditValid({ patch }: { patch: DiagnosticsQueryConfi
   const encoded = serializeDiagnosticsQuery({ config: patch });
   const parsed = parseDiagnosticsQuery({ query: encoded as LocationQuery });
   return fields.every(field => patch[field] === undefined || parsed[field] !== undefined);
+}
+
+/** Identify explicit URL settings that would change the SWA comparison. */
+export function conflictingSwaCacheSettings({ config }: { config: DiagnosticsQueryConfig }): string[] {
+  if (config.swaCache === undefined) {
+    return [];
+  }
+  const { q2Placement, includeText, includeImages, mode, placement, profile } = config;
+  const conflicts = {
+    [diagnosticsQueryParameters.q2Placement.key]: q2Placement !== undefined,
+    [diagnosticsQueryParameters.includeText.key]: includeText === false,
+    [diagnosticsQueryParameters.includeImages.key]: includeImages === true,
+    [diagnosticsQueryParameters.mode.key]: mode !== undefined && mode !== 'standard',
+    [diagnosticsQueryParameters.placement.key]: placement === true,
+    [diagnosticsQueryParameters.profile.key]: profile !== undefined && profile !== 'auto' && profile !== 'webgpu-wasm64-jspi',
+  };
+  return Object.entries(conflicts).flatMap(([field, conflict]) => conflict ? [field] : []);
 }
 
 export const TEST_ONLY = {

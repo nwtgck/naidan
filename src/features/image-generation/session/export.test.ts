@@ -16,6 +16,7 @@ it('streams a readable archive containing exact source bytes and Unicode metadat
   const files = new Map<string, Uint8Array>();
   try {
     for await (const entry of reader.entries()) {
+      expect(entry.compression).toBe('deflate');
       files.set(entry.name, new Uint8Array(await new Response(await reader.openEntry({ entry })).arrayBuffer()));
     }
   } finally {
@@ -46,6 +47,10 @@ it('streams an operation result archive without session backup metadata', async 
   };
   const names = [];
   for await (const entry of reader.entries()) {
+    expect(entry.compression).toBe('deflate');
+    if (entry.name === 'images/001/01.png') {
+      expect(await new Response(await reader.openEntry({ entry })).text()).toBe('pixels');
+    }
     names.push(entry.name);
   }
   expect(names).toEqual(['manifest.json', 'images/001/01.png']);

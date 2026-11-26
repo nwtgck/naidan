@@ -57,10 +57,12 @@ export interface LlamaCppGenerationScope {
 export interface LlamaCppPerformanceScope {
   readonly signal: AbortSignal;
   readonly options: RuntimeOptions;
-  generate({ input, sequence, observation, onVisionAdmission, onEvent, onSummary, onMemoryDiagnostics, onProgress, signal }: {
+  generate({ input, sequence, observation, q2Placement, swaCacheMode, onVisionAdmission, onEvent, onSummary, onMemoryDiagnostics, onProgress, signal }: {
     input: Omit<GenerateInput, 'options'>,
     sequence: 'fresh' | 'continue',
     observation?: 'placement' | 'vision',
+    q2Placement?: 'baseline' | 'gpu',
+    swaCacheMode?: 'full' | 'compact',
     onVisionAdmission?: ({ admission }: { admission: VisionAdmission }) => void,
     onEvent: GenerationCallback,
     onSummary: ({ diagnostic }: { diagnostic: Diagnostic }) => void,
