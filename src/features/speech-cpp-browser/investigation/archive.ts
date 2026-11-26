@@ -63,8 +63,8 @@ retained trial WAVs share a 64 MiB budget. Next-trial retention uses the remaini
 budget; exhaustion stops later trials with reasons. Blob references are shared,
 never copied or fetched from URLs. Immutable export snapshots survive UI clear.
 Decoder/native/encoding buffers and buffered download fallback can coexist; this
-is not a whole-application peak-memory guarantee. ZIP uses stored, streamed entries
-with an exact byte length and a separate output limit. Cancel/source-read failure
+is not a whole-application peak-memory guarantee. ZIP compresses entries while
+streaming and enforces a separate output byte limit. Cancel/source-read failure
 fails the export, never silently omits bytes. Download completion is dispatch/EOF,
 not proven disk storage. No object URLs are created here. This is a versioned
 investigation handoff, not a ZIP import format.
@@ -275,14 +275,9 @@ function archiveEntries({ collection, options }: { collection: SpeechInvestigati
 }
 
 /** Streams an immutable v2 collection; never fetches object URLs. */
-export function createSpeechInvestigationArchive({ collection, includeInputAudio, includeInputText, signal }: { collection: SpeechInvestigationCollectionSnapshot, includeInputAudio: SpeechInvestigationExportOptions['includeInputAudio'], includeInputText: SpeechInvestigationExportOptions['includeInputText'], signal: AbortSignal }): { stream: ReadableStream<Uint8Array>, size: number, filename: string } {
+export function createSpeechInvestigationArchive({ collection, includeInputAudio, includeInputText, signal }: { collection: SpeechInvestigationCollectionSnapshot, includeInputAudio: SpeechInvestigationExportOptions['includeInputAudio'], includeInputText: SpeechInvestigationExportOptions['includeInputText'], signal: AbortSignal }): { stream: ReadableStream<Uint8Array>, filename: string } {
   signal.throwIfAborted();
   const entries = archiveEntries({ collection, options: { includeInputAudio, includeInputText } });
-  // Stored entries: local header 30, descriptor 16, central header 46, end 22.
-  const size = 22 + entries.reduce((sum, entry) => sum + entry.blob.size + 92 + 2 * new TextEncoder().encode(entry.name).length, 0);
-  if (!Number.isSafeInteger(size) || size > speechInvestigationCollectionLimits.zipBytes) {
-    throw new Error('Speech investigation ZIP exceeds its byte limit');
-  }
   const lifetime = new AbortController();
   const combined = AbortSignal.any([signal, lifetime.signal]);
   const output = createReadableZipOutput({ highWaterMarkBytes: 256 * 1024 });
@@ -293,8 +288,8 @@ export function createSpeechInvestigationArchive({ collection, includeInputAudio
       async write({ chunk }) {
         combined.throwIfAborted();
         written += chunk.byteLength;
-        if (written > size) {
-          throw new Error('Speech investigation ZIP stream exceeded its declared byte length');
+        if (written > speechInvestigationCollectionLimits.zipBytes) {
+          throw new Error('Speech investigation ZIP exceeds its byte limit');
         }
         await output.sink.write({ chunk });
       },
@@ -307,12 +302,27 @@ export function createSpeechInvestigationArchive({ collection, includeInputAudio
     try {
       for (const entry of entries) {
         combined.throwIfAborted();
-        await writer.addFile({ name: entry.name, modifiedAt: new Date(collection.capturedAt), compression: 'store', stream: createAbortableByteStream({ stream: entry.blob.stream(), signal: combined, onCancel: undefined }) });
+        // The manifest records the source size. Check it while streaming so
+        // a truncated audio read cannot produce a ZIP with misleading metadata.
+        let remaining = entry.blob.size;
+        const source = createAbortableByteStream({ stream: entry.blob.stream(), signal: combined, onCancel: undefined });
+        const stream = source.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, controller) {
+            remaining -= chunk.byteLength;
+            if (remaining < 0) {
+              throw new Error(`Speech investigation ZIP entry byte length mismatch: ${entry.name}`);
+            }
+            controller.enqueue(chunk);
+          },
+          flush() {
+            if (remaining !== 0) {
+              throw new Error(`Speech investigation ZIP entry byte length mismatch: ${entry.name}`);
+            }
+          },
+        }));
+        await writer.addFile({ name: entry.name, modifiedAt: new Date(collection.capturedAt), compression: 'deflate', stream });
       }
       await writer.finalize();
-      if (written !== size) {
-        throw new Error('Speech investigation ZIP stream did not match its declared byte length');
-      }
       await output.close();
     } catch (error) {
       lifetime.abort(error);
@@ -323,13 +333,13 @@ export function createSpeechInvestigationArchive({ collection, includeInputAudio
   })();
   // Never use an input/model name or caller-supplied path as a download filename.
   const safeId = collection.id.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
-  return exactObject<{ stream: ReadableStream<Uint8Array>, size: number, filename: string }>()({ stream, size, filename: `naidan-speech-investigation-${safeId}.zip` });
+  return exactObject<{ stream: ReadableStream<Uint8Array>, filename: string }>()({ stream, filename: `naidan-speech-investigation-${safeId}.zip` });
 }
 
 export async function downloadSpeechInvestigation({ collection, includeInputAudio, includeInputText, signal }: { collection: SpeechInvestigationCollectionSnapshot, includeInputAudio: SpeechInvestigationExportOptions['includeInputAudio'], includeInputText: SpeechInvestigationExportOptions['includeInputText'], signal: AbortSignal }): Promise<void> {
   const { downloadReadableStream } = await import('@/utils/stream-download');
   const archive = createSpeechInvestigationArchive({ collection, includeInputAudio, includeInputText, signal });
-  await downloadReadableStream({ ...archive, signal });
+  await downloadReadableStream({ ...archive, size: undefined, signal });
 }
 
 export const TEST_ONLY = {

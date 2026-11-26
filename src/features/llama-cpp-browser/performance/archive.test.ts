@@ -6,7 +6,10 @@ import { createPerformanceArchiveStream, performanceArchive } from './archive';
 import { summarizePerformance, performanceFindings, trialRates } from './summary';
 import { runtimeBuildEvidence } from './runtime-evidence';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
+import { createBlobZipSource, createWebZipCompressionCodec, StreamingZipReader } from '@/utils/zip-stream';
 import type { PerformanceSnapshot } from './types';
+import { performanceTools } from './tool-continuation';
+import { createPerformancePlan } from './plan';
 
 function snapshot(): PerformanceSnapshot {
   const plan = performancePlan();
@@ -37,6 +40,71 @@ function snapshot(): PerformanceSnapshot {
 }
 
 describe('portable performance results', () => {
+  it('exports Q2 speed and placement observations with distinct arm identifiers', async () => {
+    const source = snapshot();
+    const ordinary = source.trials[0]!;
+    source.plan = createPerformancePlan({ ...source.plan, settings: { ...source.plan.settings, q2Placement: 'ab' } });
+    source.trials = source.plan.steps.filter(step => step.scenario === 'initial' || step.scenario === 'placement').map(step => ({
+      ...ordinary,
+      id: step.id,
+      stepId: step.id,
+      lane: step.lane,
+      options: source.plan.options,
+      exclusion: step.scenario === 'placement' ? ['instrumented'] : [],
+    }));
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+    const summary = JSON.parse(await zip.file('summary.json')!.async('string'));
+    expect(summary).toHaveLength(2);
+    expect(summary).toMatchObject([{ q2Placement: 'baseline', scenario: 'initial' }, { q2Placement: 'gpu', scenario: 'initial' }]);
+    const csv = await zip.file('summary.csv')!.async('string');
+    expect(csv).toContain('"standard","q2-baseline","webgpu-wasm64-jspi"');
+    expect(csv).toContain('"standard","q2-gpu","webgpu-wasm64-jspi"');
+    expect(JSON.parse(await zip.file('backend-placement.json')!.async('string'))).toMatchObject([
+      { lane: 'q2-baseline', status: 'succeeded' },
+      { lane: 'q2-gpu', status: 'succeeded' },
+    ]);
+    expect((await zip.file('gpu-profile.jsonl')!.async('string')).trim()).toBe('');
+    expect(JSON.parse(await zip.file('manifest.json')!.async('string'))).toMatchObject({ q2Placement: 'ab' });
+    const readme = await zip.file('README.md')!.async('string');
+    expect(readme).not.toContain('## Text measurement schedule');
+    expect(readme).not.toContain('## Tool result continuation');
+  });
+
+  it('preserves each SWA comparison arm and its observed cache capacity in the same archive', async () => {
+    const source = snapshot();
+    const ordinary = source.trials[0]!;
+    source.plan = createPerformancePlan({ ...source.plan, settings: { ...source.plan.settings, swaCache: 'ab' } });
+    source.trials = source.plan.steps.filter(step => step.scenario === 'initial').map(step => {
+      const compact = step.lane === 'swa-compact';
+      return {
+        ...ordinary,
+        id: step.id,
+        stepId: step.id,
+        lane: step.lane,
+        options: source.plan.options,
+        memoryDiagnostics: {
+          samples: [],
+          droppedSamples: 0,
+          nativeAllocations: [],
+          droppedNativeAllocations: 0,
+          droppedNativeSettings: 0,
+          nativeSettings: [
+            { observedMs: 1, contextAttempt: 1, nativeMetric: 'kv_swa_cells', nativeValue: compact ? 1280 : 32768 },
+            { observedMs: 2, swaCacheMode: compact ? 'compact' : 'full', slidingWindowTokens: compact ? 1024 : 0 },
+          ],
+        },
+      };
+    });
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+    expect(JSON.parse(await zip.file('manifest.json')!.async('string'))).toMatchObject({ swaCache: 'ab', mode: 'standard' });
+    expect(JSON.parse(await zip.file('summary.json')!.async('string'))).toMatchObject([{ swaCacheMode: 'full' }, { swaCacheMode: 'compact' }]);
+    const rows = (await zip.file('trials.jsonl')!.async('string')).trim().split('\n').map(row => JSON.parse(row));
+    expect(rows.map(row => row.lane)).toEqual(['swa-full', 'swa-compact']);
+    expect(JSON.parse(await zip.file(rows[1].memoryDiagnosticsFile)!.async('string')).nativeSettings).toMatchObject([
+      { nativeMetric: 'kv_swa_cells', nativeValue: 1280, contextAttempt: 1 }, { swaCacheMode: 'compact', slidingWindowTokens: 1024 },
+    ]);
+  });
+
   it('keeps optional kernel diagnostics separate from model trials and throughput summaries', async () => {
     const source = snapshot();
     const summary = summarizePerformance({ snapshot: source });
@@ -70,9 +138,18 @@ ordinary chat tok/s`);
     expect(zip.file('q8-kernel-diagnostic.json')).toBeNull();
   });
 
-  it('preserves the request-local cache decision and checkpoint phases in the existing trials export', async () => {
+  it('exports exact tool requests alongside continuation timing and cache decisions', async () => {
     const source = snapshot();
-    const metrics = source.trials[0]!.summary!.performance!;
+    source.plan = performancePlan({ workload: 'tool-continuation' });
+    const trial = source.trials[0]!;
+    trial.stepId = source.plan.steps.at(-1)!.id;
+    trial.tools = performanceTools;
+    const rawArguments = '{"passage": "example","label": "archive"}';
+    trial.input.push(
+      { role: 'assistant', content: '', tool_calls: [{ id: 'example01', type: 'function', function: { name: 'record_sample', arguments: rawArguments } }] },
+      { role: 'tool', content: '{"ok":true}', name: 'record_sample', tool_call_id: 'example01' },
+    );
+    const metrics = trial.summary!.performance!;
     metrics.cacheReuse = {
       tokens: 80,
       cachedTokens: 60,
@@ -107,13 +184,21 @@ ordinary chat tok/s`);
     metrics.firstLogits = { finite: 16, nan: 2, positiveInfinity: 1, negativeInfinity: 3, finiteRange: { minimum: -2, maximum: 5, secondHighest: 5 } };
     const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
     const record = JSON.parse(await zip.file('trials.jsonl')!.async('string'));
+    expect(record.tools).toBeUndefined();
+    expect(record.input).toBeUndefined();
+    expect(JSON.parse(await zip.file('outputs/attempt_one.json')!.async('string'))).toMatchObject({ input: trial.input, tools: performanceTools });
     const exported = diagnosticSchema.parse(record.summary).performance!;
     expect(exported.cacheReuse).toEqual(metrics.cacheReuse);
     expect(exported.checkpoint).toEqual(metrics.checkpoint);
     expect(exported.earlyGenerationTiming).toEqual(metrics.earlyGenerationTiming);
     expect(exported.firstLogits).toEqual(metrics.firstLogits);
-    expect(await zip.file('README.md')!.async('string')).toContain('cacheReuse records the cache decision before prefill');
-    expect(await zip.file('README.md')!.async('string')).toContain('generation-overlap includes delivery and decode');
+    const readme = await zip.file('README.md')!.async('string');
+    expect(readme).toContain('cacheReuse records the cache decision before prefill');
+    expect(readme).toContain('## Tool result continuation');
+    expect(readme).toContain(`\
+8 planned calls per model in one lane and
+14 in paired mode`);
+    expect(readme).toContain('generation-overlap includes delivery and decode');
   });
 
   it.each(['clean', 'dirty', 'unknown'] as const)('preserves the run app identity with a %s working tree at export', async workingTree => {
@@ -557,6 +642,25 @@ describe('interrupted observations in the actual ZIP', () => {
 });
 
 describe('Diagnostics streaming archive', () => {
+  it('compresses both document and line-streamed entries', async () => {
+    const blob = await performanceArchive({ snapshot: snapshot() });
+    const reader = new StreamingZipReader({
+      source: createBlobZipSource({ blob }),
+      compressionCodec: createWebZipCompressionCodec(),
+    });
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    const names: string[] = [];
+    for await (const entry of reader.entries()) {
+      expect(entry.compression).toBe('deflate');
+      names.push(entry.name);
+    }
+    expect(names).toEqual(expect.arrayContaining(['README.md', 'trials.jsonl', 'summary.csv']));
+  });
+
   it('validates before exposing a stream and does not mutate or reread the live snapshot', async () => {
     const source = snapshot();
     using cleanup = {

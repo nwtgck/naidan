@@ -3,10 +3,16 @@ import { createAbortableByteStream } from '@/utils/abortable-byte-stream';
 import { isGpuProfileTrial, summarizeGpuProfiles } from './gpu-profile-summary';
 import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/utils/zip-stream/memory';
 import { StreamingZipWriter, createWebZipCompressionCodec } from '@/utils/zip-stream';
-import { snapshotSchema, type PerformanceSnapshot } from './types';
+import { performanceProtocol, snapshotSchema, type PerformanceSnapshot } from './types';
 import { summarizePerformance, performanceFindings, trialRates } from './summary';
+import { combinedProtocol, visionProtocol } from './vision-plan';
+import { swaCacheProtocol } from './swa-cache';
 
-function archiveReadme({ protocol }: { protocol: PerformanceSnapshot['plan']['protocol'] }): string {
+function archiveReadme({ protocol, q2Placement }: { protocol: PerformanceSnapshot['plan']['protocol'], q2Placement: PerformanceSnapshot['plan']['settings']['q2Placement'] }): string {
+  const combined = protocol === combinedProtocol;
+  const swaCache = protocol === swaCacheProtocol;
+  const textSchedule = protocol !== visionProtocol && q2Placement === undefined && !swaCache;
+  const toolRoundTrip = textSchedule && (protocol === performanceProtocol || combined);
   return `# Naidan llama.cpp browser performance / ${protocol}
 
 ## Start here
@@ -31,6 +37,7 @@ function archiveReadme({ protocol }: { protocol: PerformanceSnapshot['plan']['pr
 - outputs/: actual input, output, and reasoning for each attempt.
 - summary.csv: one row per attempt, including failures and exclusions; unlike
   summary.json, this is not an aggregate or a list of only valid speed samples.
+  The workload and image_residency columns identify text and image requests.
 
 ## Join records and check coverage
 modelIndex is the zero-based index into plan.models. Join trial.stepId to
@@ -74,10 +81,11 @@ export omits the full score row and token IDs. Reading the row can synchronize
 native work, so use uninstrumented runs for timing comparisons.
 
 For an image workload, visionAdmission precedes the image RPC and records native
-vision support or a reason for skipping. Missing projectors are skipped before
-loading. Initialization/encoding failures remain failures. Cold host elapsed and
-first-content clocks include admission; the generation Worker's first-sample
-clock starts later. Admission and generation vision rows have separate origins.
+vision support or a reason for skipping. Admission skips image requests for a
+missing projector or unsupported native vision. Initialization/encoding failures
+remain failures. Cold host elapsed and first-content clocks include admission.
+The generation Worker's first-sample clock starts later. Admission and generation
+vision rows have separate origins.
 media-encode/decode nativeElapsedMs are integer native-helper wall times, not GPU
 kernel time; image-evaluate includes vision and LM work. Pure LM prefill and
 physical memory peak are unavailable. vision.storage separates the saved/default
@@ -118,13 +126,38 @@ Definition source and execution approvals are not exported in diagnostic archive
 plan.settings.mode is gpu-profile, standard, or both. Missing means the older
 standard-only protocol. Both runs each model's complete standard block first,
 retires its Worker, then runs the profiling block in a new Worker. Continuations
-never cross these boundaries. Each lane has its own initial load/warm-up and
-optional placement diagnostic. Request counts double, not necessarily wall time.
+never cross these boundaries. Each lane has its own initial load/warm-up.
+See plan.steps for the exact workload and per-lane counts.
 The ordinary lane in both always uses webgpu-wasm64-jspi, matching the diagnostic
 profile's memory width and suspension strategy. Standalone cannot select the GPU
 profiling runtime. Hosted includes development serving as well as production.
 
-GPU-profile attempts, including their ordinary-looking generation rates, are
+${q2Placement === undefined ? '' : `Q2 A/B is selected by q2Placement=ab. Both lanes use webgpu-wasm64-jspi.
+Each model runs q2-baseline and then q2-gpu in separate Worker scopes with the
+same initial, short and long prompts and limits. Each lane ends with a separate
+two-token placement observation. Find the arm in the lane column of summary.csv
+and in backend-placement.json. summary.json and findings.json record q2Placement
+for that arm. The initial call starts a fresh Worker. Browser and driver caches
+can still be warm. Check per-arm errors and placement evidence before comparing
+rates.
+
+`}${swaCache ? `SWA A/B is selected by swaCache=ab. Each model runs swa-full and then
+swa-compact in separate WebGPU wasm64 JSPI Workers. Browser and driver caches can
+remain warm. The fixed schedule starts with a short input. Each repeat runs the
+short input, a 32-week long input, a continuation of its actual response, and the
+same fresh short input again. Continue only within the same arm. Compare the
+complete message inputs in outputs/<id>.json, including the actual assistant
+content and reasoning inherited from the parent. Different parent responses
+produce different continuation workloads even when their token counts agree.
+Compare prompt, reuse, and generated counts and the parent finish reason as well.
+Prompts may tokenize to different lengths on different models.
+Look for swaCacheMode in summary.json and the memory diagnostics' nativeSettings.
+kv_base_cells and kv_swa_cells record native allocation attempts. Match each to
+its context-ready event by contextAttempt. Check both arm errors and the effective
+context size, SWA window, microbatch, and Flash Attention setting before drawing
+comparisons. GPU buffer requests do not measure peak physical GPU memory.
+
+` : ''}GPU-profile attempts, including their ordinary-looking generation rates, are
 instrumented and excluded from summary.json and findings.json. summary.csv keeps
 those rates only in explicitly instrumented columns. GPU pass sums are NOT
 request wall time: do not subtract them to derive CPU time or utilization.
@@ -184,22 +217,51 @@ Late readbacks cannot modify a closed request or contaminate its successor.
 No hardware performance counters, physical GPU residency, swap, bandwidth
 utilization or per-instruction timings are collected.
 
-## What changed in this protocol
-The default is one block: initial short (up to 8 output tokens), short before
+${textSchedule ? `## Text measurement schedule
+The baseline is one block: initial short (up to 8 output tokens), short before
 (up to 64), its real continuation (up to 16), long input (up to 8), and the
 same fresh short input after (up to 64). The initial call doubles as warm-up;
 there is no additional full-length warm-up or regenerated continuation parent.
-An optional final diagnostic generates up to 2 tokens. Thus the default is
-6 calls per lane with an output ceiling of 162 tokens. GPU profiling is the UI
-default when supported; both uses 12 calls with these same default settings.
-That describes the default UI settings only; plan.steps is authoritative for this
-archive, including custom output limits, disabled diagnostics and extra blocks.
+The placement diagnostic runs by default and generates up to 2 tokens. The
+baseline therefore has 6 planned calls per model in each lane.
+Use plan.steps to check the exact schedule, including custom output limits,
+disabled diagnostics and extra blocks.
 The short before/after results stay separate. The first long input can include
 first-use graph/pipeline work; it is NOT a warmed-prefill claim. Increase blocks
 only when a specific comparison needs confirmation, not to hide chronological drift.
 The input is English. Results are not interchangeable with standard-text-v1
 (Japanese) or standard-text-en-v2 (a different schedule and output budget).
 
+` : ''}${toolRoundTrip ? `
+## Tool result continuation
+One additional pair per selected model runs after the baseline in its lane.
+In paired mode the tool requests run in the standard lane. ${combined ? '' : `The default
+text schedule has 8 planned calls per model in one lane and
+14 in paired mode.
+`}The first request gives the model a synthetic tool and asks it to generate a call
+with a long argument. Its output ceiling is 512 tokens. The next request uses the
+same runtime and tool definition, with the real generated call and a fixed short
+tool result. The result request generates up to 32 tokens. The diagnostic does not
+execute the generated call.
+Use outputs/<id>.json for the actual tool definition, argument string, and tool
+result. For the tool-continuation row in trials.jsonl, compare
+summary.performance.cacheReuse with the prefill stages and checkpoint breakdown.
+firstReceivedMs and firstReasoningMs are relative to the continuation request;
+summary.performance.earlyGenerationTiming gives the native sampling timestamps.
+Skip reasons distinguish a rejected template from an unusable generated call.
+` : ''}${combined ? `
+## Combined text and image measurement
+Each lane runs the text requests before its first image request and then measures
+projector reuse. The model remains loaded across these requests when the scope
+succeeds. Image cold describes the projector. A combined image request can reuse
+model weights loaded by the text requests. Check image_residency and runtimeSegment
+alongside session preparation evidence before comparing with an image-only run.
+Missing projectors and unsupported native vision skip the image requests and
+retain the text results. If the tool template rejects the tool workload, its
+failed scope is retired before measuring images in a new runtime segment.
+With the default settings the plan has 10 calls per model in a single lane
+and 18 in paired mode, including the fixed image and tool requests.
+` : ''}
 ## Operation diagnostic: capabilities and limitations
 The diagnostic uses the public native evaluation callback. Prefill observations
 are metadata-only. When decodeCompletionTiming is present, the same public
@@ -357,6 +419,9 @@ would not measure live residency. Missing records/counters mean unavailable, not
 nativeSettings preserves native context/batch/sequence sizes (token/count units)
 and graph node/split counts in observed order, including retry attempts. Graph
 batchTokens and nativeSingleTokenValue retain the upstream comparison where present.
+For SWA contexts, kv_base_cells and kv_swa_cells are allocation row counts, not
+token occupancy. An SWA A/B request records its effective cache mode separately
+from the requested lane. Its slidingWindowTokens is zero for full retention.
 nativeSettings can contain loadedModelDescriptor from bounded getters on the loaded
 LM, collected once per resident model only when measurement is requested and
 re-emitted for each measured request. source=loaded-model-native-api identifies the native API, not a
@@ -522,14 +587,14 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
   const directory = createMemoryZipCentralDirectoryStore();
   const writer = new StreamingZipWriter({ output: output.sink, centralDirectoryStore: directory, compressionCodec: createWebZipCompressionCodec() });
   const modifiedAt = new Date();
-  const add = async ({ name, text }: { name: string, text: string }) => writer.addFile({ name, modifiedAt, compression: 'store', stream: new Blob([text]).stream() });
+  const add = async ({ name, text }: { name: string, text: string }) => writer.addFile({ name, modifiedAt, compression: 'deflate', stream: new Blob([text]).stream() });
   const addLines = async <T>({ name, values, format }: { name: string, values: T[], format: ({ value }: { value: T }) => string }) => {
     let index = 0;
     const encoder = new TextEncoder();
     await writer.addFile({
       name,
       modifiedAt,
-      compression: 'store',
+      compression: 'deflate',
       stream: new ReadableStream<Uint8Array>({
         pull(controller) {
           signal.throwIfAborted();
@@ -549,7 +614,7 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
   const json = ({ value }: { value: unknown }) => JSON.stringify(value, undefined, 2) + '\n';
   const completed = (async () => {
     try {
-      await add({ name: 'README.md', text: archiveReadme({ protocol: snapshot.plan.protocol }) });
+      await add({ name: 'README.md', text: archiveReadme({ protocol: snapshot.plan.protocol, q2Placement: snapshot.plan.settings.q2Placement }) });
       await add({
         name: 'manifest.json',
         text: json({
@@ -557,6 +622,8 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
             version: 1,
             id: snapshot.plan.id,
             mode: snapshot.plan.settings.mode ?? 'standard',
+            ...(snapshot.plan.settings.q2Placement === undefined ? {} : { q2Placement: snapshot.plan.settings.q2Placement }),
+            ...(snapshot.plan.settings.swaCache === undefined ? {} : { swaCache: snapshot.plan.settings.swaCache }),
             status: snapshot.status,
             modelErrors: snapshot.modelErrors,
             exportedAt: modifiedAt.toISOString(),
@@ -600,7 +667,7 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
       await addLines({
         name: 'trials.jsonl',
         values: snapshot.trials,
-        format: ({ value: { input: _input, output: _output, partialText: _text, partialReasoning: _reasoning, memoryDiagnostics, ...record } }) => {
+        format: ({ value: { input: _input, tools: _tools, output: _output, partialText: _text, partialReasoning: _reasoning, memoryDiagnostics, ...record } }) => {
           const coverage = (() => {
             if (!memoryDiagnostics) {
               return undefined;
@@ -615,7 +682,7 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
           return JSON.stringify({ ...record, summary, gpuProfileFile: gpuProfile ? 'gpu-profile.jsonl' : undefined, gpuProfileCoverage: gpuProfile ? gpuCoverage : undefined, memoryDiagnosticsFile: memoryDiagnostics ? `memory/${record.id}.json` : undefined, memoryDiagnosticsCoverage: coverage });
         },
       });
-      const rows: (string | number | undefined)[][] = [['attempt', 'model', 'mode', 'lane', 'requested_profile', 'observed_profile', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error', 'gpu_profile_status', 'gpu_pass_total_ms', 'instrumented_prefill_tokens_s', 'instrumented_generation_tokens_s', 'runtime_segment', 'interrupt_requested_ms', 'interrupt_settled_ms', 'interrupt_recovery', 'skip_reason', 'model_execution', 'model_graph_sha256', 'model_graph_format', 'model_graph_native_schema_sha256']];
+      const rows: (string | number | undefined)[][] = [['attempt', 'model', 'mode', 'lane', 'requested_profile', 'observed_profile', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error', 'gpu_profile_status', 'gpu_pass_total_ms', 'instrumented_prefill_tokens_s', 'instrumented_generation_tokens_s', 'runtime_segment', 'interrupt_requested_ms', 'interrupt_settled_ms', 'interrupt_recovery', 'skip_reason', 'model_execution', 'model_graph_sha256', 'model_graph_format', 'model_graph_native_schema_sha256', 'workload', 'image_residency']];
       if (snapshot.plan.visionFixture) {
         await add({ name: 'vision-fixture.json', text: json({ value: { ...snapshot.plan.visionFixture, imageBytesIncluded: false, decodedRgbIdentity: 'not-observed', storagePolicy: 'see-trial-vision-storage', storageComparison: 'unavailable', pureLmPrefill: 'unavailable', physicalMemoryPeak: 'unavailable' } }) });
       }
@@ -653,8 +720,9 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
           instrumented ? undefined : rates.prefillTokensPerSecond, instrumented ? undefined : rates.generationTokensPerSecond, metrics?.promptTokens, metrics?.reusedTokens,
           metrics?.contextTokens, metrics?.prefillBatchTokens, trial.output?.finishReason,
           step?.dependsOn === undefined ? undefined : trialsByStep.get(step.dependsOn)?.output?.finishReason, trial.lastProgress?.phase, trial.lastProgressMs, trial.error, metrics?.gpuProfile?.status, gpuTotalMs,
-          instrumented ? rates.prefillTokensPerSecond : undefined, instrumented ? rates.generationTokensPerSecond : undefined, trial.runtimeSegment, trial.interruption?.requestedMs, trial.interruption?.settledMs, trial.interruption?.recovery, trial.skipReason, execution?.kind ?? 'unobserved', graph?.definitionSha256, graph?.format, graph?.nativeExtensionSha256]);
-        await add({ name: `outputs/${trial.id}.json`, text: json({ value: { attemptId: trial.id, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, input: trial.input, vision: trial.vision, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
+          instrumented ? rates.prefillTokensPerSecond : undefined, instrumented ? rates.generationTokensPerSecond : undefined, trial.runtimeSegment, trial.interruption?.requestedMs, trial.interruption?.settledMs, trial.interruption?.recovery, trial.skipReason, execution?.kind ?? 'unobserved', graph?.definitionSha256, graph?.format, graph?.nativeExtensionSha256,
+          step ? (step.vision ? 'image' : 'text') : undefined, step?.vision?.residency]);
+        await add({ name: `outputs/${trial.id}.json`, text: json({ value: { attemptId: trial.id, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, input: trial.input, tools: trial.tools, vision: trial.vision, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
       }
       await addLines({ name: 'summary.csv', values: rows, format: ({ value: row }) => row.map(value => csvCell({ value })).join(',') + '\r' });
       await writer.finalize();

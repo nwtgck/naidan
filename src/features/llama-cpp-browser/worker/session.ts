@@ -20,6 +20,7 @@ import { loadProjector, loadProjectorForBackend, type ResidentProjector } from "
 import { probeNewContextSequenceRemoval, type SequenceRemoval } from './cache-capabilities';
 import { disposePromptCheckpoint, type PromptCheckpoint } from './prompt-checkpoint';
 import { prefillBatchTokens, prefillMicroBatchTokens } from './prefill-config';
+import { inspectQ2Placement, resolveQ2PlacementDevice, setQ2PlacementOverrides } from './q2-placement';
 
 export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid', checkpoint: PromptCheckpoint | undefined,
   // A one-use proof, published only after the new-context probe has cleared
@@ -27,8 +28,9 @@ export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid', che
   initialMemoryState: 'probe-cleared' | 'unknown',
 };
 
+type SwaCacheMode = NonNullable<WorkerGenerateInput['measurement']>['swaCacheMode'];
 type ResidentChatMetadata = { requestedContextTokens: number, vocab: bigint, contextTokens: number, memory: bigint, nativeRollbackTokens: number, prefillBatchTokens: number };
-type ResidentModel = { releaseFiles: (() => void) | undefined, descriptor?: LoadedModelDescriptor, census?: ReturnType<typeof createBackendCensus>, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, modelId: string, sourceId: string | undefined, files: ModelFile[], projector: ResidentProjector | undefined, chatMetadata: ResidentChatMetadata | undefined, contextProjector: 'absent' | 'present' | undefined };
+type ResidentModel = { releaseFiles: (() => void) | undefined, descriptor?: LoadedModelDescriptor, census?: ReturnType<typeof createBackendCensus>, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, modelId: string, sourceId: string | undefined, files: ModelFile[], projector: ResidentProjector | undefined, chatMetadata: ResidentChatMetadata | undefined, contextProjector: 'absent' | 'present' | undefined, contextSwaCacheMode: SwaCacheMode, q2Placement: NonNullable<WorkerGenerateInput['measurement']>['q2Placement'] };
 let runtime: { core: Core, profile: LlamaCppProfile, requestedProfile: RuntimeOptions['profile'], assetBaseURL: string | undefined } | undefined;
 let resident: ResidentModel | undefined;
 
@@ -137,6 +139,14 @@ type SessionPreparation = {
   releasedTextContext: boolean,
 };
 
+function requireSupportedSwaCacheMeasurement({ measurement, textGeneration }: {
+  measurement: WorkerGenerateInput['measurement'], textGeneration: boolean,
+}): void {
+  if (!textGeneration || measurement?.observation === 'vision' || measurement?.q2Placement !== undefined) {
+    throw new LlamaCppBrowserError({ code: 'unsupported-input', details: 'SWA cache measurements require text generation without a vision or Q2 placement measurement.' });
+  }
+}
+
 /** Explicit preparation continues to load every available companion. */
 export async function prepareSession({ request, onProgress, signal }: {
   request: SessionRequest, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
@@ -182,6 +192,7 @@ async function releaseResidentContext({ core, current }: { core: Core, current: 
   current.context = 0n;
   current.chatMetadata = undefined;
   current.contextProjector = undefined;
+  current.contextSwaCacheMode = undefined;
   current.sequenceRemoval = undefined;
   current.slidingWindow = 0;
   current.cache.checkpoint = undefined;
@@ -211,6 +222,9 @@ export async function prepareAudioSession({ request, contextTokens, audioBackend
   if (signal?.aborted) {
     throw new LlamaCppBrowserError({ code: 'aborted' });
   }
+  if (request.measurement?.swaCacheMode !== undefined) {
+    requireSupportedSwaCacheMeasurement({ measurement: request.measurement, textGeneration: false });
+  }
   await releaseSession({ releaseRuntime: false });
   return prepareResidentSession({ request, onProgress, signal, purpose: { kind: 'audio', contextTokens, audioBackend } });
 }
@@ -221,6 +235,9 @@ export async function prepareLiveSession({ request, onProgress, signal }: {
   request: SessionRequest, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
 }) {
   signal?.throwIfAborted();
+  if (request.measurement?.swaCacheMode !== undefined) {
+    requireSupportedSwaCacheMeasurement({ measurement: request.measurement, textGeneration: false });
+  }
   await releaseSession({ releaseRuntime: false });
   // TODO(live-conversation): Only the three WebGPU JSPI artifacts export the
   // required mtmd APIs. CPU and Asyncify profiles are not supported here.
@@ -269,11 +286,16 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   if (!request.resolvedModel || request.resolvedModel.modelId !== request.modelId) {
     throw new LlamaCppBrowserError({ code: 'missing-model' });
   }
+  const swaCacheMode = request.measurement?.swaCacheMode;
   // Validate before acquiring a runtime or any model resources, including
   // direct native callers that did not pass through worker message validation.
   const requestedChatContext = (() => {
     switch (purpose.kind) {
-    case 'chat': return chatContextTokensSchema.parse(request.options.contextTokens ?? defaultChatContextTokens);
+    case 'chat':
+      if (swaCacheMode !== undefined) {
+        requireSupportedSwaCacheMeasurement({ measurement: request.measurement, textGeneration: purpose.projector === 'defer' });
+      }
+      return chatContextTokensSchema.parse(request.options.contextTokens ?? defaultChatContextTokens);
     case 'audio': case 'live': return undefined;
     default: {
       const exhaustive: never = purpose;
@@ -285,6 +307,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   checkCancelled();
   const api = core.api;
   const directory = request.resolvedModel.directory;
+  const q2Placement = request.measurement?.q2Placement;
   if (purpose.kind !== 'chat' && !directory.projectorFile) {
     throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
   }
@@ -304,7 +327,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   const sameIdentity = resident !== undefined && (sourceId !== undefined || resident.sourceId !== undefined
     ? sourceId !== undefined && resident.sourceId === sourceId
     : resident.modelId === request.modelId);
-  let unchanged = sameIdentity && resident !== undefined && resident.files.length === directory.files.length;
+  let unchanged = sameIdentity && resident !== undefined && resident.q2Placement === q2Placement && resident.files.length === directory.files.length;
   if (unchanged && resident) {
     for (let index = 0; index < directory.files.length; index++) {
       const next = directory.files[index]!;
@@ -335,6 +358,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     const allocations: bigint[] = [];
     let callback: number | bigint | undefined;
     let model = 0n;
+    let readingMetadata = q2Placement !== undefined;
     const reportFileReads = (() => {
       const debug = request.debug ?? 'off';
       switch (debug) {
@@ -350,6 +374,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     const started = performance.now();
     logDiagnostic({ diagnostic: { event: "load-start", profile } });
     try {
+      const placementDevice = q2Placement === undefined ? undefined : await resolveQ2PlacementDevice({ core, profile });
       for (const [index, entry] of weights.entries()) {
         checkCancelled();
         const access = await openModelFileAccess({ entry });
@@ -374,13 +399,24 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
           },
         });
         shardReads.push(traced.counters);
+        const cached = readCache.wrap({ source: traced.source });
         mounts.push(mountReadOnlyFile({
           core,
           path: `/models/${entry.relativePath}`,
-          source: readCache.wrap({ source: traced.source }),
+          // Keep the model cache cold until both arms have read the GGUF metadata.
+          source: placementDevice ? { size: cached.size, read: ({ destination, offset }) => readingMetadata ? traced.source.read({ destination, offset }) : cached.read({ destination, offset }) } : cached,
           maxChunkBytes: 8 * 1024 * 1024,
         }));
       }
+      checkCancelled();
+      const targetWeights = placementDevice ? await inspectQ2Placement({
+        core,
+        device: placementDevice,
+        paths: mounts.map(mount => mount.path),
+        allocations,
+        signal,
+      }) : undefined;
+      readingMetadata = false;
       checkCancelled();
       const params = core.allocRecord({ name: "llama_model_params" });
       allocations.push(params);
@@ -392,6 +428,9 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         check_tensors: 0,
       })) {
         core.setField({ name: "llama_model_params", pointer: params, field: field, value: value });
+      }
+      if (q2Placement === 'gpu' && placementDevice && targetWeights) {
+        setQ2PlacementOverrides({ core, params, names: targetWeights, buft: placementDevice.buft, allocations });
       }
       let lastProgress = 0;
       callback = core.module.addFunction((amount: number) => {
@@ -449,7 +488,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
           }
         };
       }
-      resident = { releaseFiles, model, projector: undefined, context: 0n, sequenceRemoval: undefined, slidingWindow: 0, cache: { tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'unknown' }, modelId: request.modelId, sourceId, files: directory.files, chatMetadata: undefined, contextProjector: undefined };
+      resident = { releaseFiles, model, projector: undefined, context: 0n, sequenceRemoval: undefined, slidingWindow: 0, cache: { tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'unknown' }, modelId: request.modelId, sourceId, files: directory.files, chatMetadata: undefined, contextProjector: undefined, contextSwaCacheMode: undefined, q2Placement };
       model = 0n;
       sampleMemoryDiagnostics({ core, checkpoint: 'model-loaded' });
       onProgress({ progress: { phase: "loading", completed: 1, total: 1 } });
@@ -530,11 +569,38 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     logDiagnostic({ diagnostic: { event: 'native-info', loadedModelDescriptor: current.descriptor } });
     checkCancelled();
   }
+  let measuredSwa: { full: boolean, slidingWindowTokens: number, field: ReturnType<Core['fieldLayout']> } | undefined;
+  if (swaCacheMode !== undefined) {
+    const slidingWindowTokens = current.descriptor?.slidingWindowTokens;
+    if (slidingWindowTokens === undefined || slidingWindowTokens <= 0) {
+      throw new LlamaCppBrowserError({ code: 'unsupported-input', details: 'SWA cache measurements require a native sliding window.' });
+    }
+    let field: ReturnType<Core['fieldLayout']>;
+    try {
+      field = core.fieldLayout({ name: 'llama_context_params', field: 'swa_full' });
+    } catch {
+      throw new LlamaCppBrowserError({ code: 'unsupported-input', details: 'The runtime has no SWA cache mode parameter.' });
+    }
+    if (field.kind !== 'boolean' || field.size !== 1) {
+      throw new LlamaCppBrowserError({ code: 'unsupported-input', details: 'The runtime has an incompatible SWA cache mode parameter.' });
+    }
+    switch (swaCacheMode) {
+    case 'full': measuredSwa = { full: true, slidingWindowTokens, field };
+      break;
+    case 'compact': measuredSwa = { full: false, slidingWindowTokens, field };
+      break;
+    default: {
+      const exhaustive: never = swaCacheMode;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
   const wantsCensus = request.measurement?.observation === 'placement';
-  const changedContext = purpose.kind === 'chat' && current.chatMetadata?.requestedContextTokens !== requestedChatContext;
+  const changedContext = purpose.kind === 'chat' && (current.chatMetadata?.requestedContextTokens !== requestedChatContext
+    || current.contextSwaCacheMode !== swaCacheMode);
   if (current.context !== 0n && (Boolean(current.census) !== wantsCensus || changedContext)) {
     // A diagnostic callback belongs to a context, not to all future requests.
-    // Retain the large model; rebuild only the context for a new callback or target.
+    // Keep the loaded model when the context size, SWA mode, or callback changes.
     try {
       await releaseResidentContext({ core, current });
     } catch (error) {
@@ -617,14 +683,20 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         core.setField({ name: 'llama_context_params', pointer: cp, field: 'cb_eval', value: BigInt(current.census.pointer) });
         core.setField({ name: 'llama_context_params', pointer: cp, field: 'cb_eval_user_data', value: 0n });
       }
-      const swaField = core.fieldLayout({ name: 'llama_context_params', field: 'swa_full' });
+      const swaField = measuredSwa?.field ?? core.fieldLayout({ name: 'llama_context_params', field: 'swa_full' });
       if (swaField.kind !== 'boolean' || swaField.size !== 1) {
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }
-      // Full SWA retention needs no extra SWA snapshot. Read the actual native
-      // default instead of assuming that every model with n_swa needs one.
+      if (measuredSwa) {
+        core.setField({ name: 'llama_context_params', pointer: cp, field: 'swa_full', value: Number(measuredSwa.full) });
+      }
+      // Read back the native parameter so the checkpoint policy follows what
+      // the context receives in both ordinary and measured generation.
       const swaFull = core.bytes({ pointer: cp + swaField.offset, length: 1 })[0] !== 0;
-      current.slidingWindow = swaFull ? 0 : await api.llama_model_n_swa(current.model);
+      if (measuredSwa && swaFull !== measuredSwa.full) {
+        throw new LlamaCppBrowserError({ code: 'runtime-error', details: 'The requested SWA cache mode did not reach the native context parameters.' });
+      }
+      current.slidingWindow = swaFull ? 0 : (measuredSwa?.slidingWindowTokens ?? await api.llama_model_n_swa(current.model));
       for (const [field, value] of Object.entries({ n_ubatch: prefillMicroBatchTokens, n_threads: 1, n_threads_batch: 1 })) {
         core.setField({ name: "llama_context_params", pointer: cp, field: field, value: value });
       }
@@ -672,6 +744,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         if (current.context !== 0n) {
           sampleMemoryDiagnostics({ core, checkpoint: 'context-ready' });
           current.contextProjector = current.projector ? 'present' : 'absent';
+          current.contextSwaCacheMode = swaCacheMode;
           break;
         }
         // Preserve context capacity before sacrificing it for a performance-only
@@ -747,6 +820,9 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     }
   }
   checkCancelled();
+  if (swaCacheMode !== undefined) {
+    logDiagnostic({ diagnostic: { event: 'native-info', stage: 'session', slidingWindowTokens: current.slidingWindow } });
+  }
   current.census?.reset();
   return { core, census: current.census, model: current.model, context: current.context, sequenceRemoval: current.sequenceRemoval, slidingWindow: current.slidingWindow, cache: current.cache, projector: useProjector ? current.projector?.pointer ?? 0n : 0n, projectorStorage: useProjector ? current.projector?.visionStorage : undefined, chatMetadata: current.chatMetadata, preparation };
 }

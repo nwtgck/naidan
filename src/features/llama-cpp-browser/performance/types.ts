@@ -1,20 +1,28 @@
 import { visionAdmissionSchema } from './vision-admission-schema';
-import { visionFixtureSchema, visionPrompt, visionProtocol, visionTrialSchema } from './vision-plan';
+import { combinedProtocol, visionFixtureSchema, visionPrompt, visionProtocol, visionTrialSchema } from './vision-plan';
 import { memoryDiagnosticsSchema } from './memory-schema';
 import { q8DiagnosticObservationSchema } from './q8-diagnostic-observation';
 import { z } from 'zod';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
-import { generationResultSchema, gpuProfilingProfile, modelSchema, progressSchema, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
+import { generateInputSchema, generationResultSchema, gpuProfilingProfile, modelSchema, progressSchema, runtimeOptionsSchema, toolCallSchema } from '@/features/llama-cpp-browser/types';
+import { toolCallPrompt, toolCallTokenLimit, toolContinuationTokenLimit, toolResult } from './tool-continuation';
+import { swaCacheLanes, swaCacheProtocol, swaCacheSteps } from './swa-cache';
 
 export const maximumExecutionIntervals = 8192;
 
-export const performanceProtocol = 'targeted-text-en-v4' as const;
+export const performanceProtocol = 'targeted-text-en-v5' as const;
 export const measurementModeSchema = z.enum(['gpu-profile', 'standard', 'both']);
-export const measurementLaneSchema = z.enum(['standard', 'gpu-profile']);
+export const measurementLaneSchema = z.enum(['standard', 'gpu-profile', 'q2-baseline', 'q2-gpu', ...swaCacheLanes]);
 export type MeasurementMode = z.infer<typeof measurementModeSchema>;
 export type MeasurementLane = z.infer<typeof measurementLaneSchema>;
 
-export function measurementLanes({ mode }: { mode: MeasurementMode | undefined }): MeasurementLane[] {
+export function measurementLanes({ mode, q2Placement, swaCache }: { mode: MeasurementMode | undefined, q2Placement?: 'ab' | undefined, swaCache?: 'ab' | undefined }): MeasurementLane[] {
+  if (swaCache !== undefined) {
+    return [...swaCacheLanes];
+  }
+  if (q2Placement !== undefined) {
+    return ['q2-baseline', 'q2-gpu'];
+  }
   switch (mode) {
   case 'both': return ['standard', 'gpu-profile'];
   case 'standard': case undefined: return ['standard'];
@@ -35,17 +43,19 @@ export const protocolSchema = z.object({
   maxTokens: z.number().int().min(1).max(512),
   timeoutMs: z.number().int().min(1000).max(3600000),
   diagnostics: z.enum(['none', 'placement']).optional(),
+  q2Placement: z.literal('ab').optional(),
+  swaCache: z.literal('ab').optional(),
 }).strict();
-export const textMessageSchema = z.object({
-  role: z.enum(['user', 'assistant']),
-  content: z.string(),
-  reasoning_content: z.string().optional(),
-}).strict();
+const textMessageSchema = z.discriminatedUnion('role', [
+  z.object({ role: z.literal('user'), content: z.string() }).strict(),
+  z.object({ role: z.literal('assistant'), content: z.string(), reasoning_content: z.string().optional(), tool_calls: z.array(toolCallSchema).optional() }).strict(),
+  z.object({ role: z.literal('tool'), content: z.string(), tool_call_id: z.string(), name: z.string() }).strict(),
+]);
 export const stepSchema = z.object({
   id: idSchema,
   modelIndex: z.number().int().nonnegative(),
   lane: measurementLaneSchema.optional(),
-  scenario: z.enum(['initial', 'short', 'long', 'continuation', 'placement']),
+  scenario: z.enum(['initial', 'short', 'long', 'continuation', 'placement', 'tool-call', 'tool-continuation']),
   position: z.enum(['initial', 'before', 'after', 'workload', 'diagnostic']),
   maxTokens: z.number().int().min(1).max(512),
   role: z.enum(['measurement', 'preparation']),
@@ -57,7 +67,7 @@ export const stepSchema = z.object({
 }).strict();
 export const planSchema = z.object({
   version: z.literal(1),
-  protocol: z.enum(['targeted-text-en-v3', performanceProtocol, visionProtocol]),
+  protocol: z.enum(['targeted-text-en-v3', 'targeted-text-en-v4', performanceProtocol, visionProtocol, combinedProtocol, swaCacheProtocol]),
   visionFixture: visionFixtureSchema.optional(),
   id: idSchema,
   createdAt: z.string(),
@@ -67,6 +77,19 @@ export const planSchema = z.object({
   notes: z.string().max(10000),
   steps: z.array(stepSchema).min(1),
 }).strict().superRefine((plan, context) => {
+  const q2Placement = plan.settings.q2Placement !== undefined;
+  const combined = plan.protocol === combinedProtocol;
+  const visionOnly = plan.protocol === visionProtocol;
+  const hasToolRoundTrip = !q2Placement && (plan.protocol === performanceProtocol || combined);
+  const swaCache = plan.settings.swaCache !== undefined;
+  if (swaCache !== (plan.protocol === swaCacheProtocol) || (swaCache && (q2Placement || plan.settings.mode !== 'standard'
+    || plan.settings.diagnostics !== 'none' || plan.options.profile !== 'webgpu-wasm64-jspi'))) {
+    context.addIssue({ code: 'custom', message: 'SWA cache comparison requires the ordinary text WebGPU profile and exclusive lanes' });
+  }
+  if (q2Placement && (plan.protocol !== performanceProtocol || plan.settings.mode !== 'standard' || plan.settings.diagnostics !== 'placement'
+    || plan.options.profile !== 'webgpu-wasm64-jspi')) {
+    context.addIssue({ code: 'custom', message: 'Q2 placement comparison requires the ordinary text WebGPU profile' });
+  }
   if (plan.options.profile === gpuProfilingProfile) {
     context.addIssue({ code: 'custom', message: 'Select the profiling measurement mode, not a diagnostic chat profile' });
   }
@@ -89,11 +112,46 @@ export const planSchema = z.object({
     throw new Error(String(exhaustive));
   }
   }
-  if ((plan.protocol === visionProtocol) !== (plan.visionFixture !== undefined)) {
+  if ((visionOnly || combined) !== (plan.visionFixture !== undefined)) {
     context.addIssue({ code: 'custom', message: 'Image protocol requires its fixed fixture metadata' });
   }
-  const allowed = measurementLanes({ mode: plan.settings.mode });
-  if (plan.protocol === visionProtocol) {
+  const allowed = measurementLanes({ mode: plan.settings.mode, q2Placement: plan.settings.q2Placement, swaCache: plan.settings.swaCache });
+  if (swaCache) {
+    const expected = swaCacheSteps({ modelCount: plan.models.length, repeats: plan.settings.repeats, maxTokens: plan.settings.maxTokens });
+    if (expected.length !== plan.steps.length || expected.some((step, index) => {
+      const actual = plan.steps[index];
+      return !actual || actual.id !== step.id || actual.modelIndex !== step.modelIndex || actual.lane !== step.lane
+        || actual.scenario !== step.scenario || actual.position !== step.position || actual.repetition !== step.repetition
+        || actual.prompt !== step.prompt || actual.maxTokens !== step.maxTokens || actual.dependsOn !== step.dependsOn
+        || actual.role !== step.role || actual.sequence !== step.sequence;
+    })) {
+      context.addIssue({ code: 'custom', message: 'SWA cache comparison requires the same ordered text workloads for both cache modes' });
+    }
+  }
+  if (q2Placement) {
+    const expected = [
+      { scenario: 'initial', position: 'initial', repetition: 0, maxTokens: Math.min(8, plan.settings.maxTokens) },
+      ...Array.from({ length: plan.settings.repeats }, (_, index) => [
+        { scenario: 'short', position: 'before', repetition: index + 1, maxTokens: plan.settings.maxTokens },
+        { scenario: 'long', position: 'workload', repetition: index + 1, maxTokens: Math.min(8, plan.settings.maxTokens) },
+        { scenario: 'short', position: 'after', repetition: index + 1, maxTokens: plan.settings.maxTokens },
+      ]).flat(),
+      { scenario: 'placement', position: 'diagnostic', repetition: 0, maxTokens: 2 },
+    ];
+    const laneLength = expected.length;
+    const modelLength = laneLength * allowed.length;
+    if (plan.steps.length !== plan.models.length * modelLength || plan.steps.some((step, index) => {
+      const lane = allowed[Math.floor((index % modelLength) / laneLength)];
+      const shape = expected[index % laneLength];
+      return !shape || step.modelIndex !== Math.floor(index / modelLength) || step.lane !== lane
+        || step.role !== 'measurement' || step.dependsOn !== undefined || step.sequence !== 'fresh'
+        || step.scenario !== shape.scenario || step.position !== shape.position || step.repetition !== shape.repetition || step.maxTokens !== shape.maxTokens
+        || (lane === 'q2-gpu' && step.prompt !== plan.steps[index - laneLength]?.prompt);
+    })) {
+      context.addIssue({ code: 'custom', message: 'Q2 placement comparison requires both matching text workloads for every model' });
+    }
+  }
+  if (visionOnly) {
     const expected = plan.models.flatMap((_, modelIndex) => allowed.flatMap(lane => Array.from({ length: plan.settings.repeats + 1 }, (_, repetition) => ({ modelIndex, lane, repetition }))));
     if (plan.settings.diagnostics !== 'none' || expected.length !== plan.steps.length || expected.some((value, index) => {
       const actual = plan.steps[index];
@@ -102,9 +160,48 @@ export const planSchema = z.object({
       context.addIssue({ code: 'custom', message: 'Image workload order must contain an initial request followed by its resident requests' });
     }
   }
+  if (combined) {
+    const textOrder = [
+      { scenario: 'initial', position: 'initial', repetition: 0 },
+      ...Array.from({ length: plan.settings.repeats }, (_, index) => [
+        { scenario: 'short', position: 'before', repetition: index + 1 },
+        { scenario: 'continuation', position: 'workload', repetition: index + 1 },
+        { scenario: 'long', position: 'workload', repetition: index + 1 },
+        { scenario: 'short', position: 'after', repetition: index + 1 },
+      ]).flat(),
+    ];
+    switch (plan.settings.diagnostics) {
+    case 'placement':
+      textOrder.push({ scenario: 'placement', position: 'diagnostic', repetition: 0 });
+      break;
+    case 'none': case undefined: break;
+    default: {
+      const exhaustive: never = plan.settings.diagnostics;
+      throw new Error(String(exhaustive));
+    }
+    }
+    const imageOrder = Array.from({ length: plan.settings.repeats + 1 }, (_, repetition) =>
+      ({ scenario: repetition === 0 ? 'initial' : 'short', position: repetition === 0 ? 'initial' : 'workload', repetition }));
+    const expected = plan.models.flatMap((_, modelIndex) => allowed.flatMap((lane, index) => [
+      ...textOrder.map(step => ({ ...step, modelIndex, lane, image: false })),
+      ...(index === 0 ? ['tool-call', 'tool-continuation'].map(scenario => ({ modelIndex, lane, scenario, position: 'workload', repetition: 0, image: false })) : []),
+      ...imageOrder.map(step => ({ ...step, modelIndex, lane, image: true })),
+    ]));
+    const inOrder = expected.length === plan.steps.length && expected.every((value, index) => {
+      const step = plan.steps[index];
+      return step && step.modelIndex === value.modelIndex && step.lane === value.lane && step.scenario === value.scenario
+        && step.position === value.position && step.repetition === value.repetition && (step.vision !== undefined) === value.image;
+    });
+    if (new Set(plan.models.map(model => model.modelId)).size !== plan.models.length || !inOrder) {
+      context.addIssue({ code: 'custom', message: 'Combined workloads require ordered text and image steps for each model and runtime lane' });
+    }
+  }
   const seen = new Map<string, typeof plan.steps[number]>();
+  const toolLane = allowed[0];
+  const toolCalls = new Set<number>();
+  let previous: PerformanceStep | undefined;
   for (const step of plan.steps) {
-    if (plan.protocol === visionProtocol) {
+    if (visionOnly || combined && step.vision) {
       if (!step.vision || step.dependsOn !== undefined || step.sequence !== 'fresh' || step.prompt !== visionPrompt
         || step.maxTokens !== Math.min(32, plan.settings.maxTokens) || step.role !== 'measurement'
         || step.scenario !== (step.repetition === 0 ? 'initial' : 'short') || step.position !== (step.repetition === 0 ? 'initial' : 'workload')
@@ -121,13 +218,53 @@ export const planSchema = z.object({
     if (seen.has(step.id) || step.modelIndex >= plan.models.length) {
       context.addIssue({ code: 'custom', message: 'Invalid measurement step identity' });
     }
+    const parent = step.dependsOn === undefined ? undefined : seen.get(step.dependsOn);
     if (step.dependsOn !== undefined) {
-      const parent = seen.get(step.dependsOn);
-      if (!parent || parent.modelIndex !== step.modelIndex || (parent.lane ?? 'standard') !== (step.lane ?? 'standard')) {
-        context.addIssue({ code: 'custom', message: 'Continuation crosses a model or runtime lane' });
+      if (!parent || parent.modelIndex !== step.modelIndex || (parent.lane ?? 'standard') !== (step.lane ?? 'standard') || combined && parent.vision) {
+        context.addIssue({ code: 'custom', message: 'Continuation crosses a model, runtime lane or workload' });
       }
     }
+    switch (step.scenario) {
+    case 'tool-call': case 'tool-continuation': {
+      const preparation = step.scenario === 'tool-call';
+      if (!hasToolRoundTrip || (step.lane ?? 'standard') !== toolLane
+        || step.position !== 'workload' || step.repetition !== 0 || (preparation
+        ? step.role !== 'preparation' || step.dependsOn !== undefined || step.sequence !== 'fresh' || step.prompt !== toolCallPrompt
+            || step.maxTokens !== toolCallTokenLimit || toolCalls.has(step.modelIndex)
+        : step.role !== 'measurement' || !parent || parent !== previous || parent.scenario !== 'tool-call' || step.sequence !== 'continue'
+            || step.prompt !== toolResult || step.maxTokens !== Math.min(toolContinuationTokenLimit, plan.settings.maxTokens))) {
+        context.addIssue({ code: 'custom', message: 'Invalid tool continuation workload' });
+      }
+      if (preparation) {
+        toolCalls.add(step.modelIndex);
+      }
+      break;
+    }
+    case 'initial': case 'short': case 'long': case 'continuation': case 'placement': {
+      if (combined && !step.vision) {
+        const continuation = step.scenario === 'continuation';
+        if (step.role !== 'measurement' || (continuation
+          ? step.sequence !== 'continue' || !parent || parent !== previous || parent.scenario !== 'short'
+            || parent.position !== 'before' || parent.repetition !== step.repetition
+          : step.sequence !== 'fresh' || step.dependsOn !== undefined)) {
+          context.addIssue({ code: 'custom', message: 'Invalid combined text workload sequence' });
+        }
+      }
+      break;
+    }
+    default: {
+      const exhaustive: never = step.scenario;
+      throw new Error(String(exhaustive));
+    }
+    }
+    if (previous?.scenario === 'tool-call' && step.scenario !== 'tool-continuation') {
+      context.addIssue({ code: 'custom', message: 'Missing tool continuation after tool call preparation' });
+    }
     seen.set(step.id, step);
+    previous = step;
+  }
+  if (previous?.scenario === 'tool-call' || (hasToolRoundTrip && toolCalls.size !== plan.models.length)) {
+    context.addIssue({ code: 'custom', message: 'Expected one tool round trip per model' });
   }
 });
 const interruptionSchema = z.object({
@@ -146,11 +283,12 @@ export const trialSchema = z.object({
   interruption: interruptionSchema.optional(),
   // Segment is local to model/lane. Omitted in older archives (segment zero).
   runtimeSegment: z.number().int().nonnegative().optional(),
-  skipReason: z.enum(['dependency-interrupted', 'dependency-runtime-reset', 'missing-projector', 'native-no-vision']).optional(),
+  skipReason: z.enum(['dependency-interrupted', 'dependency-runtime-reset', 'missing-projector', 'native-no-vision', 'tool-template-unsupported', 'no-usable-tool-call']).optional(),
   startedAt: z.string(),
   startedMs: milliseconds.optional(),
   elapsedMs: milliseconds.optional(),
   input: z.array(textMessageSchema),
+  tools: generateInputSchema.shape.tools,
   visionAdmission: visionAdmissionSchema.optional(),
   vision: visionTrialSchema.optional(),
   options: runtimeOptionsSchema,
@@ -214,7 +352,12 @@ export const snapshotSchema = z.object({
   }).strict(),
   status: z.enum(['running', 'completed', 'cancelled']),
   trials: z.array(trialSchema),
-  modelErrors: z.array(z.object({ modelIndex: z.number().int().nonnegative(), lane: measurementLaneSchema.optional(), error: z.string() }).strict()),
+  modelErrors: z.array(z.object({
+    modelIndex: z.number().int().nonnegative(),
+    lane: measurementLaneSchema.optional(),
+    runtimeSegment: z.number().int().nonnegative().optional(),
+    error: z.string(),
+  }).strict()),
 }).strict();
 export type PerformancePlan = z.infer<typeof planSchema>;
 export type PerformanceStep = z.infer<typeof stepSchema>;

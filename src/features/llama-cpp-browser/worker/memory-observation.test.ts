@@ -5,6 +5,26 @@ import { observeMeasurementMemory } from './memory-observation';
 
 const sample: MemoryDiagnostic = { kind: 'naidan-llama-cpp-memory', instanceId: 'core-one', profile: 'cpu-wasm32', checkpoint: 'runtime-ready', capacityBytes: 65536, timestamp: 100 };
 
+it('keeps SWA row counts associated with their allocation attempt and records the resolved mode', () => {
+  const worker = Object.assign(new EventTarget(), { postMessage() {} });
+  const observer = observeMeasurementMemory({ worker, now: () => 5 });
+  observer.record({ diagnostic: { event: 'context-start' } });
+  observer.record({ diagnostic: { event: 'native-info', nativeMetric: 'kv_base_cells', nativeValue: 32768 } });
+  observer.record({ diagnostic: { event: 'context-retry' } });
+  observer.record({ diagnostic: { event: 'native-info', nativeMetric: 'kv_base_cells', nativeValue: 16384 } });
+  observer.record({ diagnostic: { event: 'native-info', nativeMetric: 'kv_swa_cells', nativeValue: 1280 } });
+  observer.record({ diagnostic: { event: 'context-ready', contextTokens: 16384 } });
+  observer.record({ diagnostic: { event: 'native-info', stage: 'session', slidingWindowTokens: 1024 } });
+  const result = memoryDiagnosticsSchema.parse(observer.finish());
+  const settings = result.nativeSettings;
+  expect(settings.filter(setting => 'nativeMetric' in setting)).toEqual([
+    { observedMs: 5, contextAttempt: 1, nativeMetric: 'kv_base_cells', nativeValue: 32768 },
+    { observedMs: 5, contextAttempt: 2, nativeMetric: 'kv_base_cells', nativeValue: 16384 },
+    { observedMs: 5, contextAttempt: 2, nativeMetric: 'kv_swa_cells', nativeValue: 1280 },
+  ]);
+  expect(settings.at(-1)).toEqual({ observedMs: 5, swaCacheMode: 'compact', slidingWindowTokens: 1024 });
+});
+
 describe('request-local memory evidence', () => {
   it('keeps first and last source records, counts truncation, and never sums allocation attempts', () => {
     const worker = Object.assign(new EventTarget(), { postMessage() {} });

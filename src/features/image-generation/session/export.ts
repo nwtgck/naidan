@@ -12,7 +12,7 @@ export function createImageGenerationArchive({ snapshot, exportedAt }: { snapsho
   const writer = new StreamingZipWriter({ output: output.sink, centralDirectoryStore: directory, compressionCodec: createWebZipCompressionCodec() });
   const modifiedAt = new Date(exportedAt);
   async function add({ path, blob }: { path: string, blob: Blob }): Promise<void> {
-    await writer.addFile({ name: path, modifiedAt, compression: 'store', stream: blob.stream() });
+    await writer.addFile({ name: path, modifiedAt, compression: 'deflate', stream: blob.stream() });
   }
   const completed = (async () => {
     try {
@@ -57,12 +57,12 @@ export function createImageGenerationResultsArchive({ snapshot, exportedAt }: { 
   const writer = new StreamingZipWriter({ output: output.sink, centralDirectoryStore: directory, compressionCodec: createWebZipCompressionCodec() });
   const completed = (async () => {
     try {
-      await writer.addFile({ name: 'manifest.json', modifiedAt: new Date(exportedAt), compression: 'store', stream: snapshot.manifest.stream() });
+      await writer.addFile({ name: 'manifest.json', modifiedAt: new Date(exportedAt), compression: 'deflate', stream: snapshot.manifest.stream() });
       for (const image of snapshot.images) {
         if (!/^images\/\d{3}\/\d{2}\.(png|jpg|webp|bin)$/u.test(image.path)) {
           throw new Error('Invalid generated ZIP entry path.');
         }
-        await writer.addFile({ name: image.path, modifiedAt: new Date(exportedAt), compression: 'store', stream: image.blob.stream() });
+        await writer.addFile({ name: image.path, modifiedAt: new Date(exportedAt), compression: 'deflate', stream: image.blob.stream() });
       }
       await writer.finalize();
       await output.close();

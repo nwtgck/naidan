@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
+import { createBlobZipSource, createWebZipCompressionCodec, StreamingZipReader } from '@/utils/zip-stream';
 import { createSpeechInvestigationCollection } from './collection';
 import { createSpeechInvestigationArchive } from './archive';
 import { investigationFixture, observed, planFromSnapshot, waveBytes } from './investigation.test-support';
@@ -157,9 +158,17 @@ describe('bounded speech investigation collection', () => {
     const snapshot = collection.snapshot({ active: undefined })!;
     for (const include of ['off', 'on'] as const) {
       const archive = createSpeechInvestigationArchive({ collection: snapshot, includeInputAudio: include, includeInputText: include, signal: new AbortController().signal });
-      const bytes = await new Response(archive.stream).arrayBuffer();
-      expect(bytes.byteLength).toBe(archive.size);
-      const zip = await JSZip.loadAsync(bytes);
+      const blob = await new Response(archive.stream).blob();
+      const reader = new StreamingZipReader({ source: createBlobZipSource({ blob }), compressionCodec: createWebZipCompressionCodec() });
+      await using _cleanup = {
+        async [Symbol.asyncDispose]() {
+          await reader.close();
+        },
+      };
+      for await (const entry of reader.entries()) {
+        expect(entry.compression).toBe('deflate');
+      }
+      const zip = await JSZip.loadAsync(await blob.arrayBuffer(), { checkCRC32: true });
       const manifest = JSON.parse(await zip.file('manifest.json')!.async('string'));
       expect(manifest).toMatchObject({ version: 2, collection: { status: 'completed' }, trials: [{ id: 'level-1', status: 'completed', record: { runId: first.id } }, { id: 'level-2', status: 'completed', record: { runId: second.id } }] });
       const planText = await zip.file('plan.json')!.async('string');

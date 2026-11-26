@@ -1,1 +1,1 @@
-export const llamaCppPerformance__fixed_image_measurement_help = (): string => 'Uses a fixed 512 × 512 image and up to 32 output tokens. Records initial loading and resident runs separately. Image bytes are not included in the ZIP.';
+export const llamaCppPerformance__fixed_image_measurement_help = (): string => "Usa uma imagem fixa de 512 × 512 e até 32 tokens de saída. Registra separadamente a primeira solicitação com imagem e as seguintes, com o projetor carregado. Os testes com imagem são ignorados em modelos sem esse suporte. O ZIP não contém os dados da imagem.";
