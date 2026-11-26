@@ -27,6 +27,21 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+## [0.76.0] - 2026-11-26
+
+### Added
+
+- Include the response after a tool result in llama.cpp browser speed investigations. The existing measurement button runs a synthetic tool call and records continuation timing and prompt cache reuse in the exported ZIP.
+- Compare the default and GPU placement of eligible Q2_0 expert weights in speed diagnostics on supported WebGPU runtimes. Open the diagnostics page with `q2Placement=ab` and use the existing measurement button to record both runs in one ZIP.
+- Compare full and compact sliding-window attention caches in llama.cpp browser diagnostics with `swaCache=ab`. One run exports the speed, cache reuse, and memory observations for both modes.
+
+### Changed
+
+- Measure text and image inputs together by default in llama.cpp browser diagnostics. Either workload can be turned off independently.
+- Compress ZIP exports for llama.cpp browser diagnostics, speech investigations, image benchmarks, and image generation sessions and results.
+- Start image benchmark ZIP downloads while the archive is being written when streaming downloads are available.
+- Compress Naidan data exports, including Base64 exports and chat sharing URLs.
+
 ## [0.75.0] - 2026-11-24
 
 ### Changed
@@ -1381,7 +1396,8 @@ Do not add entries directly here during ordinary development.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.75.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.76.0...develop
+[0.76.0]: https://github.com/nwtgck/naidan/compare/v0.75.0...v0.76.0
 [0.75.0]: https://github.com/nwtgck/naidan/compare/v0.74.0...v0.75.0
 [0.74.0]: https://github.com/nwtgck/naidan/compare/v0.73.0...v0.74.0
 [0.73.0]: https://github.com/nwtgck/naidan/compare/v0.72.0...v0.73.0
