@@ -41,7 +41,7 @@
     "marked": "^18.1.2",
     "marked-highlight": "^2.2.4",
     "marked-katex-extension": "^5.1.13",
-    "mermaid": "11.17.2",
+    "mermaid": "12.3.0",
     "nanoid": "^6.0.2",
     "speech-cpp-browser-core": "github:nwtgck/browser-inference-core#395b372763e9030c45ad834533b8f12ca242c2ef",
     "stable-diffusion-cpp-browser-core": "github:nwtgck/browser-inference-core#395b372763e9030c45ad834533b8f12ca242c2ef",
