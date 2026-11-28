@@ -9,33 +9,22 @@ export const ENDPOINT_PRESETS = [
   // { name: 'Mistral', type: 'openai', url: 'https://api.mistral.ai/v1' },
 ] as const;
 
-export const STORAGE_KEY_PREFIX = 'naidan:';
-/**
- * Exported as a narrow compromise so the generated pre-paint reader and the
- * normal Zod-backed persistence path cannot drift to different keys. Direct
- * localStorage access remains owned by the theme persistence/bootstrap code.
- */
-export const THEME_MODE_STORAGE_KEY = `${STORAGE_KEY_PREFIX}theme_mode`;
-export const STORAGE_BOOTSTRAP_KEY = `${STORAGE_KEY_PREFIX}storage_type`;
-
 // Synchronization keys
 
-export const SYNC_SIGNAL_KEY = `${STORAGE_KEY_PREFIX}sync:signal`;
+export const SYNC_KEY_PREFIX = 'naidan:sync:';
+export const SYNC_SIGNAL_KEY = `${SYNC_KEY_PREFIX}signal`;
 
-export const SYNC_LOCK_KEY = `${STORAGE_KEY_PREFIX}sync:lock`; // Legacy/Global lock
+const syncLockPrefix = `${SYNC_KEY_PREFIX}lock`;
 
-export const LOCK_METADATA = `${STORAGE_KEY_PREFIX}sync:lock:metadata`;
+export const SYNC_LOCK_KEY = syncLockPrefix; // Legacy/Global lock
 
-export const LOCK_CHAT_CONTENT_PREFIX = `${STORAGE_KEY_PREFIX}sync:lock:chat_content:`;
+export const LOCK_METADATA = `${syncLockPrefix}:metadata`;
+
+export const LOCK_CHAT_CONTENT_PREFIX = `${syncLockPrefix}:chat_content:`;
 
 // TODO(strings-localize): Separate the persisted title fallback and search-worker title from locale-specific display copy before localizing this shared domain value.
 export const UNTITLED_CHAT_TITLE = 'New Chat';
-/** Shared OPFS root for model artifacts used by all inference engines. */
-export const OPFS_MODELS_DIR = 'models';
-/** OPFS directory used for per-session shell /tmp scratch space. */
-export const OPFS_TMP_DIR = 'naidan-tmp';
-export const OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY = `${STORAGE_KEY_PREFIX}opfs_tmp:pending_owner_cleanups`;
-export const OPFS_TMP_CLEANUP_LOCK_KEY = `${STORAGE_KEY_PREFIX}sync:lock:opfs_tmp_cleanup`;
+export const OPFS_TMP_CLEANUP_LOCK_KEY = `${syncLockPrefix}:opfs_tmp_cleanup`;
 export const FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME = 'file-protocol-compatible-wesh-worker';
 
 

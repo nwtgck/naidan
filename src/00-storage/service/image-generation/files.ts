@@ -1,9 +1,5 @@
-import { UnavailableRpcRecordError } from './unavailable-record';
-import { z } from 'zod';
-import type { ImageGenerationReadResult, ImageGenerationReadWarning } from '@/01-models/image-generation';
-
-export const imageGenerationRawIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{2,128}$/);
-const MAX_JSON_BYTES = 16 * 1024 * 1024;
+import type { FileLocation } from '@/00-format/file-record';
+import type { ImageGenerationIo } from '@/00-format/image-generation-record';
 
 export function imageGenerationIsNotFound({ error }: { error: unknown }): boolean {
   return (error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError';
@@ -22,7 +18,7 @@ export async function imageGenerationDirectory({ parent, name, create }: {
   }
 }
 
-export async function readImageGenerationText({ directory, name }: { directory: FileSystemDirectoryHandle, name: string }): Promise<string | undefined> {
+async function readImageGenerationText({ directory, name, sizeLimit }: { directory: FileSystemDirectoryHandle, name: string, sizeLimit: number | undefined }): Promise<string | undefined> {
   let handle: FileSystemFileHandle;
   try {
     handle = await directory.getFileHandle(name);
@@ -33,14 +29,14 @@ export async function readImageGenerationText({ directory, name }: { directory: 
     throw error;
   }
   const file = await handle.getFile();
-  if (file.size > MAX_JSON_BYTES) {
+  if (sizeLimit !== undefined && file.size > sizeLimit) {
     throw new Error(`Image Generation metadata exceeds the read limit: ${name}`);
   }
   return file.text();
 }
 
-export async function writeImageGenerationText({ directory, name, text }: { directory: FileSystemDirectoryHandle, name: string, text: string }): Promise<void> {
-  if (new TextEncoder().encode(text).byteLength > MAX_JSON_BYTES) {
+async function writeImageGenerationText({ directory, name, text, sizeLimit }: { directory: FileSystemDirectoryHandle, name: string, text: string, sizeLimit: number | undefined }): Promise<void> {
+  if (sizeLimit !== undefined && new TextEncoder().encode(text).byteLength > sizeLimit) {
     throw new Error('Image Generation metadata exceeds the write limit.');
   }
   let handle: FileSystemFileHandle;
@@ -72,301 +68,101 @@ export async function writeImageGenerationText({ directory, name, text }: { dire
   }
 }
 
-/** Storage-local helper. Callers must hold the Image Generation lock for every method. */
-export function createImageGenerationTable<R, S>({ directory, layout, recordSchema, indexSchema, recordId, summaryId, summarize, validateRecord, validateSummary, unavailableRecord }: {
-  directory: FileSystemDirectoryHandle | undefined,
-  layout: 'files' | 'session-directories',
-  recordSchema: Pick<z.ZodType<R>, 'parse'>,
-  indexSchema: Pick<z.ZodType<{ items: S[] }>, 'parse'>,
-  recordId: ({ record }: { record: R }) => string,
-  summaryId: ({ summary }: { summary: S }) => string,
-  summarize: ({ record }: { record: R }) => S,
-  validateRecord: ({ record }: { record: R }) => void,
-  validateSummary: ({ summary }: { summary: S }) => void,
-  unavailableRecord: (({ raw }: { raw: unknown }) => { id: string } | undefined) | undefined,
-}) {
-  async function readRecord({ shardDirectory, id }: { shardDirectory: FileSystemDirectoryHandle, id: string }): Promise<R | undefined> {
-    let text: string | undefined;
-    switch (layout) {
-    case 'files': text = await readImageGenerationText({ directory: shardDirectory, name: `${id}.json` });
-      break;
-    case 'session-directories': {
-      const parent = await imageGenerationDirectory({ parent: shardDirectory, name: id, create: false });
-      if (!parent) {
+export function imageGenerationIo({ directory, path }: {
+  directory: FileSystemDirectoryHandle, path: readonly string[],
+}): ImageGenerationIo {
+  async function openDirectory({ path: target, create }: {
+    path: readonly string[], create: boolean,
+  }): Promise<FileSystemDirectoryHandle | undefined> {
+    if (path.length > target.length || !path.every((segment, index) => segment === target[index])) {
+      throw new Error('Image Generation record path is outside the storage directory.');
+    }
+    let current = directory;
+    for (const name of target.slice(path.length)) {
+      const next = await imageGenerationDirectory({ parent: current, name, create });
+      if (next === undefined) {
         return undefined;
       }
-      text = await readImageGenerationText({ directory: parent, name: 'session.json' });
-      break;
+      current = next;
     }
-    default: {
-      const exhaustive: never = layout;
-      throw new Error(String(exhaustive));
-    }
-    }
-    if (text === undefined) {
-      return undefined;
-    }
-    const raw: unknown = JSON.parse(text);
-    const unavailable = unavailableRecord?.({ raw });
-    if (unavailable !== undefined) {
-      if (unavailable.id !== id) {
-        throw new Error('Image Generation record identity does not match its location.');
-      }
-      throw new UnavailableRpcRecordError({ id: id });
-    }
-    const record = recordSchema.parse(raw);
-    if (recordId({ record }) !== id) {
-      throw new Error('Image Generation record identity does not match its location.');
-    }
-    validateRecord({ record });
-    return record;
+    return current;
   }
 
-  async function recordIds({ shardDirectory, shard }: { shardDirectory: FileSystemDirectoryHandle, shard: string }): Promise<string[]> {
-    const ids: string[] = [];
-    for await (const [name, handle] of shardDirectory.entries()) {
-      let id: string;
-      switch (layout) {
-      case 'files':
-        if (handle.kind !== 'file' || name === 'index.json' || !name.endsWith('.json')) {
-          continue;
+  function openParent({ file, create }: { file: FileLocation, create: boolean }) {
+    return openDirectory({ path: file.path.slice(0, -1), create });
+  }
+
+  return {
+    async open({ location, create, allowMissing }) {
+      try {
+        const handle = await openDirectory({ path: location.path, create });
+        return handle && imageGenerationIo({ directory: handle, path: location.path });
+      } catch (error) {
+        if (allowMissing && imageGenerationIsNotFound({ error })) {
+          return undefined;
         }
-        id = imageGenerationRawIdSchema.parse(name.slice(0, -5));
-        break;
-      case 'session-directories':
+        throw error;
+      }
+    },
+    async *entries() {
+      for await (const [name, handle] of directory.entries()) {
         switch (handle.kind) {
-        case 'directory': break;
-        case 'file': continue;
+        case 'file':
+          yield { name, kind: 'file' };
+          break;
+        case 'directory':
+          yield { name, kind: 'directory', directory: () => imageGenerationIo({ directory: handle, path: [...path, name] }) };
+          break;
         default: {
           const exhaustive: never = handle;
           throw new Error(String(exhaustive));
         }
         }
-        id = imageGenerationRawIdSchema.parse(name);
-        break;
-      default: {
-        const exhaustive: never = layout;
-        throw new Error(String(exhaustive));
       }
+    },
+    async readText({ file }) {
+      const parent = await openParent({ file, create: false });
+      return parent && readImageGenerationText({ directory: parent, name: file.name, sizeLimit: file.maxBytes });
+    },
+    async writeText({ file, text }) {
+      const parent = (await openParent({ file, create: true }))!;
+      await writeImageGenerationText({ directory: parent, name: file.name, text, sizeLimit: file.maxBytes });
+    },
+    async readFile({ file }) {
+      const parent = await openParent({ file, create: false });
+      if (!parent) {
+        return undefined;
       }
-      if (id.slice(-2).toLowerCase() !== shard) {
-        throw new Error('Image Generation record is in the wrong shard.');
-      }
-      ids.push(id);
-    }
-    return ids;
-  }
-
-  async function readIndex({ shardDirectory, shard, purpose }: { shardDirectory: FileSystemDirectoryHandle, shard: string, purpose: 'presentation' | 'mutation' }): Promise<{ items: S[], unavailable: string[] }> {
-    const text = await readImageGenerationText({ directory: shardDirectory, name: 'index.json' });
-    // Even dirty indexes must parse before mutation. Never replace corrupt bytes
-    // with an empty "healthy" index. Read-only listing can fall back to records.
-    const index = text === undefined ? { items: [] } : indexSchema.parse(JSON.parse(text));
-    const indexed = new Map<string, S>();
-    for (const summary of index.items) {
-      const id = imageGenerationRawIdSchema.parse(summaryId({ summary }));
-      if (indexed.has(id) || id.slice(-2).toLowerCase() !== shard) {
-        throw new Error('Image Generation index identity mismatch.');
-      }
-      validateSummary({ summary });
-      indexed.set(id, summary);
-    }
-    const dirty = await readImageGenerationText({ directory: shardDirectory, name: 'index.dirty' }) !== undefined;
-    const ids = await recordIds({ shardDirectory, shard });
-    const items: S[] = [], unavailable: string[] = [];
-    // Clean summaries are presentation-only. Mutation must validate canonical
-    // RPC records so stale summaries cannot authorize writes or erase opaque data.
-    for (const id of ids) {
-      const cached = indexed.get(id);
-      if (!dirty && cached !== undefined) {
-        switch (purpose) {
-        case 'presentation': items.push(cached);
-          continue;
-        case 'mutation':
-          if (unavailableRecord === undefined) {
-            items.push(cached);
-            continue;
-          }
-          break;
-        default: {
-          const exhaustive: never = purpose;
-          throw new Error(String(exhaustive));
-        }
-        }
-      }
+      let handle: FileSystemFileHandle;
       try {
-        const record = await readRecord({ shardDirectory, id });
-        if (record === undefined) {
-          throw new Error('Image Generation record is incomplete or disappeared.');
-        }
-        items.push(summarize({ record }));
+        handle = await parent.getFileHandle(file.name);
       } catch (error) {
-        if (!(error instanceof UnavailableRpcRecordError)) {
-          throw error;
+        if (imageGenerationIsNotFound({ error })) {
+          return undefined;
         }
-        unavailable.push(id);
+        throw error;
       }
-    }
-    return { items, unavailable };
-  }
-
-  async function load({ id }: { id: string }): Promise<R | undefined> {
-    imageGenerationRawIdSchema.parse(id);
-    if (!directory) {
-      return undefined;
-    }
-    const shardDirectory = await imageGenerationDirectory({ parent: directory, name: id.slice(-2).toLowerCase(), create: false });
-    return shardDirectory && readRecord({ shardDirectory, id });
-  }
-
-  async function list(): Promise<ImageGenerationReadResult<S>> {
-    const items: S[] = [], warnings: ImageGenerationReadWarning[] = [];
-    let warningCount = 0;
-    function warn({ path, error }: { path: string, error: unknown }): void {
-      warningCount++;
-      if (warnings.length < 100) {
-        warnings.push({ path: path.slice(0, 1024), message: (error instanceof Error ? error.message : String(error)).slice(0, 1024) });
+      return handle.getFile();
+    },
+    async remove({ location, recursive }) {
+      const parent = await openParent({ file: location, create: false });
+      if (!parent) {
+        throw new DOMException('Image Generation directory is missing.', 'NotFoundError');
       }
-    }
-    if (!directory) {
-      return { items, warnings, warningCount };
-    }
-    for await (const [shard, handle] of directory.entries()) {
-      if (handle.kind !== 'directory' || !/^[a-z0-9_-]{2}$/.test(shard)) {
-        continue;
+      await parent.removeEntry(location.name, recursive ? { recursive: true } : undefined);
+    },
+    async removeEmptyDirectory({ location }) {
+      const parent = await openParent({ file: location, create: false });
+      if (!parent) {
+        return;
       }
-      try {
-        const index = await readIndex({ shardDirectory: handle, shard, purpose: 'presentation' });
-        items.push(...index.items);
-        for (const id of index.unavailable) {
-          warn({ path: `${shard}/${id}`, error: new UnavailableRpcRecordError({ id: id }) });
-        }
-        continue;
-      } catch (error) {
-        warn({ path: `${shard}/index.json`, error });
+      const handle = await parent.getDirectoryHandle(location.name);
+      for await (const _entry of handle.entries()) {
+        return;
       }
-      // Do not write a repaired index during browsing, and do not conceal a
-      // partial result as an exact empty collection. Preserve every bad file.
-      try {
-        for await (const [name, entry] of handle.entries()) {
-          let id: string;
-          switch (layout) {
-          case 'files':
-            if (entry.kind !== 'file' || name === 'index.json' || !name.endsWith('.json')) {
-              continue;
-            }
-            id = name.slice(0, -5);
-            break;
-          case 'session-directories':
-            switch (entry.kind) {
-            case 'directory': break;
-            case 'file': continue;
-            default: {
-              const exhaustive: never = entry;
-              throw new Error(String(exhaustive));
-            }
-            }
-            id = name;
-            break;
-          default: {
-            const exhaustive: never = layout;
-            throw new Error(String(exhaustive));
-          }
-          }
-          try {
-            imageGenerationRawIdSchema.parse(id);
-            if (id.slice(-2).toLowerCase() !== shard) {
-              throw new Error('Image Generation record is in the wrong shard.');
-            }
-            const record = await readRecord({ shardDirectory: handle, id });
-            if (record === undefined) {
-              throw new Error('Image Generation record is incomplete.');
-            }
-            items.push(summarize({ record }));
-          } catch (error) {
-            warn({ path: `${shard}/${name}`, error });
-          }
-        }
-      } catch (error) {
-        warn({ path: shard, error });
-      }
-    }
-    return { items, warnings, warningCount };
-  }
-
-  /** Read-only shard validation before a caller publishes inputs or reserves activity.
-   * The actual write revalidates under the same store lock; no cache/token escapes. */
-  async function preflightWrite({ id }: { id: string }): Promise<void> {
-    const rawId = imageGenerationRawIdSchema.parse(id);
-    if (!directory) {
-      throw new Error('Image Generation table is unavailable.');
-    }
-    const shard = rawId.slice(-2).toLowerCase();
-    const shardDirectory = await imageGenerationDirectory({ parent: directory, name: shard, create: false });
-    if (shardDirectory) {
-      await readIndex({ shardDirectory, shard, purpose: 'mutation' });
-    }
-  }
-
-  async function write({ record, assertCurrent, beforeCommit }: {
-    record: R,
-    assertCurrent: ({ current }: { current: R | undefined }) => void,
-    beforeCommit: () => Promise<void>,
-  }): Promise<void> {
-    const snapshot = recordSchema.parse(record);
-    validateRecord({ record: snapshot });
-    const text = JSON.stringify(snapshot);
-    const id = imageGenerationRawIdSchema.parse(recordId({ record: snapshot }));
-    if (!directory) {
-      throw new Error('Image Generation table is unavailable.');
-    }
-    const shard = id.slice(-2).toLowerCase();
-    const shardDirectory = await directory.getDirectoryHandle(shard, { create: true });
-    const index = await readIndex({ shardDirectory, shard, purpose: 'mutation' });
-    const current = await readRecord({ shardDirectory, id });
-    assertCurrent({ current });
-    await beforeCommit();
-    await writeImageGenerationText({ directory: shardDirectory, name: 'index.dirty', text: 'record-first' });
-    if (current === undefined || JSON.stringify(current) !== text) {
-      switch (layout) {
-      case 'files': await writeImageGenerationText({ directory: shardDirectory, name: `${id}.json`, text });
-        break;
-      case 'session-directories': {
-        const parent = await shardDirectory.getDirectoryHandle(id, { create: true });
-        try {
-          await writeImageGenerationText({ directory: parent, name: 'session.json', text });
-        } catch (error) {
-          if (current === undefined) {
-            // Remove only a directory this failed creation left empty. Unknown
-            // bytes must survive for raw export; never recurse during cleanup.
-            try {
-              let empty = true;
-              for await (const _entry of parent.entries()) {
-                empty = false;
-                break;
-              }
-              if (empty) {
-                await shardDirectory.removeEntry(id);
-              }
-            } catch { /* Preserve the original write failure. */ }
-          }
-          throw error;
-        }
-        break;
-      }
-      default: {
-        const exhaustive: never = layout;
-        throw new Error(String(exhaustive));
-      }
-      }
-    }
-    const summaries = index.items.filter(summary => summaryId({ summary }) !== id);
-    summaries.push(summarize({ record: snapshot }));
-    await writeImageGenerationText({ directory: shardDirectory, name: 'index.json', text: JSON.stringify(indexSchema.parse({ items: summaries })) });
-    await shardDirectory.removeEntry('index.dirty');
-  }
-
-  return { load, list, write, preflightWrite };
+      await parent.removeEntry(location.name);
+    },
+  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

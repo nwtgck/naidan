@@ -1,23 +1,17 @@
+import { opfsFormat } from '@/00-format/01-layout/layout';
 import { requireImageGenerationOperationMembership } from './image-generation/operations';
 import { applyImageGenerationActivity, finishImageGenerationActivity, recoverImageGenerationActivities, reserveImageGenerationActivity } from './image-generation/activity';
 import { compareImageGenerationSessions } from '@/01-models/image-generation';
 import { assertImageGenerationBinariesNotDeleted } from './image-generation/deletions';
 import type { ImageGenerationSessionDraft } from '@/01-models/image-generation';
-import { ExperimentalImageGenerationDraftDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
-import { imageGenerationDraftToDomain, imageGenerationDraftToDto } from '@/00-storage/mapper/image-generation';
 import { z } from 'zod';
-import * as dtozod from '@/utils/dtozod';
-import { idToRaw, type ImageGenerationAssetId, type ImageGenerationRunId, type ImageGenerationSessionId } from '@/01-models/ids';
+import { idToRaw, type ImageGenerationAssetId, type ImageGenerationRunId, type ImageGenerationSessionId, type NaidanId } from '@/01-models/ids';
 import type { StorageType } from '@/01-models/types';
 import { canTransitionImageGenerationRun, type ImageGenerationAsset, type ImageGenerationAssetAnnotations, type ImageGenerationAssetSummary, type ImageGenerationCatalog, type ImageGenerationReadResult, type ImageGenerationRun, type ImageGenerationRunExecution, type ImageGenerationRunSummary, type ImageGenerationSession, type ImageGenerationTagReference } from '@/01-models/image-generation';
-import {
-  ExperimentalImageGenerationCatalogDtoSchema, ExperimentalImageGenerationSessionDtoSchema, ExperimentalImageGenerationRunDtoSchema,
-  ExperimentalImageGenerationAssetDtoSchema, ExperimentalImageGenerationAssetAnnotationsDtoSchema, ExperimentalImageGenerationTagReferenceDtoSchema,
-  ExperimentalImageGenerationRunExecutionDtoSchema,
-} from '@/00-storage/00-dto/experimental-image-generation.dto';
-import { imageGenerationAnnotationsToDomain, imageGenerationAssetSummaryToDomain, imageGenerationAssetToDomain, imageGenerationAssetToDto, imageGenerationCatalogToDomain, imageGenerationCatalogToDto, imageGenerationRunSummaryToDomain, imageGenerationRunToDomain, imageGenerationRunToDto, imageGenerationSessionToDomain, imageGenerationSessionToDto, imageGenerationTagReferenceToDto } from '@/00-storage/mapper/image-generation';
-import { assertImageGenerationReplacement, openImageGenerationCatalogDto, withImageGenerationStore, type ImageGenerationStoreAccess } from './image-generation/context';
-import { imageGenerationRawIdSchema, imageGenerationIsNotFound, readImageGenerationText, writeImageGenerationText } from './image-generation/files';
+import { validateImageGenerationId } from '@/00-format/image-generation-record';
+import { imageGenerationExecutionForStorage, imageGenerationTagsForStorage } from '@/00-format/image-generation-workspace';
+import { assertImageGenerationReplacement, imageGenerationRootIo, openImageGenerationCatalog, withImageGenerationStore, type ImageGenerationStoreAccess } from './image-generation/context';
+import { imageGenerationIo, imageGenerationIsNotFound } from './image-generation/files';
 import { imageGenerationAnnotationsTable, imageGenerationAssetTable, imageGenerationRunTable, imageGenerationSessionDirectory, imageGenerationSessionTable } from './image-generation/tables';
 
 export type { ImageGenerationStoreAccess } from './image-generation/context';
@@ -25,30 +19,30 @@ export type { ImageGenerationStoreAccess } from './image-generation/context';
 /** DTO strings are not path capabilities. Check the identities this operation
  * will use as path components before locking/opening storage or publishing bytes.
  * Display text and other metadata deliberately keep their relaxed DTO contract. */
-function assertImageGenerationPathIds({ ids }: { ids: readonly string[] }): void {
+function assertImageGenerationPathIds({ ids }: { ids: readonly NaidanId[] }): void {
   for (const id of ids) {
-    imageGenerationRawIdSchema.parse(id);
+    validateImageGenerationId({ id });
   }
 }
 
 
 /** No directory is created during an ordinary read-only visit. */
 export async function openImageGenerationStore({ storageType, creation }: { storageType: StorageType, creation: 'allow' | 'forbid' }): Promise<ImageGenerationCatalog | undefined> {
-  const dto = await openImageGenerationCatalogDto({ storageType, creation });
-  return dto && imageGenerationCatalogToDomain({ dto });
+  return openImageGenerationCatalog({ storageType, creation });
 }
 
 export async function loadImageGenerationCatalog({ store }: { store: ImageGenerationStoreAccess }): Promise<ImageGenerationCatalog> {
-  return withImageGenerationStore({ store, operation: async ({ catalog }) => imageGenerationCatalogToDomain({ dto: catalog }) });
+  return withImageGenerationStore({ store, operation: async ({ catalog }) => catalog.value });
 }
 
 /** Rename/archive tags by stable ID. Definitions are never physically removed. */
 export async function saveImageGenerationCatalog({ store, catalog, expectedRevision }: { store: ImageGenerationStoreAccess, catalog: ImageGenerationCatalog, expectedRevision: number }): Promise<void> {
-  const next = ExperimentalImageGenerationCatalogDtoSchema.parse(imageGenerationCatalogToDto({ catalog }));
-  const serialized = JSON.stringify(next);
+  const catalogWrite = opfsFormat.storage.experimental.imageGeneration.catalog.prepareWrite({ value: catalog });
+  const next = catalogWrite.snapshot.value;
   await withImageGenerationStore({
     store,
-    operation: async ({ directory, catalog: current }) => {
+    operation: async ({ directory, catalog: snapshot }) => {
+      const current = snapshot.value;
       if (next.id !== current.id || next.createdAt !== current.createdAt) {
         throw new Error('Image Generation catalog identity is immutable.');
       }
@@ -61,9 +55,9 @@ export async function saveImageGenerationCatalog({ store, catalog, expectedRevis
           throw new Error('Tag creation time is immutable.');
         }
       }
-      assertImageGenerationReplacement({ current, next, expectedRevision });
-      if (JSON.stringify(current) !== serialized) {
-        await writeImageGenerationText({ directory, name: 'catalog.json', text: serialized });
+      assertImageGenerationReplacement({ current: snapshot, next: catalogWrite.snapshot, expectedRevision });
+      if (!snapshot.matches({ other: catalogWrite.snapshot })) {
+        await catalogWrite.write({ io: imageGenerationRootIo({ directory }) });
       }
     },
   });
@@ -78,28 +72,26 @@ export async function listImageGenerationSessions({ store }: { store: ImageGener
       return {
         warnings: [...recovery.warnings, ...result.warnings].slice(0, 100),
         warningCount: recovery.warningCount + result.warningCount,
-        items: result.items.filter(dto => dto.state !== 'deleted').map(dto => imageGenerationSessionToDomain({ dto })).sort((a, b) => compareImageGenerationSessions({ a, b })),
+        items: result.items.filter(session => session.state !== 'deleted').sort((a, b) => compareImageGenerationSessions({ a, b })),
       };
     },
   });
 }
 
 export async function loadImageGenerationSession({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<ImageGenerationSession | undefined> {
-  const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
+  const id = validateImageGenerationId({ id: sessionId });
   return withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
-      const dto = await (await imageGenerationSessionTable({ directory, create: false })).load({ id });
-      return dto && dto.state !== 'deleted' && dto.state !== 'deleting' ? imageGenerationSessionToDomain({ dto }) : undefined;
+      const session = await (await imageGenerationSessionTable({ directory, create: false })).load({ id });
+      return session && session.state !== 'deleted' && session.state !== 'deleting' ? session : undefined;
     },
   });
 }
 
 export async function saveImageGenerationSession({ store, session, expectedRevision }: { store: ImageGenerationStoreAccess, session: ImageGenerationSession, expectedRevision: number | undefined }): Promise<ImageGenerationSession> {
-  const requested = ExperimentalImageGenerationSessionDtoSchema.parse(imageGenerationSessionToDto({ session }));
-  assertImageGenerationPathIds({ ids: [requested.id] });
   // Validate retained leaves before creating directories or reserving activity.
-  JSON.stringify(requested);
+  const requested = opfsFormat.storage.experimental.imageGeneration.sessions.prepareWrite({ value: session }).snapshot.value;
   return withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
@@ -107,7 +99,8 @@ export async function saveImageGenerationSession({ store, session, expectedRevis
         throw new Error('Use the explicit session deletion operation.');
       }
       const table = await imageGenerationSessionTable({ directory, create: true });
-      const current = await table.load({ id: requested.id });
+      const snapshot = await table.read({ id: requested.id });
+      const current = snapshot?.value;
       if (current?.state === 'deleted' || current?.state === 'deleting') {
         throw new Error('The session has been deleted.');
       }
@@ -116,13 +109,13 @@ export async function saveImageGenerationSession({ store, session, expectedRevis
       }
       // Callers cannot manufacture order, and retrying an acknowledged-lost save
       // must repair its index without reserving a newer position.
-      const candidate = { ...requested, activityOrder: current?.activityOrder };
-      assertImageGenerationReplacement({ current, next: candidate, expectedRevision });
+      const candidate = table.prepareWrite({ value: { ...requested, activityOrder: current?.activityOrder } });
+      assertImageGenerationReplacement({ current: snapshot, next: candidate.snapshot, expectedRevision });
       await table.preflightWrite({ id: requested.id });
-      const next = current && JSON.stringify(current) === JSON.stringify(candidate) ? current
-        : { ...candidate, activityOrder: await reserveImageGenerationActivity({ directory, run: undefined }) };
-      await table.write({ record: next, assertCurrent: ({ current: latest }) => assertImageGenerationReplacement({ current: latest, next, expectedRevision }), async beforeCommit() {} });
-      return imageGenerationSessionToDomain({ dto: next });
+      const prepared = snapshot?.matches({ other: candidate.snapshot }) ? candidate
+        : table.prepareWrite({ value: { ...candidate.snapshot.value, activityOrder: await reserveImageGenerationActivity({ directory, run: undefined }) } });
+      await prepared.write({ assertCurrent: ({ current, next }) => assertImageGenerationReplacement({ current, next, expectedRevision }), async beforeCommit() {} });
+      return prepared.snapshot.value;
     },
   });
 }
@@ -132,8 +125,8 @@ export async function saveImageGenerationSession({ store, session, expectedRevis
 export async function recordImageGenerationSessionUse({ store, sessionId, runId }: {
   store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, runId: ImageGenerationRunId,
 }): Promise<ImageGenerationSession> {
-  const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
-  const runKey = imageGenerationRawIdSchema.parse(idToRaw({ id: runId }));
+  const id = validateImageGenerationId({ id: sessionId });
+  const runKey = validateImageGenerationId({ id: runId });
   return withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
@@ -141,7 +134,7 @@ export async function recordImageGenerationSessionUse({ store, sessionId, runId 
       if (!result) {
         throw new Error('The generation is not accepted or its session has been deleted.');
       }
-      return imageGenerationSessionToDomain({ dto: result });
+      return result;
     },
   });
 }
@@ -152,15 +145,18 @@ export async function recordImageGenerationSessionUse({ store, sessionId, runId 
 export async function deleteImageGenerationSession({ store, sessionId, expectedRevision }: {
   store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, expectedRevision: number,
 }): Promise<void> {
-  const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
+  const id = validateImageGenerationId({ id: sessionId });
   await withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
       const table = await imageGenerationSessionTable({ directory, create: false });
-      let current = await table.load({ id });
-      if (!current) {
+      const snapshot = await table.read({ id });
+      if (!snapshot) {
         throw new Error('The session no longer exists.');
       }
+      const current = snapshot.value;
+      let revision = current.revision;
+      let clearAssociations = false;
       switch (current.state) {
       case 'deleted': return;
       case 'deleting': break;
@@ -168,16 +164,16 @@ export async function deleteImageGenerationSession({ store, sessionId, expectedR
         if (current.revision !== expectedRevision) {
           throw new Error('Image Generation revision conflict. Reload before deleting.');
         }
-        const next = {
-          ...current,
-          revision: current.revision + 1,
-          updatedAt: Date.now(),
-          state: 'deleting' as const,
-          assistantChatId: undefined,
-          translation: undefined,
-        };
-        await table.write({ record: next, assertCurrent: ({ current }) => assertImageGenerationReplacement({ current, next, expectedRevision }), async beforeCommit() {} });
-        current = next;
+        const prepared = snapshot.prepareChanges({
+          changes: {
+            revision: current.revision + 1,
+            updatedAt: Date.now(),
+            state: 'deleting',
+          },
+        });
+        await prepared.write({ assertCurrent: ({ current, next }) => assertImageGenerationReplacement({ current, next, expectedRevision }), async beforeCommit() {} });
+        revision++;
+        clearAssociations = true;
         break;
       }
       default: {
@@ -186,33 +182,36 @@ export async function deleteImageGenerationSession({ store, sessionId, expectedR
       }
       }
       // Open the directory directly: ordinary readers intentionally reject tombstones.
-      let location = directory;
-      for (const name of ['sessions', id.slice(-2).toLowerCase(), id]) {
-        location = await location.getDirectoryHandle(name);
+      const location = await imageGenerationSessionDirectory({ directory, sessionId: id, requireLive: false });
+      if (!location) {
+        throw new DOMException('Image Generation session directory is missing.', 'NotFoundError');
       }
-      const names: string[] = [];
-      for await (const [name] of location.entries()) {
-        if (name !== 'session.json') {
-          names.push(name);
-        }
-      }
-      for (const name of names) {
+      const session = opfsFormat.storage.experimental.imageGeneration.sessions.root({ rawId: idToRaw({ id }) });
+      const io = imageGenerationIo({ directory: location, path: session.path });
+      for (const child of await session.removableChildren({ io })) {
         try {
-          await location.removeEntry(name, { recursive: true });
+          await io.remove({ location: child, recursive: true });
         } catch (error) {
           if (!imageGenerationIsNotFound({ error })) {
             throw error;
           }
         }
       }
-      const next = { ...current, revision: current.revision + 1, updatedAt: Date.now(), state: 'deleted' as const, title: 'Deleted session' };
-      const expected = current.revision;
-      await table.write({ record: next, assertCurrent: ({ current }) => assertImageGenerationReplacement({ current, next, expectedRevision: expected }), async beforeCommit() {} });
+      const deleted = snapshot.prepareChanges({
+        changes: {
+          revision: revision + 1,
+          updatedAt: Date.now(),
+          state: 'deleted',
+          title: 'Deleted session',
+          clearAssociations,
+        },
+      });
+      await deleted.write({ assertCurrent: ({ current, next }) => assertImageGenerationReplacement({ current, next, expectedRevision: revision }), async beforeCommit() {} });
     },
   });
 }
 
-async function requireSession({ directory, sessionId }: { directory: FileSystemDirectoryHandle, sessionId: string }): Promise<FileSystemDirectoryHandle> {
+async function requireSession({ directory, sessionId }: { directory: FileSystemDirectoryHandle, sessionId: ImageGenerationSessionId }): Promise<FileSystemDirectoryHandle> {
   const session = await imageGenerationSessionDirectory({ directory, sessionId });
   if (!session) {
     throw new Error('Image Generation session does not exist.');
@@ -221,20 +220,13 @@ async function requireSession({ directory, sessionId }: { directory: FileSystemD
 }
 
 export async function loadImageGenerationDraft({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<ImageGenerationSessionDraft | undefined> {
-  const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
+  const id = validateImageGenerationId({ id: sessionId });
   return withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
       const session = await requireSession({ directory, sessionId: id });
-      const text = await readImageGenerationText({ directory: session, name: 'draft.json' });
-      if (text === undefined) {
-        return undefined;
-      }
-      const dto = ExperimentalImageGenerationDraftDtoSchema.parse(JSON.parse(text));
-      if (dto.sessionId !== id) {
-        throw new Error('Image Generation draft belongs to another session.');
-      }
-      return imageGenerationDraftToDomain({ dto });
+      const definition = opfsFormat.storage.experimental.imageGeneration.sessions.root({ rawId: idToRaw({ id }) });
+      return (await definition.draft.read({ io: imageGenerationIo({ directory: session, path: definition.path }) }))?.value;
     },
   });
 }
@@ -244,28 +236,24 @@ export async function loadImageGenerationDraft({ store, sessionId }: { store: Im
 export async function saveImageGenerationDraft({ store, draft, expectedRevision, writeInputs }: {
   store: ImageGenerationStoreAccess, draft: ImageGenerationSessionDraft, expectedRevision: number | undefined, writeInputs: () => Promise<void>,
 }): Promise<void> {
-  const next = ExperimentalImageGenerationDraftDtoSchema.parse(imageGenerationDraftToDto({ draft }));
-  assertImageGenerationPathIds({
-    ids: [
-      next.sessionId,
-      ...(next.request.imageInputs.initImage ? [next.request.imageInputs.initImage.binaryObjectId] : []),
-      ...next.request.imageInputs.referenceImages.map(image => image.binaryObjectId),
-    ],
-  });
-  const serialized = JSON.stringify(next);
+  const definition = opfsFormat.storage.experimental.imageGeneration.sessions.root({ rawId: idToRaw({ id: draft.sessionId }) });
+  const prepared = definition.draft.prepareWrite({ value: draft });
+  const next = prepared.snapshot.value;
+  const binaryIds = [
+    ...(next.request.imageInputs.initImage ? [next.request.imageInputs.initImage.binaryObjectId] : []),
+    ...next.request.imageInputs.referenceImages.map(image => image.binaryObjectId),
+  ];
+  assertImageGenerationPathIds({ ids: binaryIds });
   await withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
       const session = await requireSession({ directory, sessionId: next.sessionId });
-      const text = await readImageGenerationText({ directory: session, name: 'draft.json' });
-      const current = text === undefined ? undefined : ExperimentalImageGenerationDraftDtoSchema.parse(JSON.parse(text));
-      if (current && current.sessionId !== next.sessionId) {
-        throw new Error('Image Generation draft identity mismatch.');
-      }
-      assertImageGenerationReplacement({ current, next, expectedRevision });
-      await assertImageGenerationBinariesNotDeleted({ directory, ids: [...(next.request.imageInputs.initImage ? [next.request.imageInputs.initImage.binaryObjectId] : []), ...next.request.imageInputs.referenceImages.map(image => image.binaryObjectId)] });
+      const io = imageGenerationIo({ directory: session, path: definition.path });
+      const current = await definition.draft.read({ io });
+      assertImageGenerationReplacement({ current, next: prepared.snapshot, expectedRevision });
+      await assertImageGenerationBinariesNotDeleted({ directory, ids: binaryIds });
       await writeInputs();
-      await writeImageGenerationText({ directory: session, name: 'draft.json', text: serialized });
+      await prepared.write({ io });
     },
   });
 }
@@ -273,7 +261,8 @@ export async function saveImageGenerationDraft({ store, draft, expectedRevision,
 /** writeInputs publishes immutable BinaryObjects using a captured provider.
  * It must not call a lock-taking storageService method recursively. */
 export async function createImageGenerationRun({ store, run, writeInputs }: { store: ImageGenerationStoreAccess, run: ImageGenerationRun, writeInputs: () => Promise<void> }): Promise<void> {
-  const requested = ExperimentalImageGenerationRunDtoSchema.parse(imageGenerationRunToDto({ run }));
+  const definition = opfsFormat.storage.experimental.imageGeneration.sessions.root({ rawId: idToRaw({ id: run.sessionId }) }).runs;
+  const requested = definition.prepareWrite({ value: run }).snapshot.value;
   assertImageGenerationPathIds({
     ids: [
       requested.id, requested.sessionId, ...(requested.operationId === undefined ? [] : [requested.operationId]),
@@ -331,15 +320,18 @@ export async function createImageGenerationRun({ store, run, writeInputs }: { st
         }
       }
       const table = await imageGenerationRunTable({ directory: sessionDirectory, sessionId: next.sessionId, create: true });
-      const current = await table.load({ id: next.id });
-      const candidate = { ...next, acceptedOrder: current?.acceptedOrder };
-      assertImageGenerationReplacement({ current, next: candidate, expectedRevision: undefined });
+      const current = await table.read({ id: next.id });
+      const retry = current === undefined ? undefined : table.prepareWrite({ value: { ...next, acceptedOrder: current.value.acceptedOrder } });
+      if (retry !== undefined) {
+        assertImageGenerationReplacement({ current, next: retry.snapshot, expectedRevision: undefined });
+      }
       await table.preflightWrite({ id: next.id });
       await assertImageGenerationBinariesNotDeleted({ directory, ids: [...(next.request.imageInputs.initImage ? [next.request.imageInputs.initImage.binaryObjectId] : []), ...next.request.imageInputs.referenceImages.map(image => image.binaryObjectId)] });
       await writeInputs();
-      const accepted = current ?? { ...candidate, acceptedOrder: await reserveImageGenerationActivity({ directory, run: { sessionId: next.sessionId, runId: next.id } }) };
+      const acceptedOrder = current ? undefined : await reserveImageGenerationActivity({ directory, run: { sessionId: next.sessionId, runId: next.id } });
       try {
-        await table.write({ record: accepted, assertCurrent: ({ current: latest }) => assertImageGenerationReplacement({ current: latest, next: accepted, expectedRevision: undefined }), async beforeCommit() {} });
+        const prepared = retry ?? table.prepareWrite({ value: { ...next, acceptedOrder } });
+        await prepared.write({ assertCurrent: ({ current, next }) => assertImageGenerationReplacement({ current, next, expectedRevision: undefined }), async beforeCommit() {} });
       } catch (error) {
       // No canonical record means there was no acceptance. A future attempt may
       // receive a new order. If publication succeeded but its acknowledgement
@@ -356,26 +348,25 @@ export async function createImageGenerationRun({ store, run, writeInputs }: { st
 }
 
 export async function loadImageGenerationRun({ store, sessionId, runId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, runId: ImageGenerationRunId }): Promise<ImageGenerationRun | undefined> {
-  const rawSessionId = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId })), id = imageGenerationRawIdSchema.parse(idToRaw({ id: runId }));
+  const checkedSessionId = validateImageGenerationId({ id: sessionId }), id = validateImageGenerationId({ id: runId });
   return withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
-      const session = await requireSession({ directory, sessionId: rawSessionId });
-      const dto = await (await imageGenerationRunTable({ directory: session, sessionId: rawSessionId, create: false })).load({ id });
-      return dto && imageGenerationRunToDomain({ dto });
+      const session = await requireSession({ directory, sessionId: checkedSessionId });
+      return (await imageGenerationRunTable({ directory: session, sessionId: checkedSessionId, create: false })).loadForEditing({ id });
     },
   });
 }
 
 export async function listImageGenerationRuns({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<ImageGenerationReadResult<ImageGenerationRunSummary>> {
-  const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
+  const id = validateImageGenerationId({ id: sessionId });
   return withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
       const session = await requireSession({ directory, sessionId: id });
       const result = await (await imageGenerationRunTable({ directory: session, sessionId: id, create: false })).list();
-      result.items.sort((a, b) => b.createdAt - a.createdAt || compareIds({ a: a.id, b: b.id }));
-      return { ...result, items: result.items.map(dto => imageGenerationRunSummaryToDomain({ dto })) };
+      result.items.sort((a, b) => b.createdAt - a.createdAt || compareIds({ a: idToRaw({ id: a.id }), b: idToRaw({ id: b.id }) }));
+      return result;
     },
   });
 }
@@ -385,28 +376,29 @@ export async function listImageGenerationRuns({ store, sessionId }: { store: Ima
 export async function updateImageGenerationRunExecution({ store, sessionId, runId, execution, expectedRevision }: {
   store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, runId: ImageGenerationRunId, execution: ImageGenerationRunExecution, expectedRevision: number,
 }): Promise<void> {
-  const rawSessionId = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId })), id = imageGenerationRawIdSchema.parse(idToRaw({ id: runId }));
-  const accepted = ExperimentalImageGenerationRunExecutionDtoSchema.parse(execution);
+  const checkedSessionId = validateImageGenerationId({ id: sessionId }), id = validateImageGenerationId({ id: runId });
+  const accepted = imageGenerationExecutionForStorage({ execution });
   await withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
-      const session = await requireSession({ directory, sessionId: rawSessionId });
-      const table = await imageGenerationRunTable({ directory: session, sessionId: rawSessionId, create: false });
-      const current = await table.load({ id });
+      const session = await requireSession({ directory, sessionId: checkedSessionId });
+      const table = await imageGenerationRunTable({ directory: session, sessionId: checkedSessionId, create: false });
+      const current = await table.read({ id });
       if (!current) {
         throw new Error('Image Generation run does not exist.');
       }
-      if (accepted.type === 'running' && current.operationId !== undefined) {
-        await requireImageGenerationOperationMembership({ directory: session, sessionId: rawSessionId, operationId: current.operationId, runId: id });
+      if (accepted.type === 'running' && current.value.operationId !== undefined) {
+        await requireImageGenerationOperationMembership({ directory: session, sessionId: checkedSessionId, operationId: current.value.operationId, runId: id });
       }
-      const next = ExperimentalImageGenerationRunDtoSchema.parse({ ...current, revision: expectedRevision + 1, execution: accepted });
-      assertImageGenerationReplacement({ current, next, expectedRevision });
-      if (JSON.stringify(current) !== JSON.stringify(next) && !canTransitionImageGenerationRun({ from: current.execution.type, to: next.execution.type })) {
+      const prepared = current.prepareChanges({ changes: { revision: expectedRevision + 1, execution: accepted } });
+      const next = prepared.snapshot.value;
+      assertImageGenerationReplacement({ current, next: prepared.snapshot, expectedRevision });
+      if (!current.matches({ other: prepared.snapshot }) && !canTransitionImageGenerationRun({ from: current.value.execution.type, to: next.execution.type })) {
         throw new Error('Invalid Image Generation execution transition.');
       }
       switch (accepted.type) {
       case 'completed': {
-        const assets = await (await imageGenerationAssetTable({ directory: session, sessionId: rawSessionId, create: false })).list();
+        const assets = await (await imageGenerationAssetTable({ directory: session, sessionId: checkedSessionId, create: false })).list();
         if (assets.warningCount) {
           throw new Error('Cannot confirm completion while asset metadata is unreadable.');
         }
@@ -422,9 +414,8 @@ export async function updateImageGenerationRunExecution({ store, sessionId, runI
         throw new Error(String(exhaustive));
       }
       }
-      await table.write({
-        record: next,
-        assertCurrent({ current }) {
+      await prepared.write({
+        assertCurrent({ current, next }) {
           assertImageGenerationReplacement({ current, next, expectedRevision });
         },
         async beforeCommit() {},
@@ -436,7 +427,9 @@ export async function updateImageGenerationRunExecution({ store, sessionId, runI
 /** Publish bytes first, metadata second, derived index last. A failed metadata
  * save may leave bytes, but never deliberately deletes shared BinaryObjects. */
 export async function commitImageGenerationAsset({ store, asset, writeImages }: { store: ImageGenerationStoreAccess, asset: ImageGenerationAsset, writeImages: () => Promise<void> }): Promise<void> {
-  const next = ExperimentalImageGenerationAssetDtoSchema.parse(imageGenerationAssetToDto({ asset }));
+  const sessionDefinition = opfsFormat.storage.experimental.imageGeneration.sessions.root({ rawId: idToRaw({ id: asset.sessionId }) });
+  const prepared = sessionDefinition.assets.prepareWrite({ value: asset });
+  const next = prepared.snapshot.value;
   assertImageGenerationPathIds({
     ids: [
       next.id, next.sessionId, next.runId, next.result.binaryObjectId,
@@ -451,7 +444,7 @@ export async function commitImageGenerationAsset({ store, asset, writeImages }: 
       if (!run) {
         throw new Error('Image Generation run does not exist.');
       }
-      const table = await imageGenerationAssetTable({ directory: session, sessionId: next.sessionId, create: true });
+      const { table, write } = await prepared.open({ io: imageGenerationIo({ directory: session, path: sessionDefinition.path }), create: true });
       const previous = await table.load({ id: next.id });
       if (previous === undefined && run.execution.type !== 'running') {
         throw new Error('Only running jobs can publish new assets.');
@@ -466,10 +459,9 @@ export async function commitImageGenerationAsset({ store, asset, writeImages }: 
       if (assets.items.some(item => item.runId === next.runId && item.index === next.index && item.id !== next.id)) {
         throw new Error('This run output slot already has an asset.');
       }
-      await table.write({
-        record: next,
-        assertCurrent({ current }) {
-          if (current && JSON.stringify(current) !== JSON.stringify(next)) {
+      await write({
+        assertCurrent({ current, next }) {
+          if (current && !current.matches({ other: next })) {
             throw new Error('Image Generation assets are immutable.');
           }
         },
@@ -483,28 +475,27 @@ export async function commitImageGenerationAsset({ store, asset, writeImages }: 
 }
 
 export async function loadImageGenerationAsset({ store, sessionId, assetId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, assetId: ImageGenerationAssetId }): Promise<ImageGenerationAsset | undefined> {
-  const rawSessionId = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId })), id = imageGenerationRawIdSchema.parse(idToRaw({ id: assetId }));
+  const checkedSessionId = validateImageGenerationId({ id: sessionId }), id = validateImageGenerationId({ id: assetId });
   return withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
-      const session = await requireSession({ directory, sessionId: rawSessionId });
-      const dto = await (await imageGenerationAssetTable({ directory: session, sessionId: rawSessionId, create: false })).load({ id });
-      return dto && imageGenerationAssetToDomain({ dto });
+      const session = await requireSession({ directory, sessionId: checkedSessionId });
+      return (await imageGenerationAssetTable({ directory: session, sessionId: checkedSessionId, create: false })).load({ id });
     },
   });
 }
 
 export async function loadImageGenerationAssetAnnotations({ store, sessionId, assetId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, assetId: ImageGenerationAssetId }): Promise<ImageGenerationAssetAnnotations | undefined> {
-  const rawSessionId = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId })), id = imageGenerationRawIdSchema.parse(idToRaw({ id: assetId }));
+  const checkedSessionId = validateImageGenerationId({ id: sessionId }), id = validateImageGenerationId({ id: assetId });
   return withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
-      const session = await requireSession({ directory, sessionId: rawSessionId });
-      if (!await (await imageGenerationAssetTable({ directory: session, sessionId: rawSessionId, create: false })).load({ id })) {
+      const session = await requireSession({ directory, sessionId: checkedSessionId });
+      if (!await (await imageGenerationAssetTable({ directory: session, sessionId: checkedSessionId, create: false })).load({ id })) {
         return undefined;
       }
-      const dto = await (await imageGenerationAnnotationsTable({ directory: session, sessionId: rawSessionId, create: false })).load({ id });
-      return imageGenerationAnnotationsToDomain({ dto: dto ?? { assetId: id, sessionId: rawSessionId, revision: 0, state: 'active' as const, tags: [] } });
+      const annotations = await (await imageGenerationAnnotationsTable({ directory: session, sessionId: checkedSessionId, create: false })).load({ id });
+      return annotations ?? { assetId: id, sessionId: checkedSessionId, revision: 0, state: 'active', tags: [] };
     },
   });
 }
@@ -512,35 +503,45 @@ export async function loadImageGenerationAssetAnnotations({ store, sessionId, as
 export async function setImageGenerationAssetTags({ store, sessionId, assetId, tags, assignedAt, expectedRevision }: {
   store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, assetId: ImageGenerationAssetId, tags: ImageGenerationTagReference[], assignedAt: number, expectedRevision: number,
 }): Promise<void> {
-  const rawSessionId = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId })), id = imageGenerationRawIdSchema.parse(idToRaw({ id: assetId }));
+  const checkedSessionId = validateImageGenerationId({ id: sessionId }), id = validateImageGenerationId({ id: assetId });
   z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).parse(assignedAt);
   // This is a command limit, not a persisted-data constraint.
   if (tags.length > 256) {
     throw new Error('Too many Image Generation asset tags.');
   }
-  const parsed = dtozod.array(ExperimentalImageGenerationTagReferenceDtoSchema).parse(tags.map(tag => imageGenerationTagReferenceToDto({ tag })));
-  // This command sets a collection of identities, not duplicate assignments.
-  // Normalize only the explicit request; stored duplicates remain readable and
-  // read-only operations never rewrite them. DTO parsing also fixes key order.
-  const requested = [...new Map(parsed.map(tag => [JSON.stringify(tag), tag])).values()];
+  const parsed = imageGenerationTagsForStorage({ tags });
+  function tagKey({ tag }: { tag: ImageGenerationTagReference }): string {
+    switch (tag.type) {
+    case 'system': return 'system:favorite';
+    case 'user': return `user:${idToRaw({ id: tag.tagId })}`;
+    default: {
+      const exhaustive: never = tag;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+  // Keep request order and leave any duplicate historical assignments readable.
+  const requested = [...new Map(parsed.map(tag => [tagKey({ tag }), tag])).values()];
   await withImageGenerationStore({
     store,
     operation: async ({ directory, catalog }) => {
-      const session = await requireSession({ directory, sessionId: rawSessionId });
-      if (!await (await imageGenerationAssetTable({ directory: session, sessionId: rawSessionId, create: false })).load({ id })) {
+      const session = await requireSession({ directory, sessionId: checkedSessionId });
+      if (!await (await imageGenerationAssetTable({ directory: session, sessionId: checkedSessionId, create: false })).load({ id })) {
         throw new Error('Image Generation asset does not exist.');
       }
-      const table = await imageGenerationAnnotationsTable({ directory: session, sessionId: rawSessionId, create: true });
-      const current = await table.load({ id }) ?? { assetId: id, sessionId: rawSessionId, revision: 0, state: 'active' as const, tags: [] };
+      const table = await imageGenerationAnnotationsTable({ directory: session, sessionId: checkedSessionId, create: true });
+      const empty = table.prepareWrite({ value: { assetId: id, sessionId: checkedSessionId, revision: 0, state: 'active', tags: [] } }).snapshot;
+      const snapshot = await table.read({ id }) ?? empty;
+      const current = snapshot.value;
       if (current.state === 'deleting' || current.state === 'deleted') {
         throw new Error('Deleted images cannot be edited.');
       }
       const assignments = requested.map(tag => {
-        const previous = current.tags.find(item => JSON.stringify(item.tag) === JSON.stringify(tag));
+        const previous = current.tags.find(item => tagKey({ tag: item.tag }) === tagKey({ tag }));
         switch (tag.type) {
         case 'system': break;
         case 'user': {
-          const definition = catalog.tags.find(definition => definition.id === tag.tagId);
+          const definition = catalog.value.tags.find(definition => definition.id === tag.tagId);
           if (!definition || definition.state === 'archived' && !previous) {
             throw new Error('Cannot assign an unknown or archived user tag.');
           }
@@ -553,12 +554,11 @@ export async function setImageGenerationAssetTags({ store, sessionId, assetId, t
         }
         return { tag, assignedAt: previous?.assignedAt ?? assignedAt };
       });
-      const next = ExperimentalImageGenerationAssetAnnotationsDtoSchema.parse({ assetId: id, sessionId: rawSessionId, revision: expectedRevision + 1, state: current.state, tags: assignments });
-      assertImageGenerationReplacement({ current, next, expectedRevision });
-      await table.write({
-        record: next,
-        assertCurrent({ current }) {
-          assertImageGenerationReplacement({ current: current ?? { assetId: id, sessionId: rawSessionId, revision: 0, state: 'active' as const, tags: [] }, next, expectedRevision });
+      const prepared = table.prepareWrite({ value: { assetId: id, sessionId: checkedSessionId, revision: expectedRevision + 1, state: current.state, tags: assignments } });
+      assertImageGenerationReplacement({ current: snapshot, next: prepared.snapshot, expectedRevision });
+      await prepared.write({
+        assertCurrent({ current, next }) {
+          assertImageGenerationReplacement({ current: current ?? empty, next, expectedRevision });
         },
         async beforeCommit() {},
       });
@@ -577,7 +577,7 @@ export async function readImageGenerationSessionIndex({ store, sessionId }: { st
   annotations: ImageGenerationReadResult<ImageGenerationAssetAnnotations>,
   runs: ImageGenerationReadResult<ImageGenerationRunSummary>,
 }> {
-  const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
+  const id = validateImageGenerationId({ id: sessionId });
   return withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
@@ -585,11 +585,7 @@ export async function readImageGenerationSessionIndex({ store, sessionId }: { st
       const assets = await (await imageGenerationAssetTable({ directory: session, sessionId: id, create: false })).list();
       const annotations = await (await imageGenerationAnnotationsTable({ directory: session, sessionId: id, create: false })).list();
       const runs = await (await imageGenerationRunTable({ directory: session, sessionId: id, create: false })).list();
-      return {
-        assets: { ...assets, items: assets.items.map(dto => imageGenerationAssetSummaryToDomain({ dto })) },
-        annotations: { ...annotations, items: annotations.items.map(dto => imageGenerationAnnotationsToDomain({ dto })) },
-        runs: { ...runs, items: runs.items.map(dto => imageGenerationRunSummaryToDomain({ dto })) },
-      };
+      return { assets, annotations, runs };
     },
   });
 }

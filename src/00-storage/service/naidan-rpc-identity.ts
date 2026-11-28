@@ -1,30 +1,11 @@
-import { ExperimentalNaidanRpcIdentityDtoSchema } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
-import type { NaidanRpcIdentity } from '@/01-models/naidan-rpc';
+import { openIndexedDb } from './indexed-db';
+import { indexedDbFormat } from '@/00-format/01-layout/layout';
+import type { IndexedDbLocation, IndexedDbRecordTransaction } from '@/00-format/indexed-db-records';
 
-/** Identity policy belongs to the owner of the key, not the DTO shape. */
-function validateIdentity({ value }: { value: unknown }): NaidanRpcIdentity {
-  const identity = ExperimentalNaidanRpcIdentityDtoSchema.parse(value), key = identity.privateKey;
-  if (key.type !== 'private' || key.extractable || key.algorithm.name !== 'X25519' || key.usages.length !== 1 || key.usages[0] !== 'deriveBits'
-    || !/^[A-Za-z0-9_-]{43}$/.test(identity.publicKey)) {
-    throw new Error('Invalid RPC identity');
-  }
-  return identity;
-}
-
-const databaseName = 'naidan-experimental-rpc-identity';
-const identityStore = 'identity';
-
-function openDatabase(): Promise<IDBDatabase> {
+function openDatabase({ location }: { location: IndexedDbLocation }): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(databaseName, 1);
+    const request = openIndexedDb({ location });
     let abandoned = false;
-    request.onupgradeneeded = () => {
-      for (const name of [identityStore]) {
-        if (!request.result.objectStoreNames.contains(name)) {
-          request.result.createObjectStore(name);
-        }
-      }
-    };
     request.onblocked = () => {
       abandoned = true;
       reject(new Error('Naidan RPC storage is blocked by another tab'));
@@ -42,15 +23,12 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-async function transact<T>({ mode, run }: {
-  mode: IDBTransactionMode,
-  run({ transaction, result, fail }: { transaction: IDBTransaction, result({ value }: { value: T }): void, fail({ error }: { error: unknown }): void }): void,
-}): Promise<T> {
-  const database = await openDatabase();
+const transact: IndexedDbRecordTransaction = async ({ location, key, mode, use }) => {
+  const database = await openDatabase({ location });
   try {
-    return await new Promise<T>((resolve, reject) => {
-      const transaction = database.transaction([identityStore], mode);
-      let outcome: { value: T } | undefined;
+    return await new Promise<ReturnType<typeof use>>((resolve, reject) => {
+      const transaction = database.transaction([location.store.name], mode);
+      let outcome: { value: ReturnType<typeof use> } | undefined;
       let failure: unknown;
       const fail = ({ error }: { error: unknown }) => {
         failure = error;
@@ -64,13 +42,23 @@ async function transact<T>({ mode, run }: {
       transaction.onabort = () => reject(failure ?? new Error('Naidan RPC storage transaction aborted'));
       transaction.onerror = () => { /* onabort reports final failure; a request success is not a commit. */ };
       try {
-        run({
-          transaction,
-          result: ({ value }) => {
-            outcome = { value };
-          },
-          fail,
-        });
+        const store = transaction.objectStore(location.store.name);
+        const request = store.get(key);
+        request.onsuccess = () => {
+          try {
+            // A following add must start in this native callback to keep the transaction active.
+            outcome = {
+              value: use({
+                value: request.result,
+                add: ({ value }) => {
+                  store.add(value, key);
+                },
+              }),
+            };
+          } catch (error) {
+            fail({ error });
+          }
+        };
       } catch (error) {
         fail({ error });
       }
@@ -78,47 +66,11 @@ async function transact<T>({ mode, run }: {
   } finally {
     database.close();
   }
-}
-
-export async function readRpcIdentity(): Promise<NaidanRpcIdentity | undefined> {
-  return transact({
-    mode: 'readonly',
-    run: ({ transaction, result, fail }) => {
-      const request = transaction.objectStore(identityStore).get('self');
-      request.onsuccess = () => {
-        try {
-          result({ value: request.result === undefined ? undefined : validateIdentity({ value: request.result }) });
-        } catch (error) {
-          fail({ error });
-        }
-      };
-    },
-  });
-}
+};
 
 /** Insert once. A registry save failure leaves this committed key available for
  * retry; no registry, labels, permissions or session state belong in IndexedDB. */
-export async function rememberRpcIdentity({ identity }: { identity: NaidanRpcIdentity }): Promise<void> {
-  const key = validateIdentity({ value: identity });
-  return transact({
-    mode: 'readwrite',
-    run: ({ transaction, result, fail }) => {
-      const store = transaction.objectStore(identityStore), request = store.get('self');
-      request.onsuccess = () => {
-        try {
-          if (request.result === undefined) {
-            store.add(key, 'self');
-          } else if (validateIdentity({ value: request.result }).publicKey !== key.publicKey) {
-            throw new Error('The local RPC identity changed');
-          }
-          result({ value: undefined });
-        } catch (error) {
-          fail({ error });
-        }
-      };
-    },
-  });
-}
+export const { read: readRpcIdentity, remember: rememberRpcIdentity } = indexedDbFormat.rpcIdentity.bind({ transact });
 
 export const TEST_ONLY = {
 };

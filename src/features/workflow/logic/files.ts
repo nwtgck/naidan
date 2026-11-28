@@ -1,4 +1,5 @@
 import { storageService } from '@/00-storage/service';
+import { opfsFormat } from '@/00-format/01-layout/layout';
 import { createRemoteDirectoryHandle } from '@/utils/remote-directory-handle';
 import { idToRaw, type VolumeId } from '@/01-models/ids';
 import type { WorkflowRuntimeServices, WorkflowRunResult } from './runtime';
@@ -31,22 +32,23 @@ async function parentDirectory({ directory, path, create }: { directory: FileSys
   return { directory: parent, name: path.at(-1)! };
 }
 
-export async function* workflowFileChunks({ source, format, signal }: { source: RuntimeValue, format: 'text' | 'json' | 'jsonl' | 'binary', signal: AbortSignal }): AsyncGenerator<Uint8Array> {
-  const encoder = new TextEncoder();
-  async function* encoded({ chunks }: { chunks: AsyncIterable<string> }): AsyncGenerator<Uint8Array> {
-    for await (const text of chunks) {
-      for (let offset = 0; offset < text.length;) {
-        signal.throwIfAborted();
-        let end = Math.min(text.length, offset + 8192);
-        const last = text.charCodeAt(end - 1);
-        if (end < text.length && last >= 0xd800 && last <= 0xdbff) {
-          end--;
-        }
-        yield encoder.encode(text.slice(offset, end));
-        offset = end;
+async function* encodeTextChunks({ chunks, signal, encoder }: { chunks: AsyncIterable<string> | Iterable<string>, signal: AbortSignal, encoder: TextEncoder }): AsyncGenerator<Uint8Array> {
+  for await (const text of chunks) {
+    for (let offset = 0; offset < text.length;) {
+      signal.throwIfAborted();
+      let end = Math.min(text.length, offset + 8192);
+      const last = text.charCodeAt(end - 1);
+      if (end < text.length && last >= 0xd800 && last <= 0xdbff) {
+        end--;
       }
+      yield encoder.encode(text.slice(offset, end));
+      offset = end;
     }
   }
+}
+
+export async function* workflowFileChunks({ source, format, signal }: { source: RuntimeValue, format: 'text' | 'json' | 'jsonl' | 'binary', signal: AbortSignal }): AsyncGenerator<Uint8Array> {
+  const encoder = new TextEncoder();
   switch (format) {
   case 'binary':
     switch (source.type) {
@@ -58,9 +60,9 @@ export async function* workflowFileChunks({ source, format, signal }: { source: 
       throw new Error(`Unknown value: ${exhaustive}`);
     }
     }
-  case 'text': yield* encoded({ chunks: textChunks({ value: source, signal }) });
+  case 'text': yield* encodeTextChunks({ chunks: textChunks({ value: source, signal }), signal, encoder });
     return;
-  case 'json': yield* encoded({ chunks: serializeValue({ value: source, signal }) });
+  case 'json': yield* encodeTextChunks({ chunks: serializeValue({ value: source, signal }), signal, encoder });
     return;
   case 'jsonl': {
     switch (source.type) {
@@ -68,7 +70,7 @@ export async function* workflowFileChunks({ source, format, signal }: { source: 
       return;
     case 'array':
       for (const value of source.items) {
-        yield* encoded({ chunks: serializeValue({ value, signal }) });
+        yield* encodeTextChunks({ chunks: serializeValue({ value, signal }), signal, encoder });
         yield encoder.encode('\n');
       }
       return;
@@ -77,7 +79,7 @@ export async function* workflowFileChunks({ source, format, signal }: { source: 
         throw new Error('JSON Lines output requires an array.');
       }
       for (const value of source.value) {
-        yield* encoded({ chunks: serializeValue({ value: { type: 'json', value }, signal }) });
+        yield* encodeTextChunks({ chunks: serializeValue({ value: { type: 'json', value }, signal }), signal, encoder });
         yield encoder.encode('\n');
       }
       return;
@@ -245,64 +247,33 @@ export function exportable({ value }: { value: RuntimeValue }): boolean {
   }
 }
 
-function exportFormat({ value }: { value: RuntimeValue }): { format: 'text' | 'json' | 'jsonl' | 'binary', extension: string } {
-  switch (value.type) {
-  case 'binary': return { format: 'binary', extension: value.format ?? 'bin' };
-  case 'text': return { format: 'text', extension: 'txt' };
-  case 'sequence': return { format: 'jsonl', extension: 'jsonl' };
-  case 'json': case 'array': case 'object': case 'conversation': return { format: 'json', extension: 'json' };
-  case 'range': throw new Error('Iterate ranges before exporting them.');
-  case 'model': throw new Error('Model connections cannot be exported as result data.');
-  default: {
-    const exhaustive: never = value;
-    throw new Error(`Unknown value: ${exhaustive}`);
-  }
-  }
-}
-
 /** Export to a temporary folder first, allowing Explorer and ZIP to share the same files. */
 export async function exportWorkflowResults({ result, directory, signal, writtenFiles }: { result: WorkflowRunResult, directory: FileSystemDirectoryHandle, signal: AbortSignal, writtenFiles: readonly WorkflowWrittenFile[] }): Promise<void> {
-  let count = 0, remaining = 256 * 1024 * 1024;
-  const manifest: { stepId: string, output: string, path: string | null, skipped: string | null, kind?: 'conversation' }[] = [];
+  let remaining = 256 * 1024 * 1024;
+  const archive = opfsFormat.tmp.workflowResults.createWriter({ status: result.status });
   for (const [stepId, outputs] of result.outputs) {
     for (const [name, source] of Object.entries(outputs)) {
-      if (++count > 1000) {
-        throw new Error('Too many result files. Use explicit file outputs inside loops.');
-      }
-      if (!exportable({ value: source })) {
-        manifest.push({ stepId: idToRaw({ id: stepId }), output: name, path: null, skipped: 'Contains a model connection; credentials are not exported.' });
-        continue;
-      }
-      const { format, extension } = exportFormat({ value: source });
-      // Imported IDs and output names are labels, not trusted path segments.
-      const path = `result-${String(count).padStart(4, '0')}.${extension}`;
-      try {
-        remaining -= await saveFile({ directory, path: [path], source, format, onConflict: 'error', signal, maxBytes: Math.min(64 * 1024 * 1024, remaining) });
-      } catch (reason) {
-        if (!(reason instanceof WorkflowTextDecodingError)) {
-          throw reason;
-        }
-        // This is a newly created runtime-owned export, never a user Volume
-        // file. An aborted writable can leave its empty file handle behind.
-        await directory.removeEntry(path);
-        manifest.push({ stepId: idToRaw({ id: stepId }), output: name, path: null, skipped: reason.message });
-        continue;
-      }
-      const kind = (() => {
-        switch (source.type) {
-        case 'conversation': return { kind: 'conversation' as const };
-        case 'json': case 'model': case 'range': case 'text': case 'binary': case 'sequence': case 'array': case 'object': return {};
-        default: {
-          const exhaustive: never = source;
-          throw new Error(String(exhaustive));
-        }
-        }
-      })();
-      manifest.push({ stepId: idToRaw({ id: stepId }), output: name, path, skipped: null, ...kind });
+      await archive.writeOutput({
+        stepId,
+        output: name,
+        value: source,
+        skipReason: () => exportable({ value: source }) ? undefined : 'Contains a model connection; credentials are not exported.',
+        async write({ name, format }) {
+          try {
+            remaining -= await saveFile({ directory, path: [name], source, format, onConflict: 'error', signal, maxBytes: Math.min(64 * 1024 * 1024, remaining) });
+            return { status: 'written' };
+          } catch (reason) {
+            if (!(reason instanceof WorkflowTextDecodingError)) {
+              throw reason;
+            }
+            // An aborted write can leave an empty file in the staging folder.
+            await directory.removeEntry(name);
+            return { status: 'skipped', reason: reason.message };
+          }
+        },
+      });
     }
   }
-  const volumeIndices = new Map<VolumeId, number>();
-  const savedFiles = [];
   if (writtenFiles.length > 1000) {
     throw new Error('Too many saved files to export.');
   }
@@ -311,21 +282,32 @@ export async function exportWorkflowResults({ result, directory, signal, written
   for (const saved of writtenFiles) {
     signal.throwIfAborted();
     const parts = safeRelativePath({ path: saved.relativePath });
-    const folderIndex = volumeIndices.get(saved.volumeId) ?? volumeIndices.size + 1;
-    volumeIndices.set(saved.volumeId, folderIndex);
-    const path = ['files', `folder-${folderIndex}`, ...parts];
     const folder = await resolveWorkflowFolder({ volumeId: saved.volumeId, mode: 'read' });
     try {
       const parent = await parentDirectory({ directory: folder.directory, path: parts, create: false });
       const file = await (await parent.directory.getFileHandle(parent.name)).getFile();
-      const size = await writeChunks({ directory, path, chunks: fileChunks({ file, signal }), onConflict: 'error', signal, maxBytes: Math.min(64 * 1024 * 1024, remaining) });
-      remaining -= size;
-      savedFiles.push({ volumeId: idToRaw({ id: saved.volumeId }), relativePath: saved.relativePath, path: path.join('/'), size });
+      await archive.writeSavedFile({
+        volumeId: saved.volumeId,
+        parts,
+        async write({ path }) {
+          const size = await writeChunks({ directory, path, chunks: fileChunks({ file, signal }), onConflict: 'error', signal, maxBytes: Math.min(64 * 1024 * 1024, remaining) });
+          remaining -= size;
+          return size;
+        },
+      });
     } finally {
       await folder.close();
     }
   }
-  await saveFile({ directory, path: ['index.json'], source: { type: 'json', value: { status: result.status, outputs: manifest, savedFiles } }, format: 'json', onConflict: 'error', signal, maxBytes: remaining });
+  await archive.writeManifest({
+    async writeText({ name, toText }) {
+      function* manifestText() {
+        signal.throwIfAborted();
+        yield toText();
+      }
+      await writeChunks({ directory, path: [name], chunks: encodeTextChunks({ chunks: manifestText(), signal, encoder: new TextEncoder() }), onConflict: 'error', signal, maxBytes: remaining });
+    },
+  });
 }
 
 export async function zipWorkflowFolder({ directory, zipDirectory, signal }: { directory: FileSystemDirectoryHandle, zipDirectory: FileSystemDirectoryHandle, signal: AbortSignal }): Promise<File> {

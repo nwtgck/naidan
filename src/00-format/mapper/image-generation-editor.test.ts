@@ -1,0 +1,64 @@
+import { expect, it } from 'vitest';
+import { SettingsDtoSchema } from '@/00-format/00-dto/dto';
+import { ExperimentalRemoteImageModelEditorDtoSchema } from '@/00-format/00-dto/experimental.dto';
+import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
+import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
+import { settingsToDomain, settingsToDto } from './mappers';
+import { remoteImageModelEditorToDomain, remoteImageModelEditorToDto } from './image-generation-editor';
+
+it('round trips a remote editor separately from the local selection without rewriting remote paths', () => {
+  const registrationId = toNaidanRpcRegistrationId({ raw: 'registration-one' }), peerPublicKey = toNaidanRpcPeerPublicKey({ raw: 'B'.repeat(43) });
+  const settings: Settings = {
+    ...DEFAULT_SETTINGS,
+    storageType: 'local',
+    endpoint: { type: 'openai', url: '' },
+    experimental: {
+      browserImageGeneration: {
+        modelSelection: { primary: { slot: 'model', location: { kind: 'opfs', path: 'models/local.gguf' } }, components: [], loras: [] },
+        inferenceLocation: { kind: 'naidan_rpc', registration: { registrationId, peerPublicKey } },
+        remoteModelEditors: [{ registrationId, peerPublicKey, editor: { automaticSlots: [], primary: undefined, components: [], loras: [{ file: { location: { kind: 'host', directoryId: 'remote-directory', path: 'models/ off.gguf' }, expected: { size: 16, lastModified: 123 } }, strength: 0.7, enabled: 'disabled' }] } }],
+      },
+    },
+  };
+  const actual = settingsToDomain({ dto: SettingsDtoSchema.parse(settingsToDto({ domain: settings })) });
+  expect(actual.experimental?.browserImageGeneration).toMatchObject(settings.experimental!.browserImageGeneration!);
+  const remote = actual.experimental?.browserImageGeneration?.remoteModelEditors?.[0];
+  expect(remote?.editor.primary).toBeUndefined();
+});
+
+it('accepts future object fields without mutating the known editor values', () => {
+  const editor = ExperimentalRemoteImageModelEditorDtoSchema.parse({ primary: undefined, components: [], loras: [], future: 'field' });
+  expect(editor).toEqual({ primary: undefined, components: [], loras: [] });
+});
+
+it('preserves duplicate component slots but still rejects invalid numeric representations', () => {
+  const file = { location: { kind: 'opfs', path: 'models/test.gguf' } };
+  const components = [{ slot: 'vae', file }, { slot: 'vae', file }];
+  expect(ExperimentalRemoteImageModelEditorDtoSchema.parse({ primary: undefined, components, loras: [] }).components).toEqual(components);
+  expect(ExperimentalRemoteImageModelEditorDtoSchema.safeParse({ primary: undefined, components: [], loras: [{ file, strength: Number.NaN, enabled: 'disabled' }] }).success).toBe(false);
+});
+
+it('keeps remote temporary locators and their metadata in the persisted editor without invalidation', () => {
+  const registrationId = toNaidanRpcRegistrationId({ raw: 'remote-registration' }), peerPublicKey = toNaidanRpcPeerPublicKey({ raw: 'B'.repeat(43) });
+  const file = { location: { kind: 'temp' as const, path: 'temp/shared/weights/%ZZ.gguf' }, expected: { size: 123, lastModified: 456 } };
+  const settings: Settings = {
+    ...DEFAULT_SETTINGS,
+    storageType: 'local',
+    endpoint: { type: 'openai', url: '' },
+    experimental: {
+      browserImageGeneration: {
+        remoteModelEditors: [{ registrationId, peerPublicKey, editor: { automaticSlots: [], primary: { slot: 'diffusion', file, family: undefined }, components: [{ slot: 'vae', file }], loras: [{ file, strength: 0.7, enabled: 'enabled' }] } }],
+      },
+    },
+  };
+  const restored = settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(JSON.stringify(settingsToDto({ domain: settings })))) });
+  expect(restored.experimental?.browserImageGeneration?.remoteModelEditors).toEqual(settings.experimental!.browserImageGeneration!.remoteModelEditors);
+});
+
+it('migrates absent automatic intent as manual and round trips explicit automatic slots', () => {
+  const legacy = ExperimentalRemoteImageModelEditorDtoSchema.parse({ primary: undefined, components: [], loras: [] });
+  const manual = remoteImageModelEditorToDomain({ dto: legacy });
+  expect(manual.automaticSlots).toEqual([]);
+  const automatic = { ...manual, automaticSlots: ['vae' as const, 'lm' as const] };
+  expect(remoteImageModelEditorToDomain({ dto: remoteImageModelEditorToDto({ editor: automatic }) })).toEqual(automatic);
+});

@@ -1,3 +1,4 @@
+import { modelCacheOpfsRoot } from '@/00-format/model-cache-root';
 import { createFileMoveSupportCache, moveStagedFile, optionalFile, publicationFileName, temporaryFileName } from '@/utils/file-system-publication';
 import { localRepositoryInput, modelImportPendingName, normalizeModelDirectoryInput } from './model-directory-input';
 import { isModelSourceSegment, localRepositoryReference } from '@/01-models/llama-cpp-browser-model-id';
@@ -5,7 +6,6 @@ import { readStoredModelFile, type ModelFile, type StoredModelFile } from '@/log
 import { resolveModelFiles } from './model-file-selection';
 export { resolveModelFiles } from './model-file-selection';
 import { modelFileIsPending } from '@/logic/model-file-publication';
-import { OPFS_MODELS_DIR } from '@/constants';
 import { executeDeletionPlan, scanDeletionTree } from './deletion-plan';
 import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
@@ -40,14 +40,14 @@ export async function opfsRoot(): Promise<FileSystemDirectoryHandle> {
 }
 
 export async function userModelDirectory(): Promise<FileSystemDirectoryHandle> {
-  const models = await (await opfsRoot()).getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+  const models = await (await opfsRoot()).getDirectoryHandle(modelCacheOpfsRoot.name, { create: true });
   return models.getDirectoryHandle('user', { create: true });
 }
 
 /** Read-only lookup. Listing or opening a model must never create storage. */
 export async function existingUserModelDirectory(): Promise<FileSystemDirectoryHandle | undefined> {
   try {
-    const models = await (await opfsRoot()).getDirectoryHandle(OPFS_MODELS_DIR);
+    const models = await (await opfsRoot()).getDirectoryHandle(modelCacheOpfsRoot.name);
     return await models.getDirectoryHandle('user');
   } catch (error) {
     if (missing({ error })) {

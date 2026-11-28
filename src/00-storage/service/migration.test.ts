@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 import type { Chat, ChatGroup, Settings } from '@/01-models/types';
-import type { MigrationChunkDto } from '@/00-storage/00-dto/dto';
-import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
+import type { MigrationChunkDto } from '@/00-format/00-dto/dto';
+import { toChatGroupId, toChatId } from '@/01-models/ids';
 
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
@@ -161,7 +161,7 @@ describe('Storage Migration (Round-Trip)', () => {
     await provider.saveHierarchy({
       hierarchy: {
         items: [
-          { type: 'chat_group', id: idToRaw({ id: mockChatGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
+          { type: 'chat_group', id: mockChatGroup.id, chat_ids: [mockChat.id] },
         ],
       },
     });

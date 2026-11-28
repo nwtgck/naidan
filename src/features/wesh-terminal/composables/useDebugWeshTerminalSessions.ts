@@ -1,16 +1,20 @@
+import { opfsFormat } from '@/00-format/01-layout/layout';
 import { useSettings } from '@/composables/useSettings';
 import { createWeshTerminalSessions } from '@/features/wesh-terminal/composables/useWeshTerminalSessions';
 import { storageService } from '@/00-storage/service';
 import type { WeshMount } from '@/features/wesh/types';
 import { volumeAccessToWeshMount } from '@/features/wesh/volume-mount';
 
+const { path: opfsPath, home: homeEntry, tmp: tmpEntry } = opfsFormat.debugWesh.global;
+const home = '/' + homeEntry.path.slice(opfsPath.length).join('/');
+const tmp = '/' + tmpEntry.path.slice(opfsPath.length).join('/');
 const store = createWeshTerminalSessions({
-  opfsRootName: 'naidan-debug-wesh',
+  opfsPath,
   user: 'debug',
-  initialEnv: { HOME: '/home/debug', TMPDIR: '/tmp' },
-  initialCwd: '/home/debug',
-  homeDirectory: '/home/debug',
-  tmpDirectory: '/tmp',
+  initialEnv: { HOME: home, TMPDIR: tmp },
+  initialCwd: home,
+  homeDirectory: home,
+  tmpDirectory: tmp,
 });
 
 async function buildWorkerMounts(): Promise<WeshMount[]> {

@@ -35,4 +35,4 @@ Do not combine a Chat behavior change with an unrelated relocation. Propose stru
 
 Chat composables may depend on shared application code, Features, `src/01-models/**`, `src/00-storage/service/**`, `src/strings/**`, `src/constants.ts`, and `src/utils/**`.
 
-They must not depend directly on `src/00-storage/00-dto/**` or `src/00-storage/mapper/**`.
+They must not depend directly on `src/00-format/00-dto/**` or `src/00-format/mapper/**`.

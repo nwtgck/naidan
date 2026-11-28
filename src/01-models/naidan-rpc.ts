@@ -1,6 +1,5 @@
 import { Secret } from '@/utils/secret';
 import type { NaidanRpcRegistrationId, NaidanRpcPeerPublicKey } from './ids';
-import { restrictedFetchHeadersSchema } from '@/utils/restricted-fetch-headers';
 
 export type NaidanRpcTransportSettings = {
   type: 'naidan_piping_duplex',
@@ -20,43 +19,6 @@ export type NaidanRpcRegistration = {
   connectOnStartup: 'disabled' | 'enabled',
   revision: number,
 };
-
-export function normalizeNaidanRpcTransport({ transport }: { transport: NaidanRpcTransportSettings }): NaidanRpcTransportSettings {
-  const { type, serverUrl, headers, ...rest } = transport;
-  rest satisfies Record<PropertyKey, never>;
-  switch (type) {
-  case 'naidan_piping_duplex': break;
-  default: {
-    const exhaustive: never = type;
-    void exhaustive;
-    throw new Error('Unsupported RPC transport');
-  }
-  }
-  let url: URL;
-  try {
-    url = new URL(serverUrl);
-  } catch {
-    throw new Error('Use an HTTPS server origin or a loopback HTTP origin');
-  }
-  if (url.username || url.password || url.search || url.hash || url.pathname !== '/' ||
-      (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)))) {
-    throw new Error('Use an HTTPS server origin or a loopback HTTP origin');
-  }
-  // Validation errors must not carry a raw credential as diagnostic input.
-  const parsed = restrictedFetchHeadersSchema.safeParse(headers.map(({ name, value }) => ({ name, value: value.reveal() })));
-  if (!parsed.success) {
-    throw new Error('Invalid RPC transport headers');
-  }
-  return { type, serverUrl: url.origin, headers: parsed.data.map(({ name, value }) => ({ name, value: Secret.from({ value }) })) };
-}
-
-export function normalizeNaidanRpcLabel({ label }: { label: string }): string {
-  const normalized = label.trim();
-  if (!normalized || normalized.length > 100) {
-    throw new Error('Invalid RPC registration label');
-  }
-  return normalized;
-}
 
 export function areNaidanRpcTransportsEqual({ left, right }: { left: NaidanRpcTransportSettings, right: NaidanRpcTransportSettings }): boolean {
   const { type: leftType, serverUrl: leftUrl, headers: leftHeaders, ...leftRest } = left;

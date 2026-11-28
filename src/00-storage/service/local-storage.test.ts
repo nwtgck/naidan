@@ -2,11 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
 import type { Chat, ChatContent, ChatGroup } from '@/01-models/types';
 
-import { STORAGE_KEY_PREFIX } from '@/constants';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
-const KEY_META_PREFIX = `${STORAGE_KEY_PREFIX}lsp:chat_meta:`;
-const KEY_GROUP_PREFIX = `${STORAGE_KEY_PREFIX}lsp:chat_group:`;
+const KEY_META_PREFIX = `naidan:lsp:chat_meta:`;
+const KEY_GROUP_PREFIX = `naidan:lsp:chat_group:`;
 
 describe('LocalStorageProvider', () => {
   let provider: LocalStorageProvider;
@@ -38,7 +37,7 @@ describe('LocalStorageProvider', () => {
     expect(metaJson.root).toBeUndefined();
 
     // 2. Verify Content (Should exist at its own key)
-    const rawContent = localStorage.getItem(`${STORAGE_KEY_PREFIX}lsp:chat_content:${idToRaw({ id: mockChat.id })}`);
+    const rawContent = localStorage.getItem(`naidan:lsp:chat_content:${idToRaw({ id: mockChat.id })}`);
     expect(rawContent).not.toBeNull();
     const contentJson = JSON.parse(rawContent!);
     expect(contentJson.root).toBeDefined();
@@ -112,7 +111,7 @@ describe('LocalStorageProvider', () => {
 
     await provider.saveChatContent({ id: mockChat.id, content: mockChat });
     await provider.saveChatMeta({ meta: mockChat });
-    await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat', id: idToRaw({ id: mockChat.id }) }] } });
+    await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat', id: mockChat.id }] } });
     const list = await provider.listChats();
     expect(list).toHaveLength(1);
     expect(list[0]?.id).toBe(mockChat.id);
@@ -144,8 +143,8 @@ describe('LocalStorageProvider', () => {
     await provider.saveHierarchy({
       hierarchy: {
         items: [
-          { type: 'chat', id: chatId },
-          { type: 'chat_group', id: groupId, chat_ids: [] },
+          { type: 'chat', id: toChatId({ raw: chatId }) },
+          { type: 'chat_group', id: toChatGroupId({ raw: groupId }), chat_ids: [] },
         ],
       },
     });
@@ -193,8 +192,8 @@ describe('LocalStorageProvider', () => {
     it('should save and load hierarchy correctly', async () => {
       const mockHierarchy = {
         items: [
-          { type: 'chat' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb1' },
-          { type: 'chat_group' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb2', chat_ids: ['019bd241-2d57-716b-a9fd-1efbba88cfb3'] },
+          { type: 'chat' as const, id: toChatId({ raw: '019bd241-2d57-716b-a9fd-1efbba88cfb1' }) },
+          { type: 'chat_group' as const, id: toChatGroupId({ raw: '019bd241-2d57-716b-a9fd-1efbba88cfb2' }), chat_ids: [toChatId({ raw: '019bd241-2d57-716b-a9fd-1efbba88cfb3' })] },
         ],
       };
 
@@ -210,7 +209,7 @@ describe('LocalStorageProvider', () => {
 
     it('should fail if hierarchy data is invalid (Zod validation)', async () => {
       const invalidH = { items: [{ type: 'unknown', id: '123' }] };
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}lsp:hierarchy`, JSON.stringify(invalidH));
+      localStorage.setItem(`naidan:lsp:hierarchy`, JSON.stringify(invalidH));
 
       await expect(provider.loadHierarchy()).rejects.toThrow();
     });
@@ -251,7 +250,7 @@ describe('LocalStorageProvider', () => {
       await provider.saveHierarchy({
         hierarchy: {
           items: [
-            { type: 'chat_group', id: idToRaw({ id: mockGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
+            { type: 'chat_group', id: mockGroup.id, chat_ids: [mockChat.id] },
           ],
         },
       });

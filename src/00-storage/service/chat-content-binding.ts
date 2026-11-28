@@ -1,5 +1,5 @@
 import { clonePlainData } from '@/utils/clone-plain-data';
-import { chatContentToDomain, chatContentToDto } from '@/00-storage/mapper/mappers';
+import { chatContentToDomain, chatContentToDto } from '@/00-format/mapper/mappers';
 import type { ChatContent, Endpoint } from '@/01-models/types';
 import type { ChatId } from '@/01-models/ids';
 import { iterateAttachmentParts } from './message-attachments';

@@ -7,7 +7,6 @@ import WorkflowWorkspaceView from '@/features/workflow/WorkflowWorkspace.vue';
 import { formatWorkflowDefinition } from '@/00-storage/service/workflow-json';
 import { createWorkflowRunStore } from '@/00-storage/service/workflow-run';
 import * as runStoreModule from '@/00-storage/service/workflow-run';
-import { OPFS_TMP_DIR } from '@/constants';
 import WorkflowView from '@/features/workflow/WorkflowView.vue';
 import WorkflowGraph from '@/features/workflow/components/WorkflowGraph.vue';
 import SettingsSelect from '@/components/SettingsSelect.vue';
@@ -38,7 +37,12 @@ vi.mock('@/00-storage/service', () => ({ storageService: { getCurrentType: () =>
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: { generateAudio: mocks.generateAudio } }));
 vi.mock('@/features/audio-generation/reference-audio', () => ({ normalizeReferenceAudio: mocks.normalizeReference }));
 vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: mocks.loadLmProvider }));
-vi.mock('@/logic/opfs-tmp-manager', () => ({ getOPFSTmpManager: () => ({ createTmpDirectory: mocks.createTmpDirectory }) }));
+vi.mock('@/logic/opfs-tmp-manager', () => ({
+  getOPFSTmpManager: () => ({
+    createTmpDirectory: mocks.createTmpDirectory,
+    createWorkflowResultsDirectory: () => mocks.createTmpDirectory({ prefix: 'workflow-results' }),
+  }),
+}));
 vi.mock('@/features/file-explorer/composables/useFileExplorerModal', () => ({ useFileExplorerModal: () => ({ openFileExplorer: mocks.openFileExplorer }) }));
 vi.mock('@/utils/stream-download', () => ({ downloadFile: mocks.downloadFile, downloadBlob: mocks.downloadBlob }));
 
@@ -332,7 +336,7 @@ function historyFileSystem({ files }: { files: ReturnType<typeof createWorkflowT
   });
   let serial = 0;
   mocks.createTmpDirectory.mockImplementation(async ({ prefix }: { prefix: string }) => {
-    const root = await files.root.getDirectoryHandle(OPFS_TMP_DIR, { create: true });
+    const root = await files.root.getDirectoryHandle('naidan-tmp', { create: true });
     const owner = await root.getDirectoryHandle('owner', { create: true });
     return owner.getDirectoryHandle(`${prefix}-${++serial}`, { create: true });
   });
@@ -561,7 +565,7 @@ describe('Workflow durable history and routing', () => {
     historyFileSystem({ files });
     const runs = createWorkflowRunStore({ storageType: 'opfs' });
     const initial = await runs.create({ workflowId: undefined, definition: { name: 'Historical', steps: [valueStep({ id: 'old', value: 'old data' })] } });
-    const completed = await runs.finish({ previous: initial, status: 'completed', entries: [], error: undefined, resultsPath: [OPFS_TMP_DIR, 'expired', 'workflow-results-gone'], resultError: undefined });
+    const completed = await runs.finish({ previous: initial, status: 'completed', entries: [], error: undefined, resultsPath: ['naidan-tmp', 'expired', 'workflow-results-gone'], resultError: undefined });
     const state = workspace();
     const { router, wrapper } = await routedWorkspace({ state, path: '/workflows' });
     state.updateName({ name: 'Editing' });

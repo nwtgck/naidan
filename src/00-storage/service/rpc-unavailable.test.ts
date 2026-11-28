@@ -1,13 +1,12 @@
 import { beforeEach, expect, it } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
-import { SettingsDtoSchema } from '@/00-storage/00-dto/dto';
-import { settingsToDomain, settingsToDto } from '@/00-storage/mapper/mappers';
+import { SettingsDtoSchema } from '@/00-format/00-dto/dto';
+import { settingsToDomain, settingsToDto } from '@/00-format/mapper/mappers';
 import { cloneEndpoint } from '@/01-models/endpoint';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
-import { STORAGE_KEY_PREFIX } from '@/constants';
 
 const defaults: Settings = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'transformers_js' } };
-const key = `${STORAGE_KEY_PREFIX}lsp:settings`;
+const key = `naidan:lsp:settings`;
 
 beforeEach(() => localStorage.clear());
 

@@ -4,7 +4,7 @@ import { prepareModelLaunchChat, readModelLaunch, observeModelLaunch, promoteMod
 import { toChatId, toChatGroupId, toMessageId } from '@/01-models/ids';
 import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { DEFAULT_SETTINGS, EMPTY_LM_PARAMETERS } from '@/01-models/types';
-import { chatToDto, hierarchyToDomain } from '@/00-storage/mapper/mappers';
+import { chatToDto } from '@/00-format/mapper/mappers';
 
 function request({ suffix, quant }: { suffix: string, quant: string }): ModelLaunchChatRequest {
   const repository = 'owner/Model-GGUF';
@@ -182,9 +182,7 @@ describe('page-owned model launch persistence', () => {
     const twice = await prepareModelLaunchChat({ provider, request: { ...req, mode: 'resume' } });
     expect(recovered.id).toBe(req.chatId);
     expect(twice.id).toBe(req.chatId);
-    const raw = await provider.loadHierarchy();
-    expect(raw).not.toBeNull();
-    const tree = hierarchyToDomain({ dto: raw! });
+    const tree = await provider.loadHierarchy();
     expect(tree.items).toHaveLength(1);
     expect(tree.items[0]).toMatchObject({ type: 'chat_group', id: readModelLaunch({ provider, chatId: req.chatId })!.chatGroupId, chat_ids: [req.chatId] });
   });

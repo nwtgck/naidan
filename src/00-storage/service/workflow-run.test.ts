@@ -3,7 +3,6 @@ import { createWorkflowRunTestStore } from './workflow-run.test-support';
 import { createWorkflowTestLocks } from './workflow-locks.test-support';
 import { createWorkflowTestFileSystem } from './workflow-files.test-support';
 import { idToRaw, toWorkflowId, toWorkflowRunId, toWorkflowStepId } from '@/01-models/ids';
-import { OPFS_TMP_DIR } from '@/constants';
 import type { WorkflowRunSnapshot, WorkflowRunStore } from './workflow-run';
 
 function store({ directory, wait }: { directory: FileSystemDirectoryHandle, wait: Promise<void> | undefined }) {
@@ -50,7 +49,7 @@ describe('Workflow run persistence', () => {
       status: 'failed',
       entries: [{ number: 1, stepId: toWorkflowStepId({ raw: 'step' }), name: 'Generate', trace: [0], phase: 'running', preview: 'partial', inputPreview: 'question' }],
       error: 'Provider failed',
-      resultsPath: [OPFS_TMP_DIR, 'owner', 'workflow-results-test'],
+      resultsPath: ['naidan-tmp', 'owner', 'workflow-results-test'],
       resultError: undefined,
     });
     expect(final.record.definition.name).toBe('Original');
@@ -92,7 +91,7 @@ describe('Workflow run persistence', () => {
     using files = createWorkflowTestFileSystem();
     await using runs = store({ directory: files.root, wait: undefined });
     const original = await runs.create({ workflowId: undefined, definition: { name: 'Safe', steps: [] } });
-    for (const path of [['naidan-storage', 'settings'], [OPFS_TMP_DIR, '..', 'workflow-results-a'], [OPFS_TMP_DIR, 'owner', 'other']]) {
+    for (const path of [['naidan-storage', 'settings'], ['naidan-tmp', '..', 'workflow-results-a'], ['naidan-tmp', 'owner', 'other']]) {
       await expect(runs.finish({ previous: original, status: 'completed', entries: [], error: undefined, resultsPath: path, resultError: undefined })).rejects.toThrow('temporary');
     }
     await expect(runs.load({ id: toWorkflowRunId({ raw: '../settings' }) })).rejects.toThrow('Invalid');

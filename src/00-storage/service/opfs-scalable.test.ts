@@ -2,7 +2,7 @@ import { generateId } from '@/01-models/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OPFSStorageProvider } from './opfs-storage';
 import type { Chat } from '@/01-models/types';
-import { idToRaw } from '@/01-models/ids';
+import { idToRaw, toChatId, toChatGroupId } from '@/01-models/ids';
 import type { ChatId, MessageId } from '@/01-models/ids';
 
 // --- Mocks for OPFS ---
@@ -202,8 +202,8 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     await provider.saveHierarchy({
       hierarchy: {
         items: [
-          { type: 'chat', id: chatId },
-          { type: 'chat_group', id: groupId, chat_ids: [] },
+          { type: 'chat', id: toChatId({ raw: chatId }) },
+          { type: 'chat_group', id: toChatGroupId({ raw: groupId }), chat_ids: [] },
         ],
       },
     });
@@ -254,8 +254,8 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     it('should save and load hierarchy from naidan-storage/hierarchy.json', async () => {
       const mockHierarchy = {
         items: [
-          { type: 'chat' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb1' },
-          { type: 'chat_group' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb2', chat_ids: ['019bd241-2d57-716b-a9fd-1efbba88cfb3'] },
+          { type: 'chat' as const, id: toChatId({ raw: '019bd241-2d57-716b-a9fd-1efbba88cfb1' }) },
+          { type: 'chat_group' as const, id: toChatGroupId({ raw: '019bd241-2d57-716b-a9fd-1efbba88cfb2' }), chat_ids: [toChatId({ raw: '019bd241-2d57-716b-a9fd-1efbba88cfb3' })] },
         ],
       };
 

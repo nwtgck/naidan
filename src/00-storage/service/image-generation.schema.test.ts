@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { ExperimentalImageGenerationAssetAnnotationsDtoSchema, ExperimentalImageGenerationCatalogDtoSchema, ExperimentalImageGenerationRunDtoSchema, ExperimentalImageGenerationDtoSchema, ExperimentalImageGenerationAssetDtoSchema, type ExperimentalImageGenerationRunDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
-import { imageGenerationRunToDomain, imageGenerationRunToDto, imageGenerationAssetToDomain, imageGenerationAssetToDto } from '@/00-storage/mapper/image-generation';
-import { imageGenerationRequestToDomain, imageGenerationRequestToDto, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
+import { ExperimentalImageGenerationAssetAnnotationsDtoSchema, ExperimentalImageGenerationCatalogDtoSchema, ExperimentalImageGenerationRunDtoSchema, ExperimentalImageGenerationDtoSchema, ExperimentalImageGenerationAssetDtoSchema, type ExperimentalImageGenerationRunDto } from '@/00-format/00-dto/experimental-image-generation.dto';
+import { imageGenerationRunToDomain, imageGenerationRunToDto, imageGenerationAssetToDomain, imageGenerationAssetToDto } from '@/00-format/mapper/image-generation';
+import { imageGenerationRequestToDomain, imageGenerationRequestToDto, imageGenerationToDomain, imageGenerationToDto } from '@/00-format/mapper/image-generation-history';
 import { toImageGenerationId, toImageGenerationSessionId } from '@/01-models/ids';
 import { generationAssetFixture, generationRunFixture } from './image-generation/index.test-support';
 

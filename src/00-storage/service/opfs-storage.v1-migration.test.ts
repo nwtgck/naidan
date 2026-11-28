@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { idToRaw, toChatId } from '@/01-models/ids';
-import { createLegacyUploadedFileId } from './legacy-uploaded-file-id';
+import { createLegacyUploadedFileId } from '@/00-format/migrations/legacy-uploaded-file-id';
 
 vi.mock('../../01-models/id', () => ({
   generateId: vi.fn(() => Math.random().toString(36).substring(2)),

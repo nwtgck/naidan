@@ -1,11 +1,10 @@
+import { opfsFormat } from '@/00-format/01-layout/layout';
 import { generateId } from '@/01-models/id';
-import { idToRaw, toWorkflowId, type WorkflowId } from '@/01-models/ids';
+import { idToRaw, type WorkflowId } from '@/01-models/ids';
 import type { StorageType } from '@/01-models/types';
 import type { WorkflowDefinition, WorkflowDocument } from '@/01-models/workflow';
-import { ExperimentalWorkflowDtoSchema } from '@/00-storage/00-dto/experimental-workflow.dto';
-import { workflowDocumentToDomain, workflowDocumentToDto } from '@/00-storage/mapper/workflow';
-import { parseWorkflowJson, WORKFLOW_DOCUMENT_MAX_BYTES } from './workflow-json';
 import { SYNC_LOCK_KEY } from '@/constants';
+import { workflowFileNotFound, workflowFileReader } from './workflow-files';
 
 export type WorkflowSnapshot = { document: WorkflowDocument, source: string };
 export type WorkflowDocumentSummary = Pick<WorkflowDocument, 'id' | 'kind' | 'createdAt' | 'updatedAt'> & { name: string };
@@ -22,41 +21,6 @@ type Access = {
   lock: <T>({ operation }: { operation: () => Promise<T> }) => Promise<T>,
 };
 
-function fileName({ id }: { id: WorkflowId }): string {
-  const raw = idToRaw({ id });
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(raw)) {
-    throw new Error('Invalid Workflow document ID.');
-  }
-  return `${raw}.json`;
-}
-
-function notFound({ error }: { error: unknown }): boolean {
-  return (error instanceof Error || error instanceof DOMException) && error.name === 'NotFoundError';
-}
-
-async function read({ directory, name }: { directory: FileSystemDirectoryHandle, name: string }): Promise<string | undefined> {
-  try {
-    const file = await (await directory.getFileHandle(name)).getFile();
-    if (file.size > WORKFLOW_DOCUMENT_MAX_BYTES) {
-      throw new Error('Workflow document is too large to load.');
-    }
-    return await file.text();
-  } catch (error) {
-    if (notFound({ error })) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-function decode({ source, name }: { source: string, name: string }): WorkflowSnapshot {
-  const dto = ExperimentalWorkflowDtoSchema.parse(parseWorkflowJson({ text: source }));
-  if (fileName({ id: toWorkflowId({ raw: dto.id }) }) !== name) {
-    throw new Error('Workflow document identity does not match its file.');
-  }
-  return { document: workflowDocumentToDomain({ dto }), source };
-}
-
 function createStore({ access }: { access: Access }): WorkflowDocumentStore {
   return {
     async list() {
@@ -66,19 +30,21 @@ function createStore({ access }: { access: Access }): WorkflowDocumentStore {
         return result;
       }
       let count = 0;
+      const readFile = workflowFileReader({ directory });
       for await (const [name, entry] of directory.entries()) {
-        if (entry.kind !== 'file' || !/^[A-Za-z0-9_-]{1,64}\.json$/.test(name)) {
+        const target = opfsFormat.storage.experimental.workflows.documents.listedFile({ name });
+        if (entry.kind !== 'file' || !target) {
           continue;
         }
         if (++count > 2000) {
           throw new Error('Too many Workflow documents. Export or remove unused documents.');
         }
         try {
-          const source = await read({ directory, name });
-          if (source === undefined) {
+          const snapshot = await target.read({ readFile });
+          if (!snapshot) {
             continue;
           }
-          const { document } = decode({ source, name });
+          const { document } = snapshot;
           result.items.push({ id: document.id, kind: document.kind, createdAt: document.createdAt, updatedAt: document.updatedAt, name: document.definition.name });
         } catch (error) {
           result.unreadable.push({ fileName: name, message: error instanceof Error ? error.message : String(error) });
@@ -89,12 +55,12 @@ function createStore({ access }: { access: Access }): WorkflowDocumentStore {
     },
     async load({ id }) {
       const directory = await access.directory({ create: false });
-      const name = fileName({ id });
-      const source = directory && await read({ directory, name });
-      if (source === undefined) {
+      const target = opfsFormat.storage.experimental.workflows.documents.file({ id });
+      const snapshot = directory && await target.read({ readFile: workflowFileReader({ directory }) });
+      if (!snapshot) {
         throw new Error('Workflow document was not found.');
       }
-      return decode({ source, name });
+      return snapshot;
     },
     async save({ previous, definition, kind }) {
       // Snapshot before waiting for a lock: later form changes are not part of this save.
@@ -106,51 +72,51 @@ function createStore({ access }: { access: Access }): WorkflowDocumentStore {
         updatedAt: now,
         definition,
       };
-      const dto = ExperimentalWorkflowDtoSchema.parse(workflowDocumentToDto({ domain: document }));
-      const source = JSON.stringify(dto);
-      parseWorkflowJson({ text: source });
+      const prepared = opfsFormat.storage.experimental.workflows.documents.prepareWrite({ document });
       const expected = previous?.source;
-      const name = fileName({ id: document.id });
       return access.lock({
         operation: async () => {
           const directory = await access.directory({ create: true });
           if (!directory) {
             throw new Error('Workflow storage is unavailable.');
           }
-          const current = await read({ directory, name });
+          const current = await prepared.target.readSource({ readFile: workflowFileReader({ directory }) });
           if (current !== expected) {
             throw new Error('Workflow changed in another editor. Reload or save a copy.');
           }
           // Decode before overwrite even when the raw comparison matched.
           if (current !== undefined) {
-            const stored = decode({ source: current, name }).document;
+            const stored = prepared.target.decode({ source: current }).document;
             if (stored.createdAt !== document.createdAt || stored.kind !== kind) {
               throw new Error('Workflow identity cannot be edited.');
             }
           }
-          const handle = await directory.getFileHandle(name, { create: true });
-          const writer = await handle.createWritable();
-          try {
-            await writer.write(source);
-            await writer.close();
-          } catch (error) {
-            await writer.abort(error).catch(() => undefined);
-            throw error;
-          }
-          return decode({ source, name });
+          return prepared.write({
+            writeText: async ({ file, text }) => {
+              const handle = await directory.getFileHandle(file.name, { create: true });
+              const writer = await handle.createWritable();
+              try {
+                await writer.write(text);
+                await writer.close();
+              } catch (error) {
+                await writer.abort(error).catch(() => undefined);
+                throw error;
+              }
+            },
+          });
         },
       });
     },
     async remove({ previous }) {
-      const name = fileName({ id: previous.document.id });
+      const target = opfsFormat.storage.experimental.workflows.documents.file({ id: previous.document.id });
       const expected = previous.source;
       await access.lock({
         operation: async () => {
           const directory = await access.directory({ create: false });
-          if (!directory || await read({ directory, name }) !== expected) {
+          if (!directory || await target.readSource({ readFile: workflowFileReader({ directory }) }) !== expected) {
             throw new Error('Workflow changed or was removed. Reload before deleting.');
           }
-          await directory.removeEntry(name);
+          await directory.removeEntry(target.file.name);
         },
       });
     },
@@ -173,11 +139,11 @@ export function createWorkflowDocumentStore({ storageType }: { storageType: Stor
     access: {
       async directory({ create }) {
         let directory = await navigator.storage.getDirectory();
-        for (const name of ['naidan-storage', 'experimental', 'workflows', 'documents']) {
+        for (const name of opfsFormat.storage.experimental.workflows.documents.path) {
           try {
             directory = await directory.getDirectoryHandle(name, { create });
           } catch (error) {
-            if (!create && notFound({ error })) {
+            if (!create && workflowFileNotFound({ error })) {
               return undefined;
             }
             throw error;

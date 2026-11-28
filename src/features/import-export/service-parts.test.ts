@@ -4,7 +4,7 @@ import { ImportExportService, type IImportExportStorage } from './service';
 import type { ImportConfig } from './types';
 import { EMPTY_LM_PARAMETERS, type Settings, type StorageSnapshot } from '@/01-models/types';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Exercise the existing archive DTO boundary until it is moved behind the storage service.
-import { ChatDtoSchema, ChatContentDtoSchema, ChatGroupDtoSchema, type ChatDto, type MigrationChunkDto } from '@/00-storage/00-dto/dto';
+import { ChatDtoSchema, ChatContentDtoSchema, ChatGroupDtoSchema, type ChatDto, type MigrationChunkDto } from '@/00-format/00-dto/dto';
 import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn() }) }));

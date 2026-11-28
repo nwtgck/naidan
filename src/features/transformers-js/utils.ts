@@ -1,4 +1,4 @@
-import { OPFS_MODELS_DIR } from '@/constants';
+import { modelCacheOpfsRoot } from '@/00-format/model-cache-root';
 import { createOpfsStagingFileName } from './runtime/opfs-staging-file';
 import { assertOpfsFileLease, withOpfsFileLease, type OpfsFileLease } from './runtime/opfs-access';
 
@@ -23,10 +23,10 @@ export function urlToPath({ url }: { url: string }): string | null {
 
     if (isLocalOrigin) {
       const first = pathParts[0];
-      if (first === 'user' || first === 'local' || first === OPFS_MODELS_DIR) {
+      if (first === 'user' || first === 'local' || first === modelCacheOpfsRoot.name) {
         let startIndex = 0;
         switch (first) {
-        case OPFS_MODELS_DIR:
+        case modelCacheOpfsRoot.name:
           startIndex++;
           break;
         case 'user':
@@ -42,21 +42,21 @@ export function urlToPath({ url }: { url: string }): string | null {
         }
 
         const cleanParts = pathParts.slice(startIndex);
-        const resolved = `${OPFS_MODELS_DIR}/user/${cleanParts.join('/')}`;
+        const resolved = `${modelCacheOpfsRoot.path.join('/')}/user/${cleanParts.join('/')}`;
         return resolved;
       }
       return null;
     }
 
-    const resolved = `${OPFS_MODELS_DIR}/${parsed.hostname}/${pathParts.join('/')}`;
+    const resolved = `${modelCacheOpfsRoot.path.join('/')}/${parsed.hostname}/${pathParts.join('/')}`;
     return resolved;
   } catch {
     const parts = url.split('/').filter(p => !!p);
     const first = parts[0];
-    if (first === 'user' || first === 'local' || first === OPFS_MODELS_DIR) {
+    if (first === 'user' || first === 'local' || first === modelCacheOpfsRoot.name) {
       let startIndex = 0;
       switch (first) {
-      case OPFS_MODELS_DIR:
+      case modelCacheOpfsRoot.name:
         startIndex++;
         break;
       case 'user':
@@ -70,7 +70,7 @@ export function urlToPath({ url }: { url: string }): string | null {
       if (parts[startIndex] === 'user' || parts[startIndex] === 'local') {
         startIndex++;
       }
-      const resolved = `${OPFS_MODELS_DIR}/user/${parts.slice(startIndex).join('/')}`;
+      const resolved = `${modelCacheOpfsRoot.path.join('/')}/user/${parts.slice(startIndex).join('/')}`;
       return resolved;
     }
     return null;

@@ -1,10 +1,11 @@
+import { writeStoredBootstrapStorageType } from './bootstrap-storage-type';
 import type { ModelGraphRegistration } from '@/01-models/model-graph-registry';
 import { readModelGraphRegistry, writeModelGraphRegistry, sameModelGraphRegistry, type ModelGraphRegistryAccess, type ModelGraphRegistrySnapshot } from './model-graph-registry';
 export { areModelBindingSnapshotsEqual } from './model-binding';
 import { cloneOptionalEndpoint } from '@/01-models/endpoint';
-import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
-import { ExperimentalImageGenerationDtoSchema, ExperimentalImageGenerationDraftDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
-import { imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
+import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-format/mapper/image-generation';
+import { ExperimentalImageGenerationDtoSchema, ExperimentalImageGenerationDraftDtoSchema } from '@/00-format/00-dto/experimental-image-generation.dto';
+import { imageGenerationToDomain, imageGenerationToDto } from '@/00-format/mapper/image-generation-history';
 import type { ImageGenerationOperationId, ImageGenerationSessionId } from '@/01-models/ids';
 import type { ImageGenerationResultExportSnapshot } from './image-generation-results-export';
 import type { ImageGenerationExportSnapshot } from './image-generation-export';
@@ -34,9 +35,9 @@ import { MemoryStorageProvider } from './memory-storage';
 import { checkOPFSSupport } from '@/utils/opfs-detection';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the application event dependency with a storage service event API.
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
-import { STORAGE_BOOTSTRAP_KEY, SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';
-import { chatToDto, hierarchyToDomain, hierarchyToDto } from '@/00-storage/mapper/mappers';
-import type { MigrationChunkDto } from '@/00-storage/00-dto/dto';
+import { SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';
+import { chatToDto } from '@/00-format/mapper/mappers';
+import type { MigrationChunkDto } from '@/00-format/00-dto/dto';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 import { StorageSynchronizer, type ChangeListener, type StorageChangeEvent } from './synchronizer';
 import { idToRaw, toChatId, toBinaryObjectId } from '@/01-models/ids';
@@ -492,8 +493,7 @@ export class StorageService {
   // --- Hierarchy Management (Atomic) ---
 
   async loadHierarchy(): Promise<Hierarchy> {
-    const dto = await this.getProvider().loadHierarchy();
-    return dto ? hierarchyToDomain({ dto }) : { items: [] };
+    return await this.getProvider().loadHierarchy() ?? { items: [] };
   }
 
   /**
@@ -517,7 +517,7 @@ export class StorageService {
           assertCurrent();
           const stored = await provider.loadHierarchy();
           assertCurrent();
-          const current = stored === null ? { items: [] } : hierarchyToDomain({ dto: stored });
+          const current = stored ?? { items: [] };
           const before = structuredClone(current);
           const updated = await updater({ current: current });
           assertCurrent();
@@ -527,7 +527,7 @@ export class StorageService {
               assertCurrent();
               await detachRemovedModelLaunchOwners({ provider, after: updated });
               assertCurrent();
-              await provider.saveHierarchy({ hierarchy: hierarchyToDto({ domain: updated }) });
+              await provider.saveHierarchy({ hierarchy: updated });
             },
           });
           const locationFor = ({ hierarchy, chatId }: { hierarchy: Hierarchy, chatId: ChatId }): string | undefined => {
@@ -1979,8 +1979,8 @@ export class StorageService {
           }
 
           const oldProvider = activeProvider;
-          const rpcRegistry = await oldProvider.loadNaidanRpcRegistry();
-          const modelGraphRegistry = await oldProvider.loadModelGraphRegistry();
+          const rpcRegistry = await oldProvider.readNaidanRpcRegistryForTransfer();
+          const modelGraphRegistry = await oldProvider.readModelGraphRegistryForTransfer();
           const snapshot = await oldProvider.dump();
 
           const isOPFSSupported = await checkOPFSSupport();
@@ -2069,13 +2069,11 @@ export class StorageService {
           });
           // Transfer local trust only during an explicit provider switch. It is
           // absent from general JSON backups, which cannot carry CryptoKey.
-          await newProvider.saveNaidanRpcRegistry({ registry: rpcRegistry });
-          await newProvider.saveModelGraphRegistry({ registry: modelGraphRegistry });
+          await newProvider.writeNaidanRpcRegistryForTransfer({ registry: rpcRegistry });
+          await newProvider.writeModelGraphRegistryForTransfer({ registry: modelGraphRegistry });
           const actualType = type === 'opfs' && !isOPFSSupported ? 'local' : type;
 
-          if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(STORAGE_BOOTSTRAP_KEY, actualType);
-          }
+          writeStoredBootstrapStorageType({ type: actualType });
           this.provider = newProvider;
           this.currentType = actualType;
           this.providerGeneration++;

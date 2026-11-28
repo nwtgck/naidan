@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
-import { STORAGE_KEY_PREFIX } from '@/constants';
 import { toChatId } from '@/01-models/ids';
 
 const rawId = 'read-integrity';
 const id = toChatId({ raw: rawId });
-const contentKey = `${STORAGE_KEY_PREFIX}lsp:chat_content:${rawId}`;
-const metaKey = `${STORAGE_KEY_PREFIX}lsp:chat_meta:${rawId}`;
+const contentKey = `naidan:lsp:chat_content:${rawId}`;
+const metaKey = `naidan:lsp:chat_meta:${rawId}`;
 const meta = JSON.stringify({ id: rawId, title: 'Saved chat', createdAt: 0, updatedAt: 1, debugEnabled: false });
 const content = JSON.stringify({
   root: {

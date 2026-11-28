@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { idToRaw, toWorkflowStepId } from '@/01-models/ids';
 import type { WorkflowRunEntry } from '@/01-models/workflow';
-import { workflowRunToDto } from '@/00-storage/mapper/workflow';
+import { workflowRunToDto } from '@/00-format/mapper/workflow';
 import { createWorkflowTestFileSystem } from './workflow-files.test-support';
 import { createWorkflowTestLocks } from './workflow-locks.test-support';
 import { createWorkflowRunTestStore } from './workflow-run.test-support';

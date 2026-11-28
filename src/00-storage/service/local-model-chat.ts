@@ -2,7 +2,6 @@ import { retargetTitleGenerationToSameScope } from '@/01-models/title-generation
 import type { Chat, ChatMeta, Hierarchy, SettingsTitleGeneration } from '@/01-models/types';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
 import type { IStorageProvider } from './interface';
-import { hierarchyToDomain, hierarchyToDto } from '@/00-storage/mapper/mappers';
 import { sameLocalModelBinding } from './local-model-references';
 
 export type LocalModelChatRequest = {
@@ -51,8 +50,7 @@ export async function prepareLocalModelChat({ provider, request, beforeWrite }: 
   const meta = await provider.loadChatMeta({ id: chatId });
   const content = await provider.loadChatContent({ id: chatId });
   const chatGroup = await provider.loadChatGroup({ id: chatGroupId });
-  const rawHierarchy = await provider.loadHierarchy();
-  const hierarchy: Hierarchy = rawHierarchy === null ? { items: [] } : hierarchyToDomain({ dto: rawHierarchy });
+  const hierarchy: Hierarchy = await provider.loadHierarchy() ?? { items: [] };
   const location = chatLocation({ hierarchy, chatId });
   if (receipt === undefined) {
     if (meta !== null || content !== null || chatGroup !== null || location !== undefined) {
@@ -127,7 +125,7 @@ export async function prepareLocalModelChat({ provider, request, beforeWrite }: 
       throw new Error(String(exhaustive));
     }
     }
-    await provider.saveHierarchy({ hierarchy: hierarchyToDto({ domain: hierarchy }) });
+    await provider.saveHierarchy({ hierarchy });
   }
   receipt.phase = 'active';
   const chat = await provider.loadChat({ id: chatId });

@@ -1,4 +1,4 @@
-import { OPFS_MODELS_DIR } from '@/constants';
+import { modelCacheOpfsRoot } from '@/00-format/model-cache-root';
 import { z } from 'zod';
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
 
@@ -109,7 +109,7 @@ export function readProductionLoadResultReceipt({ value, modelId, revision }: { 
 /** Observe existing cache matches without I/O or runtime decision authority. */
 export function createProductionLoadReceiptRecorder({ modelId, revision }: { modelId: string; revision: string | undefined }) {
   const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
-  const prefix = `${OPFS_MODELS_DIR}/huggingface.co/${cleanModelId.split('/').map(part => encodeURIComponent(part)).join('/')}/resolve/`;
+  const prefix = `${modelCacheOpfsRoot.path.join('/')}/huggingface.co/${cleanModelId.split('/').map(part => encodeURIComponent(part)).join('/')}/resolve/`;
   const hits = new Set<string>();
   let observedRevision: string | undefined;
   let refused = cleanModelId.startsWith('user/') || cleanModelId.startsWith('local/');

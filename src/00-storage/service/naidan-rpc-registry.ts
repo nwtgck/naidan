@@ -1,9 +1,7 @@
 import { nanoid } from 'nanoid';
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
 import type { NaidanRpcRegistryId } from '@/01-models/ids';
-import { idToRaw, toNaidanRpcRegistryId } from '@/01-models/ids';
-import { ExperimentalNaidanRpcRegistryDtoSchema } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
-import { rpcRegistrationFromDto, rpcRegistrationToDto } from '@/00-storage/mapper/naidan-rpc';
+import { toNaidanRpcRegistryId } from '@/01-models/ids';
 import type { IStorageProvider } from './interface';
 
 /** A session-local reference to the provider and registry that were read.
@@ -33,12 +31,10 @@ export async function readNaidanRpcRegistry({ provider, providerGeneration, pers
   if (value === undefined) {
     return { access: { providerGeneration, persistence, registryId: undefined }, registrations: [] };
   }
-  const { version: _version, id, registrations, ...rest } = ExperimentalNaidanRpcRegistryDtoSchema.parse(value);
-  rest satisfies Record<PropertyKey, never>;
-  validateRegistry({ id, registrations });
+  const { id, registrations } = value;
   return {
-    access: { providerGeneration, persistence, registryId: toNaidanRpcRegistryId({ raw: id }) },
-    registrations: registrations.map(value => rpcRegistrationFromDto({ value })),
+    access: { providerGeneration, persistence, registryId: id },
+    registrations,
   };
 }
 
@@ -48,24 +44,10 @@ export async function writeNaidanRpcRegistry({ provider, current, registrations 
   provider: IStorageProvider, current: NaidanRpcRegistrySnapshot, registrations: readonly NaidanRpcRegistration[],
 }): Promise<NaidanRpcRegistryAccess> {
   const id = current.access.registryId ?? toNaidanRpcRegistryId({ raw: nanoid() });
-  const registry = ExperimentalNaidanRpcRegistryDtoSchema.parse({ version: 1, id: idToRaw({ id }), registrations: registrations.map(registration => rpcRegistrationToDto({ registration })) });
-  validateRegistry({ id: registry.id, registrations: registry.registrations });
-  await provider.saveNaidanRpcRegistry({ registry });
+  await provider.saveNaidanRpcRegistry({ registry: { id, registrations } });
   // Retain the registry ID when its last registration is removed. A recreated
   // document after clearAll must not share authority with the old document.
   return { ...current.access, registryId: id };
-}
-
-function validateRegistry({ id, registrations }: { id: string; registrations: readonly { id: string }[] }): void {
-  if (!/^[A-Za-z0-9_-]{8,128}$/.test(id)) {
-    throw new Error('Invalid RPC registry identity');
-  }
-  if (registrations.length > 32) {
-    throw new Error('RPC registry capacity exceeded');
-  }
-  if (new Set(registrations.map(registration => registration.id)).size !== registrations.length) {
-    throw new Error('Duplicate RPC registration');
-  }
 }
 
 export const TEST_ONLY = {

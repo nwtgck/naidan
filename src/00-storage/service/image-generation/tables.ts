@@ -1,152 +1,51 @@
-import { exactObject } from '@/utils/exact-object';
-import {
-  ExperimentalImageGenerationSessionDtoSchema, ExperimentalImageGenerationSessionIndexDtoSchema,
-  ExperimentalImageGenerationRunDtoSchema, ExperimentalImageGenerationRunIndexDtoSchema, unavailableRunRpcRecord,
-  ExperimentalImageGenerationAssetDtoSchema, ExperimentalImageGenerationAssetIndexDtoSchema,
-  ExperimentalImageGenerationAssetAnnotationsDtoSchema, ExperimentalImageGenerationAnnotationsIndexDtoSchema,
-  type ExperimentalImageGenerationRunDto, type ExperimentalImageGenerationRunSummaryDto,
-  type ExperimentalImageGenerationAssetDto, type ExperimentalImageGenerationAssetSummaryDto,
-} from '@/00-storage/00-dto/experimental-image-generation.dto';
-import { createImageGenerationTable, imageGenerationDirectory, imageGenerationRawIdSchema } from './files';
+import { opfsFormat } from '@/00-format/01-layout/layout';
+import { idToRaw, type ImageGenerationSessionId } from '@/01-models/ids';
+import { imageGenerationDirectory, imageGenerationIo } from './files';
+import { imageGenerationRootIo } from './context';
 
-function assertSessionIdentity({ actual, expected }: { actual: string, expected: string }): void {
-  if (actual !== expected) {
-    throw new Error('Image Generation record belongs to a different session.');
-  }
+export function imageGenerationSessionTable({ directory, create }: { directory: FileSystemDirectoryHandle, create: boolean }) {
+  return opfsFormat.storage.experimental.imageGeneration.sessions.open({ io: imageGenerationRootIo({ directory }), create });
 }
 
-function summarizeRun({ record }: { record: ExperimentalImageGenerationRunDto }): ExperimentalImageGenerationRunSummaryDto {
-  const { id, sessionId, operationId, revision, createdAt, execution, request, seeds, sources: _sources, acceptedOrder: _acceptedOrder, ...unhandled } = record;
-  unhandled satisfies Record<PropertyKey, never>;
-  return exactObject<ExperimentalImageGenerationRunSummaryDto>()({
-    ...(operationId === undefined ? {} : { operationId }),
-    id,
-    sessionId,
-    revision,
-    createdAt,
-    execution,
-    prompt: request.parameters.prompt,
-    modelName: (() => {
-      const runtime = request.runtime;
-      switch (runtime.profile) {
-      case 'naidan-rpc': return runtime.modelSelection?.primary.file.location.path ?? runtime.label;
-      case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return request.models.find(model => model.slot === 'model' || model.slot === 'diffusion')?.file.name ?? '';
-      default: {
-        const exhaustive: never = runtime;
-        throw new Error(String(exhaustive));
-      }
-      }
-    })(),
-    requestedCount: seeds.length,
-  });
-}
-
-function summarizeAsset({ record }: { record: ExperimentalImageGenerationAssetDto }): ExperimentalImageGenerationAssetSummaryDto {
-  const { result, previews, ...metadata } = record;
-  const { binaryObjectId, width, height, confirmation, modelVersion: _modelVersion, uniformOutput: _uniformOutput, elapsedMs: _elapsedMs, sampling: _sampling, resolvedParameters: _resolvedParameters, ...unhandled } = result;
-  unhandled satisfies Record<PropertyKey, never>;
-  return exactObject<ExperimentalImageGenerationAssetSummaryDto>()({
-    ...metadata,
-    ...(() => {
-      switch (confirmation) {
-      case 'unconfirmed': return { confirmation };
-      case 'confirmed': case undefined: return {};
-      default: {
-        const exhaustive: never = confirmation;
-        throw new Error(String(exhaustive));
-      }
-      }
-    })(),
-    binaryObjectId,
-    width,
-    height,
-    previewCount: previews.length,
-  });
-}
-
-export async function imageGenerationSessionTable({ directory, create }: { directory: FileSystemDirectoryHandle, create: boolean }) {
-  const sessions = await imageGenerationDirectory({ parent: directory, name: 'sessions', create });
-  return createImageGenerationTable({
-    directory: sessions,
-    layout: 'session-directories',
-    recordSchema: ExperimentalImageGenerationSessionDtoSchema,
-    indexSchema: ExperimentalImageGenerationSessionIndexDtoSchema,
-    recordId: ({ record }) => record.id,
-    summaryId: ({ summary }) => summary.id,
-    summarize: ({ record }) => ({ ...record }),
-    validateRecord() {},
-    validateSummary() {},
-    unavailableRecord: undefined,
-  });
-}
-
-export async function imageGenerationSessionDirectory({ directory, sessionId }: { directory: FileSystemDirectoryHandle, sessionId: string }): Promise<FileSystemDirectoryHandle | undefined> {
-  imageGenerationRawIdSchema.parse(sessionId);
-  let parent = directory;
-  for (const name of ['sessions', sessionId.slice(-2).toLowerCase(), sessionId]) {
-    const next = await imageGenerationDirectory({ parent, name, create: false });
-    if (!next) {
+export async function imageGenerationSessionDirectory({ directory, sessionId, requireLive = true }: {
+  directory: FileSystemDirectoryHandle, sessionId: ImageGenerationSessionId, requireLive?: boolean,
+}): Promise<FileSystemDirectoryHandle | undefined> {
+  const location = opfsFormat.storage.experimental.imageGeneration.sessions.root({ rawId: idToRaw({ id: sessionId }) });
+  let current = directory;
+  for (const name of location.path.slice(opfsFormat.storage.experimental.imageGeneration.path.length)) {
+    const next = await imageGenerationDirectory({ parent: current, name, create: false });
+    if (next === undefined) {
       return undefined;
     }
-    parent = next;
+    current = next;
+  }
+  if (!requireLive) {
+    return current;
   }
   // A directory is not a session without a validated canonical session record.
   const session = await (await imageGenerationSessionTable({ directory, create: false })).load({ id: sessionId });
-  return session && session.state !== 'deleted' && session.state !== 'deleting' ? parent : undefined;
+  return session && session.state !== 'deleted' && session.state !== 'deleting' ? current : undefined;
 }
 
-export async function imageGenerationRunTable({ directory, sessionId, create }: { directory: FileSystemDirectoryHandle, sessionId: string, create: boolean }) {
-  const records = await imageGenerationDirectory({ parent: directory, name: 'runs', create });
-  return createImageGenerationTable({
-    directory: records,
-    layout: 'files',
-    recordSchema: ExperimentalImageGenerationRunDtoSchema,
-    indexSchema: ExperimentalImageGenerationRunIndexDtoSchema,
-    recordId: ({ record }) => record.id,
-    summaryId: ({ summary }) => summary.id,
-    summarize: summarizeRun,
-    unavailableRecord({ raw }) {
-      const value = unavailableRunRpcRecord({ raw });
-      if (value !== undefined) {
-        assertSessionIdentity({ actual: value.sessionId, expected: sessionId });
-      }
-      return value;
-    },
-    validateRecord: ({ record }) => assertSessionIdentity({ actual: record.sessionId, expected: sessionId }),
-    validateSummary: ({ summary }) => assertSessionIdentity({ actual: summary.sessionId, expected: sessionId }),
-  });
+export function imageGenerationRunTable({ directory, sessionId, create }: {
+  directory: FileSystemDirectoryHandle, sessionId: ImageGenerationSessionId, create: boolean,
+}) {
+  const session = opfsFormat.storage.experimental.imageGeneration.sessions.root({ rawId: idToRaw({ id: sessionId }) });
+  return session.runs.open({ io: imageGenerationIo({ directory, path: session.path }), create });
 }
 
-export async function imageGenerationAssetTable({ directory, sessionId, create }: { directory: FileSystemDirectoryHandle, sessionId: string, create: boolean }) {
-  const records = await imageGenerationDirectory({ parent: directory, name: 'assets', create });
-  return createImageGenerationTable({
-    directory: records,
-    layout: 'files',
-    recordSchema: ExperimentalImageGenerationAssetDtoSchema,
-    indexSchema: ExperimentalImageGenerationAssetIndexDtoSchema,
-    recordId: ({ record }) => record.id,
-    summaryId: ({ summary }) => summary.id,
-    summarize: summarizeAsset,
-    unavailableRecord: undefined,
-    validateRecord: ({ record }) => assertSessionIdentity({ actual: record.sessionId, expected: sessionId }),
-    validateSummary: ({ summary }) => assertSessionIdentity({ actual: summary.sessionId, expected: sessionId }),
-  });
+export function imageGenerationAssetTable({ directory, sessionId, create }: {
+  directory: FileSystemDirectoryHandle, sessionId: ImageGenerationSessionId, create: boolean,
+}) {
+  const session = opfsFormat.storage.experimental.imageGeneration.sessions.root({ rawId: idToRaw({ id: sessionId }) });
+  return session.assets.open({ io: imageGenerationIo({ directory, path: session.path }), create });
 }
 
-export async function imageGenerationAnnotationsTable({ directory, sessionId, create }: { directory: FileSystemDirectoryHandle, sessionId: string, create: boolean }) {
-  const records = await imageGenerationDirectory({ parent: directory, name: 'annotations', create });
-  return createImageGenerationTable({
-    directory: records,
-    layout: 'files',
-    recordSchema: ExperimentalImageGenerationAssetAnnotationsDtoSchema,
-    indexSchema: ExperimentalImageGenerationAnnotationsIndexDtoSchema,
-    recordId: ({ record }) => record.assetId,
-    summaryId: ({ summary }) => summary.assetId,
-    summarize: ({ record }) => ({ ...record }),
-    unavailableRecord: undefined,
-    validateRecord: ({ record }) => assertSessionIdentity({ actual: record.sessionId, expected: sessionId }),
-    validateSummary: ({ summary }) => assertSessionIdentity({ actual: summary.sessionId, expected: sessionId }),
-  });
+export function imageGenerationAnnotationsTable({ directory, sessionId, create }: {
+  directory: FileSystemDirectoryHandle, sessionId: ImageGenerationSessionId, create: boolean,
+}) {
+  const session = opfsFormat.storage.experimental.imageGeneration.sessions.root({ rawId: idToRaw({ id: sessionId }) });
+  return session.annotations.open({ io: imageGenerationIo({ directory, path: session.path }), create });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

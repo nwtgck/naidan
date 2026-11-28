@@ -1,10 +1,12 @@
+import { opfsFormat } from '@/00-format/01-layout/layout';
 import { z } from 'zod';
 import { generateId } from '@/01-models/id';
-import { idToRaw, type ImageGenerationStoreId } from '@/01-models/ids';
+import { type ImageGenerationStoreId } from '@/01-models/ids';
 import type { StorageType } from '@/01-models/types';
 import { SYNC_LOCK_KEY } from '@/constants';
-import { ExperimentalImageGenerationCatalogDtoSchema, type ExperimentalImageGenerationCatalogDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
-import { imageGenerationDirectory, imageGenerationRawIdSchema, readImageGenerationText, writeImageGenerationText } from './files';
+import { validateImageGenerationId, type ImageGenerationIo, type ImageGenerationSnapshot } from '@/00-format/image-generation-record';
+import type { ImageGenerationCatalog } from '@/01-models/image-generation';
+import { imageGenerationDirectory, imageGenerationIo } from './files';
 
 export type ImageGenerationStoreAccess = { storageType: StorageType, storeId: ImageGenerationStoreId };
 const generationLock = 'naidan-experimental-image-generation';
@@ -31,7 +33,7 @@ export async function withImageGenerationLock<T>({ storageType, operation }: { s
 
 export async function imageGenerationRoot({ create }: { create: boolean }): Promise<FileSystemDirectoryHandle | undefined> {
   let directory = await navigator.storage.getDirectory();
-  for (const name of ['naidan-storage', 'experimental', 'image-generation']) {
+  for (const name of opfsFormat.storage.experimental.imageGeneration.path) {
     const next = await imageGenerationDirectory({ parent: directory, name, create });
     if (!next) {
       return undefined;
@@ -41,10 +43,16 @@ export async function imageGenerationRoot({ create }: { create: boolean }): Prom
   return directory;
 }
 
-export async function readImageGenerationCatalogDto({ directory }: { directory: FileSystemDirectoryHandle }): Promise<ExperimentalImageGenerationCatalogDto | undefined> {
-  const text = await readImageGenerationText({ directory, name: 'catalog.json' });
-  if (text !== undefined) {
-    return ExperimentalImageGenerationCatalogDtoSchema.parse(JSON.parse(text));
+export function imageGenerationRootIo({ directory }: { directory: FileSystemDirectoryHandle }) {
+  return imageGenerationIo({ directory, path: opfsFormat.storage.experimental.imageGeneration.path });
+}
+
+type CatalogReader<T> = ({ io }: { io: ImageGenerationIo }) => Promise<T | undefined>;
+
+async function readImageGenerationCatalog<T>({ directory, read }: { directory: FileSystemDirectoryHandle, read: CatalogReader<T> }): Promise<T | undefined> {
+  const catalog = await read({ io: imageGenerationRootIo({ directory }) });
+  if (catalog !== undefined) {
+    return catalog;
   }
   // An empty newly created directory can be retried. Existing metadata without
   // its catalog is not an empty Workspace and must never be silently initialized.
@@ -54,15 +62,18 @@ export async function readImageGenerationCatalogDto({ directory }: { directory: 
   return undefined;
 }
 
-export async function openImageGenerationCatalogDto({ storageType, creation }: { storageType: StorageType, creation: 'allow' | 'forbid' }): Promise<ExperimentalImageGenerationCatalogDto | undefined> {
+export async function openImageGenerationCatalog({ storageType, creation }: { storageType: StorageType, creation: 'allow' | 'forbid' }): Promise<ImageGenerationCatalog | undefined> {
   return withImageGenerationLock({
     storageType,
     operation: async () => {
       let directory = await imageGenerationRoot({ create: false });
       if (directory) {
-        const existing = await readImageGenerationCatalogDto({ directory });
+        const existing = await readImageGenerationCatalog({
+          directory,
+          read: opfsFormat.storage.experimental.imageGeneration.catalog.read,
+        });
         if (existing) {
-          return existing;
+          return existing.value;
         }
       }
       switch (creation) {
@@ -77,34 +88,58 @@ export async function openImageGenerationCatalogDto({ storageType, creation }: {
       if (!directory) {
         throw new Error('Image Generation directory is unavailable.');
       }
-      const catalog = ExperimentalImageGenerationCatalogDtoSchema.parse({ version: 1, id: idToRaw({ id: generateId<ImageGenerationStoreId>() }), revision: 0, createdAt: Date.now(), tags: [], preferences: { generationMonitorPresentation: 'visual', experimentalNoticeDismissedAt: undefined, assistantLayout: 'floating', assistantVisibility: 'closed', translation: undefined } });
-      await writeImageGenerationText({ directory, name: 'catalog.json', text: JSON.stringify(catalog) });
-      return catalog;
+      const prepared = opfsFormat.storage.experimental.imageGeneration.catalog.prepareInitial({ id: generateId<ImageGenerationStoreId>(), createdAt: Date.now() });
+      await prepared.write({ io: imageGenerationRootIo({ directory }) });
+      return prepared.snapshot.value;
     },
   });
 }
 
-export async function withImageGenerationStore<T>({ store, operation }: {
+function withStoreCatalog<C, T>({ store, read, operation }: {
   store: ImageGenerationStoreAccess,
-  operation: ({ directory, catalog }: { directory: FileSystemDirectoryHandle, catalog: ExperimentalImageGenerationCatalogDto }) => Promise<T>,
+  read: CatalogReader<{ id: ImageGenerationStoreId, catalog: C }>,
+  operation({ directory, catalog }: { directory: FileSystemDirectoryHandle, catalog: C }): Promise<T>,
 }): Promise<T> {
-  const id = imageGenerationRawIdSchema.parse(idToRaw({ id: store.storeId }));
+  const id = validateImageGenerationId({ id: store.storeId });
   return withImageGenerationLock({
     storageType: store.storageType,
     operation: async () => {
       const directory = await imageGenerationRoot({ create: false });
-      const catalog = directory && await readImageGenerationCatalogDto({ directory });
-      if (!directory || !catalog || catalog.id !== id) {
+      const result = directory && await readImageGenerationCatalog({ directory, read });
+      if (!directory || !result || result.id !== id) {
         throw new Error('Image Generation store changed or was removed. Reopen it before writing.');
       }
-      return operation({ directory, catalog });
+      return operation({ directory, catalog: result.catalog });
     },
   });
 }
 
+export function withImageGenerationStore<T>({ store, operation }: {
+  store: ImageGenerationStoreAccess,
+  operation({ directory, catalog }: { directory: FileSystemDirectoryHandle, catalog: ImageGenerationSnapshot<ImageGenerationCatalog> }): Promise<T>,
+}): Promise<T> {
+  return withStoreCatalog({
+    store,
+    async read({ io }) {
+      const catalog = await opfsFormat.storage.experimental.imageGeneration.catalog.read({ io });
+      return catalog && { id: catalog.value.id, catalog };
+    },
+    operation,
+  });
+}
+
+type SessionExportCatalog = NonNullable<Awaited<ReturnType<typeof opfsFormat.storage.experimental.imageGeneration.catalog.readForExport>>>['catalog'];
+
+export function withImageGenerationStoreForExport<T>({ store, operation }: {
+  store: ImageGenerationStoreAccess,
+  operation({ directory, catalog }: { directory: FileSystemDirectoryHandle, catalog: SessionExportCatalog }): Promise<T>,
+}): Promise<T> {
+  return withStoreCatalog({ store, read: opfsFormat.storage.experimental.imageGeneration.catalog.readForExport, operation });
+}
+
 /** A lost acknowledgement may retry the identical successor, not repeat a mutation. */
 export function assertImageGenerationReplacement<T extends { revision: number }>({ current, next, expectedRevision }: {
-  current: T | undefined, next: T, expectedRevision: number | undefined,
+  current: ImageGenerationSnapshot<T> | undefined, next: ImageGenerationSnapshot<T>, expectedRevision: number | undefined,
 }): void {
   if (expectedRevision !== undefined) {
     revisionSchema.parse(expectedRevision);
@@ -114,7 +149,7 @@ export function assertImageGenerationReplacement<T extends { revision: number }>
   if (next.revision !== nextRevision) {
     throw new Error('Invalid Image Generation successor revision.');
   }
-  if (current && JSON.stringify(current) === JSON.stringify(next)) {
+  if (current && next.matches({ other: current })) {
     return;
   }
   if (expectedRevision === undefined ? current !== undefined : current === undefined || current.revision !== expectedRevision) {

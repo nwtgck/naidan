@@ -8,7 +8,7 @@ import { MessageChannel } from 'node:worker_threads';
 import JSZip from 'jszip';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
-import { chatContentToDto, chatGroupToDto, chatMetaToDomain, chatMetaToDto } from '@/00-storage/mapper/mappers';
+import { chatContentToDto, chatGroupToDto, chatMetaToDomain, chatMetaToDto } from '@/00-format/mapper/mappers';
 import { createFileExplorerWorker } from './impl';
 import { ZipArchiveView } from './zip-archive-view';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
@@ -1451,8 +1451,8 @@ describe('file-explorer.worker.impl', () => {
       hierarchy: {
         items: [{
           type: 'chat_group',
-          id: 'chat-group-1',
-          chat_ids: ['chat-1'],
+          id: chatGroup.id,
+          chat_ids: [chatMeta.id],
         }],
       },
     });

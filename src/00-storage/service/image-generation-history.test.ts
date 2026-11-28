@@ -324,7 +324,7 @@ it('does not republish an input deleted through the workspace deletion boundary'
   }
   const id = toBinaryObjectId({ raw: 'input-aa' });
   original.request.imageInputs.initImage = { binaryObjectId: id, name: 'input.png' };
-  await markImageGenerationBinariesDeleted({ directory, ids: ['input-aa'] });
+  await markImageGenerationBinariesDeleted({ directory, ids: [id] });
   const writeImages = vi.fn();
   await expect(saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages })).rejects.toThrow('permanently deleted');
   expect(writeImages).not.toHaveBeenCalled();

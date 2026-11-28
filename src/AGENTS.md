@@ -15,8 +15,11 @@ Do not introduce conceptual layers or directory names that do not exist in the r
 ## Primary Directories
 
 ```text
+src/00-format/
+  Persisted formats, compatibility conversions, and migration definitions
+
 src/00-storage/
-  Persistence formats, mapping, and storage implementations
+  Persistence operations and browser storage implementations
 
 src/01-models/
   Thin Naidan-wide concepts, types, IDs, schemas, and closely attached helpers
@@ -98,11 +101,12 @@ src/utils/**
 Application code must not depend directly on:
 
 ```text
-src/00-storage/00-dto/**
-src/00-storage/mapper/**
+src/00-format/00-dto/**
+src/00-format/mapper/**
 ```
 
-Use the public API under `src/00-storage/service/**` when application code needs persistence behavior.
+Use the public API under `src/00-storage/service/**` for persistence operations.
+Application code that owns a storage boundary can refer to its definition under `src/00-format`.
 
 Type-only imports, dynamic imports, test mocks, worker URLs, and other static module references count as dependencies.
 

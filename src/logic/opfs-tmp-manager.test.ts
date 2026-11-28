@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { OPFS_TMP_DIR, OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY } from '@/constants';
 
 class MockFileSystemDirectoryHandle {
   kind = 'directory' as const;
@@ -63,7 +62,7 @@ describe('OPFSTmpManager', () => {
     const tmpHandle = await manager.createTmpDirectory({ prefix: 'chat-1' });
 
     expect(tmpHandle.name).toBe('chat-1-tmp-dir-a');
-    const tmpRoot = mockOpfsRoot.entries.get(OPFS_TMP_DIR);
+    const tmpRoot = mockOpfsRoot.entries.get('naidan-tmp');
     expect(tmpRoot?.entries.has('owner-scope-a')).toBe(true);
     const ownerRoot = tmpRoot?.entries.get('owner-scope-a');
     expect(ownerRoot?.entries.has('chat-1-tmp-dir-a')).toBe(true);
@@ -85,16 +84,16 @@ describe('OPFSTmpManager', () => {
 
     window.dispatchEvent(new Event('beforeunload'));
 
-    expect(localStorage.getItem(OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY)).toBe(JSON.stringify({
+    expect(localStorage.getItem('naidan:opfs_tmp:pending_owner_cleanups')).toBe(JSON.stringify({
       ownerScopeIds: ['owner-scope-a'],
     }));
 
     const managerB = new OPFSTmpManager();
     await managerB.flushPendingScopeCleanups();
 
-    const tmpRoot = mockOpfsRoot.entries.get(OPFS_TMP_DIR);
+    const tmpRoot = mockOpfsRoot.entries.get('naidan-tmp');
     expect(tmpRoot?.entries.has('owner-scope-a')).toBe(false);
-    expect(localStorage.getItem(OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY)).toBe(JSON.stringify({
+    expect(localStorage.getItem('naidan:opfs_tmp:pending_owner_cleanups')).toBe(JSON.stringify({
       ownerScopeIds: [],
     }));
 

@@ -11,10 +11,10 @@ import { createWeshWorker, TEST_ONLY } from './impl';
 import './entry';
 import type { WeshWorkerRemoteExecutionEvent } from './types';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
-import { chatMetaToDomain } from '@/00-storage/mapper/mappers';
+import { chatMetaToDomain } from '@/00-format/mapper/mappers';
 import type { ChatContent, ChatGroup, ChatMeta } from '@/01-models/types';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
-import { chatContentToDto, chatGroupToDto, chatMetaToDto } from '@/00-storage/mapper/mappers';
+import { chatContentToDto, chatGroupToDto, chatMetaToDto } from '@/00-format/mapper/mappers';
 import { renderChatMetadataMarkdown } from '@/features/wesh/naidan-sysfs/render/metadata-markdown';
 import {
   naidanSysfsRemoteChatContentPayloadSchema,

@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { THEME_MODE_STORAGE_KEY } from '@/constants';
 import type { ThemeMode } from '@/features/theme/logic/theme';
 import {
   readPersistedThemeMode,
@@ -17,7 +16,7 @@ describe('theme mode persistence', () => {
   });
 
   it.each<ThemeMode>(['light', 'dark', 'system'])('reads the valid %s mode through Zod', (mode) => {
-    localStorage.setItem(THEME_MODE_STORAGE_KEY, mode);
+    localStorage.setItem('naidan:theme_mode', mode);
 
     expect(readPersistedThemeMode({ storage: localStorage })).toBe(mode);
   });
@@ -25,7 +24,7 @@ describe('theme mode persistence', () => {
   it('falls back to system for missing or invalid persisted values', () => {
     expect(readPersistedThemeMode({ storage: localStorage })).toBe('system');
 
-    localStorage.setItem(THEME_MODE_STORAGE_KEY, 'sepia');
+    localStorage.setItem('naidan:theme_mode', 'sepia');
     expect(readPersistedThemeMode({ storage: localStorage })).toBe('system');
   });
 
@@ -43,7 +42,7 @@ describe('theme mode persistence', () => {
   it('validates and writes the canonical persisted value', () => {
     writePersistedThemeMode({ storage: localStorage, mode: 'dark' });
 
-    expect(localStorage.getItem(THEME_MODE_STORAGE_KEY)).toBe('dark');
+    expect(localStorage.getItem('naidan:theme_mode')).toBe('dark');
   });
 
   it('subscribes only to the canonical theme key', () => {
@@ -55,11 +54,11 @@ describe('theme mode persistence', () => {
       newValue: 'dark',
     }));
     window.dispatchEvent(new StorageEvent('storage', {
-      key: THEME_MODE_STORAGE_KEY,
+      key: 'naidan:theme_mode',
       newValue: 'dark',
     }));
     window.dispatchEvent(new StorageEvent('storage', {
-      key: THEME_MODE_STORAGE_KEY,
+      key: 'naidan:theme_mode',
       newValue: 'invalid',
     }));
 
@@ -68,7 +67,7 @@ describe('theme mode persistence', () => {
 
     dispose();
     window.dispatchEvent(new StorageEvent('storage', {
-      key: THEME_MODE_STORAGE_KEY,
+      key: 'naidan:theme_mode',
       newValue: 'light',
     }));
     expect(listener).toHaveBeenCalledTimes(2);

@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
-import { STORAGE_KEY_PREFIX } from '@/constants';
 
 type RecordKind = 'hierarchy' | 'chat-meta' | 'chat-group';
 const rawChatId = 'sidebar-saved-chat';
@@ -58,9 +57,9 @@ function installOpfs() {
 
 function localRecordKey({ record }: { record: RecordKind }) {
   switch (record) {
-  case 'hierarchy': return `${STORAGE_KEY_PREFIX}lsp:hierarchy`;
-  case 'chat-meta': return `${STORAGE_KEY_PREFIX}lsp:chat_meta:${rawChatId}`;
-  case 'chat-group': return `${STORAGE_KEY_PREFIX}lsp:chat_group:${rawChatGroupId}`;
+  case 'hierarchy': return `naidan:lsp:hierarchy`;
+  case 'chat-meta': return `naidan:lsp:chat_meta:${rawChatId}`;
+  case 'chat-group': return `naidan:lsp:chat_group:${rawChatGroupId}`;
   default: {
     const exhaustive: never = record;
     throw new Error(String(exhaustive));

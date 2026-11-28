@@ -1,4 +1,5 @@
-import { OPFS_MODELS_DIR } from '@/constants';
+import { openDirectoryPath } from '@/utils/file-system-directory-path';
+import { modelCacheOpfsRoot } from '@/00-format/model-cache-root';
 import type { InferenceGenerationCallback } from './generation-events';
 import type { LmParameters } from '@/01-models/types';
 import type { InferenceMessage } from '@/features/transformers-js/types';
@@ -724,7 +725,7 @@ export function createTransformersJsService({ createWorkerClient }: {
         const root = await navigator.storage.getDirectory();
         let modelsDir: FileSystemDirectoryHandle;
         try {
-          modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: false });
+          modelsDir = await openDirectoryPath({ root: root, path: modelCacheOpfsRoot.path, create: false });
         } catch {
           return [];
         }
@@ -944,7 +945,7 @@ export function createTransformersJsService({ createWorkerClient }: {
 
     async importFile({ modelName, fileName, data }: { modelName: string, fileName: string, data: ArrayBuffer | ReadableStream }) {
       ensureOpen();
-      const storagePath = `${OPFS_MODELS_DIR}/user/${modelName}/${fileName.split('/').filter(part => part.length > 0).join('/')}`;
+      const storagePath = `${modelCacheOpfsRoot.path.join('/')}/user/${modelName}/${fileName.split('/').filter(part => part.length > 0).join('/')}`;
       await withOpfsFileLease({
         path: storagePath,
         mode: 'exclusive',
@@ -952,7 +953,7 @@ export function createTransformersJsService({ createWorkerClient }: {
         signal: undefined,
         run: async () => {
           const root = await navigator.storage.getDirectory();
-          const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+          const modelsDir = await openDirectoryPath({ root: root, path: modelCacheOpfsRoot.path, create: true });
           const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
           const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
 
@@ -1005,10 +1006,10 @@ export function createTransformersJsService({ createWorkerClient }: {
       if (modelId.startsWith('user/')) {
         const name = modelId.substring(5);
         const removed = await withOpfsModelDeletion({
-          modelPath: `${OPFS_MODELS_DIR}/user/${name}`,
+          modelPath: `${modelCacheOpfsRoot.path.join('/')}/user/${name}`,
           run: async () => {
             const root = await navigator.storage.getDirectory();
-            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+            const modelsDir = await openDirectoryPath({ root: root, path: modelCacheOpfsRoot.path, create: true });
             try {
               const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
               await removeTransformersModelFiles({ parent: userDir, name });
@@ -1020,10 +1021,10 @@ export function createTransformersJsService({ createWorkerClient }: {
         });
         if (!removed) {
           await withOpfsModelDeletion({
-            modelPath: `${OPFS_MODELS_DIR}/local/${name}`,
+            modelPath: `${modelCacheOpfsRoot.path.join('/')}/local/${name}`,
             run: async () => {
               const root = await navigator.storage.getDirectory();
-              const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+              const modelsDir = await openDirectoryPath({ root: root, path: modelCacheOpfsRoot.path, create: true });
               try {
                 const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
                 await removeTransformersModelFiles({ parent: localDir, name });
@@ -1035,10 +1036,10 @@ export function createTransformersJsService({ createWorkerClient }: {
         const [org, repo] = modelId.substring(6).split('/');
         if (org && repo) {
           await withOpfsModelDeletion({
-            modelPath: `${OPFS_MODELS_DIR}/huggingface.co/${org}/${repo}`,
+            modelPath: `${modelCacheOpfsRoot.path.join('/')}/huggingface.co/${org}/${repo}`,
             run: async () => {
               const root = await navigator.storage.getDirectory();
-              const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+              const modelsDir = await openDirectoryPath({ root: root, path: modelCacheOpfsRoot.path, create: true });
               const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
               const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
               await removeTransformersModelFiles({ parent: orgDir, name: repo });
@@ -1050,7 +1051,7 @@ export function createTransformersJsService({ createWorkerClient }: {
             run: async () => {
               const root = await navigator.storage.getDirectory();
               try {
-                const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: false });
+                const modelsDir = await openDirectoryPath({ root: root, path: modelCacheOpfsRoot.path, create: false });
                 const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false });
                 const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
                 for await (const _ of orgDir.entries()) {
@@ -1068,7 +1069,7 @@ export function createTransformersJsService({ createWorkerClient }: {
           await withOpfsRootDeletion({
             run: async () => {
               const root = await navigator.storage.getDirectory();
-              const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+              const modelsDir = await openDirectoryPath({ root: root, path: modelCacheOpfsRoot.path, create: true });
               const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
               await removeTransformersModelFiles({ parent: hfDir, name: org });
             },
@@ -1080,7 +1081,7 @@ export function createTransformersJsService({ createWorkerClient }: {
         await withOpfsRootDeletion({
           run: async () => {
             const root = await navigator.storage.getDirectory();
-            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+            const modelsDir = await openDirectoryPath({ root: root, path: modelCacheOpfsRoot.path, create: true });
             try {
               const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
               await removeTransformersModelFiles({ parent: localDir, name: modelId });

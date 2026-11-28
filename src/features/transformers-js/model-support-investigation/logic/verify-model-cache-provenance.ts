@@ -1,4 +1,5 @@
-import { OPFS_MODELS_DIR } from '@/constants';
+import { openDirectoryPath } from '@/utils/file-system-directory-path';
+import { modelCacheOpfsRoot } from '@/00-format/model-cache-root';
 import type {
   ModelSupportInvestigationCacheFile,
   ModelSupportInvestigationCacheFileProvenance,
@@ -39,7 +40,7 @@ async function openCachedFile({
   normalizedModelId: string,
   cachePath: string,
 }): Promise<File> {
-  let directory = await storageRoot.getDirectoryHandle(OPFS_MODELS_DIR, { create: false });
+  let directory = await openDirectoryPath({ root: storageRoot, path: modelCacheOpfsRoot.path, create: false });
   directory = await directory.getDirectoryHandle("huggingface.co", { create: false });
   for (const part of normalizedModelId.split("/")) {
     directory = await directory.getDirectoryHandle(part, { create: false });

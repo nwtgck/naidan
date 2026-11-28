@@ -1,6 +1,6 @@
 import * as dtozod from '@/utils/dtozod';
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/dtozod/missingAsUndefined';
-import { optionalExperimentalFieldDtoSchema } from '@/00-storage/00-dto/compatibility/experimental-field';
+import { optionalExperimentalFieldDtoSchema } from '@/utils/persistence-compatibility/optional-experimental-field';
 
 export type { nameSchema } from './domain';
 export { type createSchema } from './domain';

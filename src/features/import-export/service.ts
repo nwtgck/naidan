@@ -1,3 +1,4 @@
+import { buildChatGroup } from '@/00-storage/service/sidebar-items';
 import { ensureStrings } from '@/strings';
 import { generateId } from '@/01-models/id';
 import type {
@@ -27,18 +28,18 @@ import {
   type BinaryObjectDto,
   type BinaryShardIndexDto,
   BinaryShardIndexDtoSchema,
-} from '@/00-storage/00-dto/dto';
+} from '@/00-format/00-dto/dto';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
 import {
   settingsToDomain,
-  chatGroupToDomain,
+  chatGroupConfigurationToDomain,
   chatMetaToDomain,
   hierarchyToDomain,
   chatToDomain,
   chatToDto,
   messageNodeToDomain,
   messageNodeToDto,
-} from '@/00-storage/mapper/mappers';
+} from '@/00-format/mapper/mappers';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, StorageSnapshot, Chat } from '@/01-models/types';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
@@ -515,7 +516,7 @@ export class ImportExportService {
     const rootPath = `${finalBaseName}/`;
     const snapshot = await this.storage.dumpWithoutLock();
     // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
-    const { settingsToDto, hierarchyToDto, chatGroupToDto, chatMetaToDto } = await import('@/00-storage/mapper/mappers');
+    const { settingsToDto, hierarchyToDto, chatGroupToDto, chatMetaToDto } = await import('@/00-format/mapper/mappers');
     const output = createReadableZipOutput({ highWaterMarkBytes: 512 * 1024 });
     const abort = new AbortController();
     const stream = createAbortableByteStream({
@@ -1173,7 +1174,7 @@ export class ImportExportService {
 
     const chatMetas = metasDto.map(dto => chatMetaToDomain({ dto }));
     const hierarchy = hierarchyToDomain({ dto: hierarchyDto });
-    const chatGroups = groupsDto.map(dto => chatGroupToDomain({ dto, hierarchy, chatMetas }));
+    const chatGroups = groupsDto.map(dto => buildChatGroup({ configuration: chatGroupConfigurationToDomain({ dto }), hierarchy, chatMetas }));
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
       for (const meta of metasDto) {
@@ -1359,7 +1360,7 @@ export class ImportExportService {
       }
       return chatMetaToDomain({ dto });
     });
-    const chatGroups = importedGroupsDto.map(dto => chatGroupToDomain({ dto, hierarchy: mergedHierarchy, chatMetas }));
+    const chatGroups = importedGroupsDto.map(dto => buildChatGroup({ configuration: chatGroupConfigurationToDomain({ dto }), hierarchy: mergedHierarchy, chatMetas }));
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
       // 1. Unified metadata lookup for append remapping

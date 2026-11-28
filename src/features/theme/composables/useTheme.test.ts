@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { THEME_MODE_STORAGE_KEY } from '@/constants';
+import { THEME_MODE_STORAGE_KEY } from '@/00-format/theme-mode';
 import {
   RESOLVED_THEME_ATTRIBUTE_NAME,
   THEME_CONTROL_ATTRIBUTE_NAME,

@@ -1,9 +1,11 @@
-import type { ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/01-models/types';
-import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '@/00-storage/00-dto/dto';
+import { modelGraphRegistryFormat } from '@/00-format/model-graph-registry';
+import { naidanRpcRegistryFormat } from '@/00-format/naidan-rpc-registry';
+import type { ExperimentalModelGraphRegistryDto } from '@/00-format/00-dto/experimental-model-graph.dto';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/01-models/types';
+import type { StoredChatMeta, StoredChatGroup } from '@/00-format/core-records';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 import { idToRaw } from '@/01-models/ids';
-import type { ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+import type { ExperimentalNaidanRpcRegistryDto } from '@/00-format/00-dto/experimental-naidan-rpc.dto';
 import type { StoredVolumeAccess } from '@/01-models/volume-access';
 
 export type { ChatSummary };
@@ -22,11 +24,33 @@ export abstract class IStorageProvider {
   abstract readonly canPersistBinary: boolean;
 
   // An absent registry is distinct from unreadable or invalid stored data.
-  abstract loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined>;
-  abstract saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void>;
+  abstract readNaidanRpcRegistryForTransfer(): Promise<ExperimentalNaidanRpcRegistryDto | undefined>;
+  abstract writeNaidanRpcRegistryForTransfer({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void>;
 
-  abstract loadModelGraphRegistry(): Promise<ExperimentalModelGraphRegistryDto | undefined>;
-  abstract saveModelGraphRegistry({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void>;
+  abstract readModelGraphRegistryForTransfer(): Promise<ExperimentalModelGraphRegistryDto | undefined>;
+  abstract writeModelGraphRegistryForTransfer({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void>;
+
+  async loadNaidanRpcRegistry() {
+    return naidanRpcRegistryFormat.read({ readForTransfer: () => this.readNaidanRpcRegistryForTransfer() });
+  }
+
+  async saveNaidanRpcRegistry({ registry }: { registry: Parameters<typeof naidanRpcRegistryFormat.write>[0]['registry'] }): Promise<void> {
+    await naidanRpcRegistryFormat.write({
+      registry,
+      writeForTransfer: ({ registry }) => this.writeNaidanRpcRegistryForTransfer({ registry }),
+    });
+  }
+
+  async loadModelGraphRegistry() {
+    return modelGraphRegistryFormat.read({ readForTransfer: () => this.readModelGraphRegistryForTransfer() });
+  }
+
+  async saveModelGraphRegistry({ registry }: { registry: Parameters<typeof modelGraphRegistryFormat.write>[0]['registry'] }): Promise<void> {
+    await modelGraphRegistryFormat.write({
+      registry,
+      writeForTransfer: ({ registry }) => this.writeModelGraphRegistryForTransfer({ registry }),
+    });
+  }
 
   // --- Volume Management ---
 
@@ -85,12 +109,12 @@ export abstract class IStorageProvider {
   }
 
   // --- Data Access Methods ---
-  protected abstract listChatMetasRaw(): Promise<ChatMetaDto[]>;
-  protected abstract listChatGroupsRaw(): Promise<ChatGroupDto[]>;
+  protected abstract listStoredChatMetas(): Promise<StoredChatMeta[]>;
+  protected abstract listStoredChatGroups(): Promise<StoredChatGroup[]>;
 
   // --- Hierarchy Management ---
-  abstract loadHierarchy(): Promise<HierarchyDto | null>;
-  abstract saveHierarchy({ hierarchy }: { hierarchy: HierarchyDto }): Promise<void>;
+  abstract loadHierarchy(): Promise<Hierarchy | null>;
+  abstract saveHierarchy({ hierarchy }: { hierarchy: Hierarchy }): Promise<void>;
 
   // --- Bulk Operations (Migration) ---
   abstract dump(): Promise<StorageSnapshot>;
@@ -109,14 +133,13 @@ export abstract class IStorageProvider {
       return true;
     }
 
-    const rawVolumeId = idToRaw({ id: volumeId });
-    const chatGroups = await this.listChatGroupsRaw();
-    if (chatGroups.some(group => group.mounts?.some(mount => mount.volumeId === rawVolumeId))) {
+    const chatGroups = await this.listStoredChatGroups();
+    if (chatGroups.some(group => group.referencesVolume({ volumeId }))) {
       return true;
     }
 
-    const chatMetas = await this.listChatMetasRaw();
-    return chatMetas.some(meta => meta.mounts?.some(mount => mount.volumeId === rawVolumeId));
+    const chatMetas = await this.listStoredChatMetas();
+    return chatMetas.some(meta => meta.referencesVolume({ volumeId }));
   }
 
   /**

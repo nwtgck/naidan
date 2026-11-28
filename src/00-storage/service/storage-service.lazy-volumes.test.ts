@@ -135,9 +135,9 @@ async function harness({ beforeOpen, beforeWrite }: {
       controls.events.push('backend:restore');
     }),
     dump: vi.fn(async () => snapshot()),
-    loadNaidanRpcRegistry: vi.fn(async () => undefined),
-    loadModelGraphRegistry: vi.fn(async () => undefined),
-    saveModelGraphRegistry: vi.fn(async () => undefined),
+    readNaidanRpcRegistryForTransfer: vi.fn(async () => undefined),
+    readModelGraphRegistryForTransfer: vi.fn(async () => undefined),
+    writeModelGraphRegistryForTransfer: vi.fn(async () => undefined),
   };
   Object.assign(h.provider, backend);
   controls.provider = h.provider;

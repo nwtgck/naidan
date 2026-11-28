@@ -4,7 +4,7 @@ import { storageService, StorageService } from '@/00-storage/service';
 import { LocalStorageProvider } from '@/00-storage/service/local-storage';
 import { DEFAULT_SETTINGS, type ChatMeta, type ChatGroup } from '@/01-models/types';
 import { idToRaw, toChatId, toChatGroupId, toMessageId } from '@/01-models/ids';
-import { LOCK_METADATA, STORAGE_KEY_PREFIX } from '@/constants';
+import { LOCK_METADATA } from '@/constants';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { createChatDataStore } from './chat-data-store';
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn(), addInfoEvent: vi.fn() }) }));
@@ -149,7 +149,7 @@ describe('existing empty chat model updates with real storage', () => {
       break;
     case 'deleted': await service.deleteChat({ id: chatId });
       break;
-    case 'missing-content': localStorage.removeItem(`${STORAGE_KEY_PREFIX}lsp:chat_content:${idToRaw({ id: chatId })}`);
+    case 'missing-content': localStorage.removeItem(`naidan:lsp:chat_content:${idToRaw({ id: chatId })}`);
       break;
     case 'source': current = false;
       break;

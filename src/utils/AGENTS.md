@@ -18,6 +18,7 @@ Utilities must not depend on:
 
 ```text
 src/01-models/**
+src/00-format/**
 src/00-storage/**
 src/features/**
 src/components/**

@@ -2,13 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
 import { MemoryStorageProvider } from './memory-storage';
 import { OPFSStorageProvider } from './opfs-storage';
-import { STORAGE_KEY_PREFIX } from '@/constants';
 import { toChatGroupId } from '@/01-models/ids';
-import * as mappers from '@/00-storage/mapper/mappers';
+import * as mappers from '@/00-format/mapper/mappers';
 
 const rawId = 'group-read-integrity';
 const id = toChatGroupId({ raw: rawId });
-const key = `${STORAGE_KEY_PREFIX}lsp:chat_group:${rawId}`;
+const key = `naidan:lsp:chat_group:${rawId}`;
 const chatGroup = { id, name: 'Saved chat group', items: [], updatedAt: 1, isCollapsed: false };
 const valid = JSON.stringify({ id: rawId, name: chatGroup.name, updatedAt: 1, isCollapsed: false });
 
@@ -126,7 +125,7 @@ it('keeps missing and failed in-memory group reads distinct', async () => {
   await expect(provider.loadChatGroup({ id })).resolves.toBeNull();
   await provider.saveChatGroup({ chatGroup });
   const error = new Error('Stored group could not be decoded');
-  vi.spyOn(mappers, 'chatGroupToDomain').mockImplementationOnce(() => {
+  vi.spyOn(mappers, 'chatGroupConfigurationToDomain').mockImplementationOnce(() => {
     throw error;
   });
   await expect(provider.loadChatGroup({ id })).rejects.toBe(error);

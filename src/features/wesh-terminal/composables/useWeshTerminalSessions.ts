@@ -1,3 +1,4 @@
+import { openDirectoryPath } from '@/utils/file-system-directory-path';
 import { ensureStrings } from '@/strings';
 import { computed, ref } from 'vue';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/features/wesh/worker/client';
@@ -81,14 +82,14 @@ function shouldClearTerminalOutput({ text }: { text: string }): boolean {
 }
 
 export function createWeshTerminalSessions({
-  opfsRootName,
+  opfsPath,
   user,
   initialEnv,
   initialCwd,
   homeDirectory,
   tmpDirectory,
 }: {
-  opfsRootName: string,
+  opfsPath: readonly string[],
   user: string,
   initialEnv: Record<string, string>,
   initialCwd: string | undefined,
@@ -149,10 +150,7 @@ export function createWeshTerminalSessions({
       }
       const root = await navigator.storage.getDirectory();
       signal.throwIfAborted();
-      const termRoot = await root.getDirectoryHandle(opfsRootName, { create: true });
-      signal.throwIfAborted();
-      const globalRoot = await termRoot.getDirectoryHandle('global', { create: true });
-      signal.throwIfAborted();
+      const globalRoot = await openDirectoryPath({ root, path: opfsPath, create: true, signal });
       await ensureTerminalBaseDirectories({
         rootHandle: globalRoot as unknown as FileSystemDirectoryHandle,
         homeDirectory,

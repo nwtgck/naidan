@@ -105,11 +105,14 @@ function classifyPath({ rootDir, filePath }) {
   if (relativePath === '00-storage/service' || relativePath.startsWith('00-storage/service/')) {
     return 'storage-service';
   }
-  if (relativePath === '00-storage/mapper' || relativePath.startsWith('00-storage/mapper/')) {
+  if (relativePath === '00-format/mapper' || relativePath.startsWith('00-format/mapper/')) {
     return 'storage-mapper';
   }
-  if (relativePath === '00-storage/00-dto' || relativePath.startsWith('00-storage/00-dto/')) {
+  if (relativePath === '00-format/00-dto' || relativePath.startsWith('00-format/00-dto/')) {
     return 'storage-dto';
+  }
+  if (firstSegment === '00-format') {
+    return 'storage-format';
   }
   if (['features', 'components', 'composables', 'logic', 'pages'].includes(firstSegment)) {
     return 'application';
@@ -180,7 +183,7 @@ const developmentMetaReadExports = [
 ];
 const developmentMetaSettingOwners = new Set([
   '01-models/types.ts',
-  '00-storage/mapper/mappers.ts',
+  '00-format/mapper/mappers.ts',
   `${developmentMetaAdapter}.ts`,
 ]);
 const cspMessageTypeConsumers = new Set([
@@ -309,7 +312,7 @@ function isForbiddenCspDependency({ rootDir, sourcePath, targetPath, node }) {
   }
   if (((sourceCore && !isDirectoryReference({ relativePath: target, directory: 'logic/csp-message-hints' }))
     || (sourceNative && !isDirectoryReference({ relativePath: target, directory: developmentMetaDirectory })))
-    && ['application', 'storage-service', 'storage-mapper', 'storage-dto'].includes(classifyPath({ rootDir, filePath: targetPath }))) {
+    && ['application', 'storage-service', 'storage-mapper', 'storage-dto', 'storage-format'].includes(classifyPath({ rootDir, filePath: targetPath }))) {
     return true;
   }
   if (isDirectoryReference({ relativePath: target, directory: 'utils/csp' })) {
@@ -509,6 +512,7 @@ function isForbiddenDependency({ sourceCategory, targetCategory }) {
       'storage-service',
       'storage-mapper',
       'storage-dto',
+      'storage-format',
       'strings',
     ].includes(targetCategory);
   }
@@ -523,6 +527,10 @@ function isForbiddenDependency({ sourceCategory, targetCategory }) {
       'storage-service',
       'strings',
     ].includes(targetCategory);
+  }
+
+  if (sourceCategory === 'storage-format') {
+    return targetCategory === 'application' || targetCategory === 'storage-service' || targetCategory === 'strings';
   }
 
   if (sourceCategory === 'storage-dto') {
@@ -541,6 +549,7 @@ function isForbiddenDependency({ sourceCategory, targetCategory }) {
       'storage-service',
       'storage-mapper',
       'storage-dto',
+      'storage-format',
       'strings',
     ].includes(targetCategory);
   }
@@ -552,6 +561,7 @@ function isForbiddenDependency({ sourceCategory, targetCategory }) {
       'storage-service',
       'storage-mapper',
       'storage-dto',
+      'storage-format',
       'strings',
     ].includes(targetCategory);
   }

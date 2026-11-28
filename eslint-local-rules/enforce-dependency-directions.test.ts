@@ -195,8 +195,8 @@ describe('enforce-dependency-directions rule', () => {
   it.each([
     { filePath: 'src/composables/useDevelopmentMetaCspNotForSecurity.ts', code: `const saved = settings.experimental?.metaCspForDevelopmentNotForSecurity; const update = { metaCspForDevelopmentNotForSecurity: undefined };` },
     { filePath: 'src/01-models/types.ts', code: `type Experimental = { metaCspForDevelopmentNotForSecurity?: string };` },
-    { filePath: 'src/00-storage/mapper/mappers.ts', code: `const { metaCspForDevelopmentNotForSecurity } = experimental;` },
-    { filePath: 'src/00-storage/mapper/mappers.ts', code: `const dtoValue = dto.experimental.metaCsp;` },
+    { filePath: 'src/00-format/mapper/mappers.ts', code: `const { metaCspForDevelopmentNotForSecurity } = experimental;` },
+    { filePath: 'src/00-format/mapper/mappers.ts', code: `const dtoValue = dto.experimental.metaCsp;` },
     { filePath: 'src/features/example/example.ts', code: `const unrelated = response.metaCsp; const experimental = settings.experimental;` },
     { filePath: 'src/logic/example.test.ts', code: `const value = settings.experimental.metaCspForDevelopmentNotForSecurity;` },
   ])('keeps saved development meta access in persistence or its dedicated adapter: $filePath', async ({ filePath, code }) => {
@@ -350,8 +350,8 @@ describe('enforce-dependency-directions rule', () => {
   });
 
   it.each([
-    '@/00-storage/00-dto/dto',
-    '@/00-storage/mapper/mappers',
+    '@/00-format/00-dto/dto',
+    '@/00-format/mapper/mappers',
   ])('rejects application dependencies on storage internals: %s', async (importPath) => {
     await expectForbidden({
       code: `import type { Example } from '${importPath}';`,
@@ -366,8 +366,8 @@ describe('enforce-dependency-directions rule', () => {
     '@/logic/example',
     '@/pages/example.vue',
     '@/00-storage/service',
-    '@/00-storage/mapper/mappers',
-    '@/00-storage/00-dto/dto',
+    '@/00-format/mapper/mappers',
+    '@/00-format/00-dto/dto',
     '@/strings',
   ])('rejects 01-models dependencies on upper or persistence code: %s', async (importPath) => {
     await expectForbidden({
@@ -385,7 +385,7 @@ describe('enforce-dependency-directions rule', () => {
 
   it('allows storage service dependencies on mapper and DTO', async () => {
     await expectAllowed({
-      code: `import { map } from '@/00-storage/mapper/mappers'; import type { Dto } from '@/00-storage/00-dto/dto';`,
+      code: `import { map } from '@/00-format/mapper/mappers'; import type { Dto } from '@/00-format/00-dto/dto';`,
       filePath: 'src/00-storage/service/example.ts',
     });
   });
@@ -399,22 +399,22 @@ describe('enforce-dependency-directions rule', () => {
 
   it('allows mapper dependencies on DTO', async () => {
     await expectAllowed({
-      code: `import type { Dto } from '@/00-storage/00-dto/dto';`,
-      filePath: 'src/00-storage/mapper/example.ts',
+      code: `import type { Dto } from '@/00-format/00-dto/dto';`,
+      filePath: 'src/00-format/mapper/example.ts',
     });
   });
 
   it('rejects mapper dependencies on storage service', async () => {
     await expectForbidden({
       code: `import { storageService } from '@/00-storage/service';`,
-      filePath: 'src/00-storage/mapper/example.ts',
+      filePath: 'src/00-format/mapper/example.ts',
     });
   });
 
   it('rejects DTO dependencies on mapper', async () => {
     await expectForbidden({
-      code: `import { map } from '@/00-storage/mapper/mappers';`,
-      filePath: 'src/00-storage/00-dto/example.ts',
+      code: `import { map } from '@/00-format/mapper/mappers';`,
+      filePath: 'src/00-format/00-dto/example.ts',
     });
   });
 
@@ -537,53 +537,53 @@ describe('enforce-dependency-directions rule', () => {
 
   it('checks relative imports', async () => {
     await expectForbidden({
-      code: `import type { Dto } from '../00-storage/00-dto/dto';`,
+      code: `import type { Dto } from '../00-format/00-dto/dto';`,
       filePath: 'src/components/Example.ts',
     });
   });
 
   it('checks re-exports', async () => {
     await expectForbidden({
-      code: `export type { Dto } from '@/00-storage/00-dto/dto';`,
+      code: `export type { Dto } from '@/00-format/00-dto/dto';`,
       filePath: 'src/features/example/example.ts',
     });
   });
 
   it('checks dynamic imports', async () => {
     await expectForbidden({
-      code: `const dto = import('@/00-storage/00-dto/dto');`,
+      code: `const dto = import('@/00-format/00-dto/dto');`,
       filePath: 'src/logic/example.ts',
     });
   });
 
   it('checks dynamic imports with static template literals', async () => {
     await expectForbidden({
-      code: 'const dto = import(`@/00-storage/00-dto/dto`);',
+      code: 'const dto = import(`@/00-format/00-dto/dto`);',
       filePath: 'src/logic/example.ts',
     });
   });
 
   it('checks TypeScript import types', async () => {
     await expectForbidden({
-      code: `type Dto = import('@/00-storage/00-dto/dto').Dto;`,
+      code: `type Dto = import('@/00-format/00-dto/dto').Dto;`,
       filePath: 'src/pages/example.ts',
     });
   });
 
   it('checks vi.mock dependencies', async () => {
     await expectForbidden({
-      code: `vi.mock('@/00-storage/mapper/mappers');`,
+      code: `vi.mock('@/00-format/mapper/mappers');`,
       filePath: 'src/components/Example.test.ts',
     });
   });
 
   it.each([
-    `vi.importActual('@/00-storage/mapper/mappers')`,
-    `vi.importMock('@/00-storage/mapper/mappers')`,
-    `jest.requireActual('@/00-storage/mapper/mappers')`,
-    `jest.requireMock('@/00-storage/mapper/mappers')`,
-    `require('@/00-storage/mapper/mappers')`,
-    `require.resolve('@/00-storage/mapper/mappers')`,
+    `vi.importActual('@/00-format/mapper/mappers')`,
+    `vi.importMock('@/00-format/mapper/mappers')`,
+    `jest.requireActual('@/00-format/mapper/mappers')`,
+    `jest.requireMock('@/00-format/mapper/mappers')`,
+    `require('@/00-format/mapper/mappers')`,
+    `require.resolve('@/00-format/mapper/mappers')`,
   ])('checks other static module-reference calls: %s', async (code) => {
     await expectForbidden({
       code: `${code};`,
@@ -593,21 +593,21 @@ describe('enforce-dependency-directions rule', () => {
 
   it('checks static template literals in test module-reference calls', async () => {
     await expectForbidden({
-      code: 'vi.mock(`@/00-storage/mapper/mappers`);',
+      code: 'vi.mock(`@/00-format/mapper/mappers`);',
       filePath: 'src/components/Example.test.ts',
     });
   });
 
   it('checks import.meta.glob dependencies', async () => {
     await expectForbidden({
-      code: `const modules = import.meta.glob('../../00-storage/00-dto/*.ts');`,
+      code: `const modules = import.meta.glob('../../00-format/00-dto/*.ts');`,
       filePath: 'src/features/example/example.ts',
     });
   });
 
   it('checks import.meta.glob dependency arrays', async () => {
     const result = await lintText({
-      code: `const modules = import.meta.glob(['./local/*.ts', '../../00-storage/00-dto/*.ts']);`,
+      code: `const modules = import.meta.glob(['./local/*.ts', '../../00-format/00-dto/*.ts']);`,
       filePath: 'src/features/example/example.ts',
     });
     expect(result.messages).toHaveLength(1);
@@ -616,28 +616,28 @@ describe('enforce-dependency-directions rule', () => {
 
   it('checks import.meta.glob dependencies with static template literals', async () => {
     await expectForbidden({
-      code: 'const modules = import.meta.glob(`../../00-storage/00-dto/*.ts`);',
+      code: 'const modules = import.meta.glob(`../../00-format/00-dto/*.ts`);',
       filePath: 'src/features/example/example.ts',
     });
   });
 
   it('checks new URL dependencies', async () => {
     await expectForbidden({
-      code: `const workerUrl = new URL('../../00-storage/00-dto/worker.ts', import.meta.url);`,
+      code: `const workerUrl = new URL('../../00-format/00-dto/worker.ts', import.meta.url);`,
       filePath: 'src/features/example/example.ts',
     });
   });
 
   it('checks new URL dependencies with static template literals', async () => {
     await expectForbidden({
-      code: 'const workerUrl = new URL(`../../00-storage/00-dto/worker.ts`, import.meta.url);',
+      code: 'const workerUrl = new URL(`../../00-format/00-dto/worker.ts`, import.meta.url);',
       filePath: 'src/features/example/example.ts',
     });
   });
 
   it('ignores runtime URLs that are not resolved from import.meta.url', async () => {
     await expectAllowed({
-      code: `const url = new URL('../00-storage/00-dto/worker.ts', runtimeBaseUrl);`,
+      code: `const url = new URL('../00-format/00-dto/worker.ts', runtimeBaseUrl);`,
       filePath: 'src/features/example/example.ts',
     });
   });
@@ -646,7 +646,7 @@ describe('enforce-dependency-directions rule', () => {
     await expectAllowed({
       code: `\
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the DTO dependency with the storage service API.
-import type { Dto } from '@/00-storage/00-dto/dto';`,
+import type { Dto } from '@/00-format/00-dto/dto';`,
       filePath: 'src/features/example/example.ts',
     });
   });

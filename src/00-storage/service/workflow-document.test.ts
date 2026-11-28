@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { TEST_ONLY, createWorkflowDocumentStore } from './workflow-document';
 import { createWorkflowTestFileSystem } from './workflow-files.test-support';
-import { idToRaw } from '@/01-models/ids';
+import { idToRaw, toWorkflowId } from '@/01-models/ids';
 
 function store({ directory, wait }: { directory: FileSystemDirectoryHandle, wait: Promise<void> | undefined }) {
   let tail = Promise.resolve();
@@ -83,6 +83,18 @@ describe('Workflow document persistence', () => {
     const original = await documents.save({ previous: undefined, kind: 'workflow', definition: { name: 'A', steps: [] } });
     files.setText({ path: `${idToRaw({ id: original.document.id })}.json`, text: original.source.replace(idToRaw({ id: original.document.id }), 'other') });
     await expect(documents.load({ id: original.document.id })).rejects.toThrow('identity');
+  });
+
+  it('checks the stored file size before asking the browser for its text', async () => {
+    using files = createWorkflowTestFileSystem();
+    const handle = await files.root.getFileHandle('large.json', { create: true });
+    const file = new File([], 'large.json');
+    Object.defineProperty(file, 'size', { value: 2 * 1024 * 1024 + 1 });
+    using text = vi.spyOn(file, 'text');
+    using _open = vi.spyOn(files.root, 'getFileHandle').mockResolvedValue({ ...handle, getFile: async () => file });
+    const documents = store({ directory: files.root, wait: undefined });
+    await expect(documents.load({ id: toWorkflowId({ raw: 'large' }) })).rejects.toThrow('too large');
+    expect(text).not.toHaveBeenCalled();
   });
 
   it('does not silently change a stored document into a part', async () => {

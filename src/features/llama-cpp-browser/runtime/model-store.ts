@@ -1,9 +1,9 @@
+import { modelCacheOpfsRoot } from '@/00-format/model-cache-root';
 import { directoryForModelFile } from './model-directory-input';
 import { withModelFileMarkers } from '@/logic/model-file-publication';
 import { hostDownloadMarker, hostDownloadMarkerPath } from '@/features/llama-cpp-browser/hugging-face/host-download-marker';
 import { resolveModel } from './model-resolution';
 import { hostModelRoot, withDestinationLock, type ModelDestination } from './model-destination';
-import { OPFS_MODELS_DIR } from '@/constants';
 import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { deletionPlanSchema, executeDeletionPlan, scanDeletionTree, pruneCapturedModelRoot, repositoryLocationSchema, type RepositoryLocation, type DeletionPlan, type DeletionResult } from './deletion-plan';
 export type { ModelRemovalTarget, RepositoryLocation } from './deletion-plan';
@@ -119,7 +119,7 @@ async function captureRoot({ location }: { location: StoredLocation }): Promise<
   }
   case 'hugging-face': {
     parent = await opfsRoot();
-    for (const segment of [OPFS_MODELS_DIR, 'huggingface.co', ...location.repository.split('/'), 'resolve']) {
+    for (const segment of [...modelCacheOpfsRoot.path, 'huggingface.co', ...location.repository.split('/'), 'resolve']) {
       parent = await parent.getDirectoryHandle(segment);
     }
     rootName = 'main';

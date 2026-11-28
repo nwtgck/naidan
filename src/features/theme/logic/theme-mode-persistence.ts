@@ -1,26 +1,13 @@
-import { THEME_MODE_STORAGE_KEY } from '@/constants';
-import { ThemeModeSchema, type ThemeMode } from '@/features/theme/logic/theme';
-
-function decodePersistedThemeMode({ rawValue }: {
-  rawValue: string | null,
-}): ThemeMode {
-  const result = ThemeModeSchema.safeParse(rawValue ?? 'system');
-  if (!result.success) {
-    return 'system';
-  }
-  return result.data;
-}
+import { themeModeFormat, type ThemeMode } from '@/00-format/theme-mode';
 
 export function readPersistedThemeMode({ storage }: {
   storage: Pick<Storage, 'getItem'>,
 }): ThemeMode {
   try {
-    return decodePersistedThemeMode({
-      rawValue: storage.getItem(THEME_MODE_STORAGE_KEY),
-    });
+    return themeModeFormat.read({ storage });
   } catch (error) {
     console.warn('[naidan] Failed to read the persisted theme mode:', error);
-    return 'system';
+    return themeModeFormat.defaultMode;
   }
 }
 
@@ -28,9 +15,9 @@ export function writePersistedThemeMode({ storage, mode }: {
   storage: Pick<Storage, 'setItem'>,
   mode: ThemeMode,
 }): void {
-  const validatedMode = ThemeModeSchema.parse(mode);
+  const write = themeModeFormat.prepareWrite({ mode });
   try {
-    storage.setItem(THEME_MODE_STORAGE_KEY, validatedMode);
+    write({ storage });
   } catch (error) {
     console.warn('[naidan] Failed to persist the theme mode:', error);
   }
@@ -41,12 +28,10 @@ export function subscribeToPersistedThemeMode({ window, listener }: {
   listener: ({ mode }: { mode: ThemeMode }) => void,
 }): () => void {
   const handleStorage: NonNullable<Window['onstorage']> = (event) => {
-    if (event.key !== THEME_MODE_STORAGE_KEY) {
-      return;
+    const mode = themeModeFormat.readEvent({ event });
+    if (mode !== undefined) {
+      listener({ mode });
     }
-    listener({
-      mode: decodePersistedThemeMode({ rawValue: event.newValue }),
-    });
   };
 
   window.addEventListener('storage', handleStorage);

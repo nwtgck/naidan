@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ExperimentalImageGenerationActivityJournalDtoSchema, ExperimentalImageGenerationSessionDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationActivityJournalDtoSchema, ExperimentalImageGenerationSessionDtoSchema } from '@/00-format/00-dto/experimental-image-generation.dto';
 import { idToRaw } from '@/01-models/ids';
 import type { ImageGenerationSession } from '@/01-models/image-generation';
 import { createImageGenerationStorageHarness, generationRunFixture, generationSessionFixture } from './image-generation/index.test-support';
@@ -54,6 +54,28 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect(sessions[1]?.updatedAt).toBe(first);
     expect(sessions[0]!.activityOrder).toBeGreaterThan(sessions[1]!.activityOrder!);
     expect((await journal()).pending).toEqual([]);
+  });
+
+  it('preserves saved translation settings when replaying an activity receipt', async () => {
+    const { store, a } = await setup();
+    const session = await fs.file({ path: `${root}/sessions/aa/session-aa/session.json` });
+    const translation = { lmParameters: { reasoning: {} }, modelId: 'translator' };
+    session.text = JSON.stringify({ ...JSON.parse(session.text), translation });
+    const { run } = await accept({ store, session: a, id: 'run-aa', time: 100 });
+    await service.recordImageGenerationSessionUse({ store, sessionId: a.id, runId: run.id });
+    expect(JSON.parse(session.text).translation).toEqual(translation);
+  });
+
+  it('updates run execution without reinterpreting the original RPC provenance', async () => {
+    const { store, a } = await setup();
+    const { run } = await accept({ store, session: a, id: 'run-aa', time: 100 });
+    const file = await fs.file({ path: `${root}/sessions/aa/session-aa/runs/aa/run-aa.json` });
+    const stored = JSON.parse(file.text);
+    const runtime = { profile: 'naidan-rpc', label: 'Previous runtime', registrationId: 'old', peerPublicKey: 'old' };
+    file.text = JSON.stringify({ ...stored, request: { ...stored.request, runtime } });
+    await expect(service.loadImageGenerationRun({ store, sessionId: a.id, runId: run.id })).rejects.toThrow('Invalid RPC execution provenance');
+    await service.updateImageGenerationRunExecution({ store, sessionId: a.id, runId: run.id, execution: { type: 'running', startedAt: 100 }, expectedRevision: 0 });
+    expect(JSON.parse(file.text)).toMatchObject({ revision: 1, request: { runtime }, execution: { type: 'running', startedAt: 100 } });
   });
 
   it('replays accepted runs using only persisted bytes, not page retry objects', async () => {

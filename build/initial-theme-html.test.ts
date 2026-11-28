@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { THEME_MODE_STORAGE_KEY } from '../src/constants';
 import {
   FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE,
   FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE,
@@ -21,7 +20,7 @@ function runInitialThemeBootstrap({ storedMode, systemIsDark }: {
 }): void {
   localStorage.clear();
   if (storedMode !== undefined) {
-    localStorage.setItem(THEME_MODE_STORAGE_KEY, storedMode);
+    localStorage.setItem('naidan:theme_mode', storedMode);
   }
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: systemIsDark })));
   Function(createInitialThemeBootstrapSource())();
@@ -79,7 +78,7 @@ describe('initial theme HTML', () => {
 
     expect(source).toContain('PERFORMANCE-CRITICAL PERSISTENCE EXCEPTION');
     expect(source).toContain('non-Zod persistence read in Naidan');
-    expect(source).toContain(JSON.stringify(THEME_MODE_STORAGE_KEY));
+    expect(source).toContain(JSON.stringify('naidan:theme_mode'));
     expect(source).not.toContain('setItem');
   });
 

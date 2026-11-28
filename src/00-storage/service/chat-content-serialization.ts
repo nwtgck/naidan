@@ -1,6 +1,5 @@
 import type { ChatContent } from '@/01-models/types';
-import { ChatContentDtoSchema } from '@/00-storage/00-dto/dto';
-import { chatContentToDomain, chatContentToDto } from '@/00-storage/mapper/mappers';
+import { opfsFormat } from '@/00-format/01-layout/layout';
 
 /**
  * Exercises Naidan's production ChatContent persistence serialization contract
@@ -14,15 +13,7 @@ export function roundTripChatContentPersistenceSerialization({
   restored: ChatContent,
   serialized: string,
 } {
-  const dto = chatContentToDto({ domain: content });
-  // Production storage validates the DTO before writing the JSON payload. Keep
-  // the investigation round trip on the same serialization boundary.
-  ChatContentDtoSchema.parse(dto);
-  const serialized = JSON.stringify(dto);
-  const restored = chatContentToDomain({
-    dto: ChatContentDtoSchema.parse(JSON.parse(serialized) as unknown),
-  });
-  return { restored, serialized };
+  return opfsFormat.storage.chatContents.inspectRoundTrip({ content });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

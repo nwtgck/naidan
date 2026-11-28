@@ -338,6 +338,23 @@ describe('OPFS volume publication', () => {
     expect(volumes).toContainEqual(entries[2]);
   });
 
+  it('renames the indexed volume while retaining the existing shard metadata', async () => {
+    const volumeId = toVolumeId({ raw: 'first-a1' });
+    await provider.ensureVolumeDirectory({ volumeId });
+    const shard = await shardDirectory({ shard: 'a1' });
+    const index = await shard.getFileHandle('index.json', { create: true });
+    const first = { type: 'opfs', id: 'first-a1', name: 'First', createdAt: 1, experimental: {} };
+    const second = { type: 'host', id: 'second-a1', name: 'Second', createdAt: 2, experimental: {} };
+    index.content = JSON.stringify({ volumes: { 'first-a1': first, 'second-a1': second }, experimental: {} });
+
+    await provider.renameVolume({ volumeId, name: 'Renamed' });
+
+    expect(JSON.parse(index.content)).toEqual({
+      volumes: { 'first-a1': { ...first, name: 'Renamed' }, 'second-a1': second },
+      experimental: {},
+    });
+  });
+
   it('removes only explicitly selected unpublished data and refuses published folders', async () => {
     const first = volume({ raw: 'first-a1', name: 'First' });
     const second = volume({ raw: 'second-a1', name: 'Second' });

@@ -1,4 +1,5 @@
 import { parseWorkflowJson, parseWorkflowModelConfiguration } from '@/00-storage/service/workflow-json';
+import { opfsFormat } from '@/00-format/01-layout/layout';
 import type { JsonValue } from '@/01-models/lm';
 import type { WorkflowMessage } from '@/01-models/workflow';
 import type { ToolCallId } from '@/01-models/ids';
@@ -335,38 +336,25 @@ export async function* serializeValue({ value, signal }: { value: RuntimeValue, 
     yield '}';
     return;
   case 'conversation':
-    yield '[';
-    for (const [index, message] of value.messages.entries()) {
-      if (index) {
-        yield ',';
-      }
-      yield '{"role":' + JSON.stringify(message.role) + ',"parts":[';
-      for (const [partIndex, part] of message.parts.entries()) {
-        if (partIndex) {
-          yield ',';
+    yield* opfsFormat.tmp.workflowResults.serializeConversation({
+      messages: value.messages,
+      *parts({ message }) {
+        for (const part of message.parts) {
+          switch (part.type) {
+          case 'tool_call': yield part;
+            break;
+          case 'reasoning':
+            yield { type: 'reasoning', content: serializeValue({ value: part.content, signal }) };
+            break;
+          case 'tool_result':
+            yield { ...part, content: serializeValue({ value: part.content, signal }) };
+            break;
+          default:
+            yield { type: 'text', content: serializeValue({ value: part, signal }) };
+          }
         }
-        switch (part.type) {
-        case 'tool_call': yield JSON.stringify(part);
-          break;
-        case 'reasoning':
-          yield '{"type":"reasoning","text":';
-          yield* serializeValue({ value: part.content, signal });
-          yield '}';
-          break;
-        case 'tool_result':
-          yield JSON.stringify({ type: part.type, id: part.id, status: part.status, code: part.code }).slice(0, -1) + ',"content":';
-          yield* serializeValue({ value: part.content, signal });
-          yield '}';
-          break;
-        default:
-          yield '{"type":"text","text":';
-          yield* serializeValue({ value: part, signal });
-          yield '}';
-        }
-      }
-      yield ']}';
-    }
-    yield ']';
+      },
+    });
     return;
   case 'sequence': {
     yield '[';

@@ -1,11 +1,10 @@
+import { opfsFormat } from '@/00-format/01-layout/layout';
 import { generateId } from '@/01-models/id';
 import { idToRaw, type WorkflowRunId, type WorkflowId } from '@/01-models/ids';
 import type { StorageType } from '@/01-models/types';
 import type { WorkflowDefinition, WorkflowRunRecord, WorkflowRunEntry } from '@/01-models/workflow';
-import { ExperimentalWorkflowRunDtoSchema } from '@/00-storage/00-dto/experimental-workflow.dto';
-import { workflowRunToDomain, workflowRunToDto } from '@/00-storage/mapper/workflow';
-import { OPFS_TMP_DIR, SYNC_LOCK_KEY } from '@/constants';
-import { parseWorkflowJson } from './workflow-json';
+import { SYNC_LOCK_KEY } from '@/constants';
+import { workflowFileNotFound, workflowFileReader } from './workflow-files';
 import { acquireWorkflowRunLease, type WorkflowRunLease } from './workflow-run-ownership';
 
 export type WorkflowRunSnapshot = { record: WorkflowRunRecord, source: string };
@@ -31,7 +30,6 @@ type Access = {
   directory: ({ create }: { create: boolean }) => Promise<FileSystemDirectoryHandle | undefined>,
   lock: <T>({ operation }: { operation: () => Promise<T> }) => Promise<T>,
 };
-const MAX_BYTES = 8 * 1024 * 1024;
 const terminalStatuses = { running: false, completed: true, failed: true, cancelled: true, interrupted: true } satisfies Record<WorkflowRunRecord['status'], boolean>;
 
 function hasVerifiableOwner({ record }: { record: WorkflowRunRecord }): boolean {
@@ -42,76 +40,6 @@ function hasVerifiableOwner({ record }: { record: WorkflowRunRecord }): boolean 
     const exhaustive: never = record.ownership;
     throw new Error(String(exhaustive));
   }
-  }
-}
-
-function fileName({ id }: { id: WorkflowRunId }): string {
-  const raw = idToRaw({ id });
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(raw)) {
-    throw new Error('Invalid Workflow run ID.');
-  }
-  return `${raw}.json`;
-}
-
-function notFound({ error }: { error: unknown }): boolean {
-  return (error instanceof Error || error instanceof DOMException) && error.name === 'NotFoundError';
-}
-
-function validate({ record }: { record: WorkflowRunRecord }): void {
-  const terminal = terminalStatuses[record.status];
-  if (!Number.isSafeInteger(record.startedAt) || record.startedAt < 0 || terminal !== (record.finishedAt !== undefined)
-    || (record.finishedAt !== undefined && (!Number.isSafeInteger(record.finishedAt) || record.finishedAt < record.startedAt))) {
-    throw new Error('Invalid Workflow run timestamps.');
-  }
-  if (record.checkpointAt !== undefined && (!Number.isSafeInteger(record.checkpointAt) || record.checkpointAt < record.startedAt
-    || (record.finishedAt !== undefined && record.checkpointAt > record.finishedAt))) {
-    throw new Error('Invalid Workflow checkpoint timestamp.');
-  }
-  if (hasVerifiableOwner({ record }) && record.checkpointAt === undefined) {
-    throw new Error('Owned Workflow history requires a checkpoint timestamp.');
-  }
-  if (record.entries.length > 200 || record.entries.some(entry => !Number.isSafeInteger(entry.number) || entry.number < 1 || entry.trace.length > 32
-    || entry.trace.some(index => !Number.isSafeInteger(index) || index < 0) || entry.preview.length > 4096 || entry.inputPreview.length > 4096)) {
-    throw new Error('Workflow history preview limit exceeded.');
-  }
-  if (record.resultsPath !== undefined && (record.resultsPath.length !== 3 || record.resultsPath[0] !== OPFS_TMP_DIR
-    || record.resultsPath.some(segment => !segment || segment === '.' || segment === '..' || segment.includes('/') || segment.includes('\\'))
-    || !record.resultsPath[2]?.startsWith('workflow-results-'))) {
-    throw new Error('Workflow results must belong to a temporary results directory.');
-  }
-}
-
-function decode({ source, name }: { source: string, name: string }): WorkflowRunSnapshot {
-  if (new TextEncoder().encode(source).byteLength > MAX_BYTES) {
-    throw new Error('Workflow history record is too large.');
-  }
-  const value: unknown = JSON.parse(source);
-  // Check the recursive definition before running its DTO schema. The preview
-  // envelope has a separate size budget and contains no recursive user values.
-  if (!value || typeof value !== 'object' || !('definition' in value)) {
-    throw new Error('Workflow history definition is missing.');
-  }
-  parseWorkflowJson({ text: JSON.stringify(value.definition) });
-  const record = workflowRunToDomain({ dto: ExperimentalWorkflowRunDtoSchema.parse(value) });
-  if (fileName({ id: record.id }) !== name) {
-    throw new Error('Workflow run identity does not match its file.');
-  }
-  validate({ record });
-  return { record, source };
-}
-
-async function read({ directory, name }: { directory: FileSystemDirectoryHandle, name: string }): Promise<string | undefined> {
-  try {
-    const file = await (await directory.getFileHandle(name)).getFile();
-    if (file.size > MAX_BYTES) {
-      throw new Error('Workflow history record is too large.');
-    }
-    return await file.text();
-  } catch (error) {
-    if (notFound({ error })) {
-      return undefined;
-    }
-    throw error;
   }
 }
 
@@ -135,27 +63,28 @@ function createStore({ access }: { access: Access }): WorkflowRunStore {
   }
   const persist = async ({ record, expected, writer }: { record: WorkflowRunRecord, expected: string | undefined, writer: 'owner' | 'exclusive' }): Promise<WorkflowRunSnapshot> => {
     // Encode before waiting for the lock: later edits and progress must not alter this snapshot.
-    const source = JSON.stringify(workflowRunToDto({ domain: record }));
-    const name = fileName({ id: record.id });
-    const snapshot = decode({ source, name });
+    const prepared = opfsFormat.storage.experimental.workflows.runs.prepareWrite({ record });
     const write = () => access.lock({
       operation: async () => {
         const directory = await access.directory({ create: true });
         if (!directory) {
           throw new Error('Workflow history storage is unavailable.');
         }
-        if (await read({ directory, name }) !== expected) {
+        if (await prepared.target.readSource({ readFile: workflowFileReader({ directory }) }) !== expected) {
           throw new Error('Workflow history changed or was removed. Reload before updating.');
         }
-        const writer = await (await directory.getFileHandle(name, { create: true })).createWritable();
-        try {
-          await writer.write(source);
-          await writer.close();
-        } catch (error) {
-          await writer.abort(error).catch(() => undefined);
-          throw error;
-        }
-        return snapshot;
+        return prepared.write({
+          writeText: async ({ file, text }) => {
+            const writer = await (await directory.getFileHandle(file.name, { create: true })).createWritable();
+            try {
+              await writer.write(text);
+              await writer.close();
+            } catch (error) {
+              await writer.abort(error).catch(() => undefined);
+              throw error;
+            }
+          },
+        });
       },
     });
     switch (writer) {
@@ -176,7 +105,7 @@ function createStore({ access }: { access: Access }): WorkflowRunStore {
     }
   };
   function originalRecord({ previous }: { previous: WorkflowRunSnapshot }): WorkflowRunRecord {
-    return decode({ source: previous.source, name: fileName({ id: previous.record.id }) }).record;
+    return opfsFormat.storage.experimental.workflows.runs.file({ id: previous.record.id }).decode({ source: previous.source }).record;
   }
   function requireRunning({ original }: { original: WorkflowRunRecord }): void {
     switch (original.status) {
@@ -246,19 +175,21 @@ function createStore({ access }: { access: Access }): WorkflowRunStore {
         return listing;
       }
       let count = 0;
+      const readFile = workflowFileReader({ directory });
       for await (const [name, entry] of directory.entries()) {
-        if (entry.kind !== 'file' || !/^[A-Za-z0-9_-]{1,64}\.json$/.test(name)) {
+        const target = opfsFormat.storage.experimental.workflows.runs.listedFile({ name });
+        if (entry.kind !== 'file' || !target) {
           continue;
         }
         if (++count > 2000) {
           throw new Error('Too many Workflow history records. Remove unused history.');
         }
         try {
-          const source = await read({ directory, name });
-          if (source === undefined) {
+          const snapshot = await target.read({ readFile });
+          if (!snapshot) {
             continue;
           }
-          const { record } = decode({ source, name });
+          const { record } = snapshot;
           listing.items.push({ id: record.id, workflowId: record.workflowId, name: record.definition.name, startedAt: record.startedAt, finishedAt: record.finishedAt, status: record.status });
         } catch (error) {
           listing.unreadable.push({ fileName: name, message: error instanceof Error ? error.message : String(error) });
@@ -269,12 +200,12 @@ function createStore({ access }: { access: Access }): WorkflowRunStore {
     },
     async load({ id }) {
       const directory = await access.directory({ create: false });
-      const name = fileName({ id });
-      const source = directory && await read({ directory, name });
-      if (source === undefined) {
+      const target = opfsFormat.storage.experimental.workflows.runs.file({ id });
+      const snapshot = directory && await target.read({ readFile: workflowFileReader({ directory }) });
+      if (!snapshot) {
         throw new Error('Workflow history was not found.');
       }
-      return decode({ source, name });
+      return snapshot;
     },
     async create({ workflowId, definition }) {
       // Freeze the exact input before awaiting even the ownership lock.
@@ -328,15 +259,15 @@ function createStore({ access }: { access: Access }): WorkflowRunStore {
       if (!terminalStatuses[originalRecord({ previous }).status]) {
         throw new Error('Mark an abandoned Workflow run as interrupted before deleting its history.');
       }
-      const name = fileName({ id: previous.record.id });
+      const target = opfsFormat.storage.experimental.workflows.runs.file({ id: previous.record.id });
       await access.lock({
         operation: async () => {
           const directory = await access.directory({ create: false });
-          if (!directory || await read({ directory, name }) !== previous.source) {
+          if (!directory || await target.readSource({ readFile: workflowFileReader({ directory }) }) !== previous.source) {
             throw new Error('Workflow history changed or was removed. Reload before deleting.');
           }
           // History deletion never follows paths into user Volumes or temporary output folders.
-          await directory.removeEntry(name);
+          await directory.removeEntry(target.file.name);
         },
       });
     },
@@ -352,11 +283,11 @@ export function createWorkflowRunStore({ storageType }: { storageType: StorageTy
       acquireRun: ({ id }) => acquireWorkflowRunLease({ locks: navigator.locks, id }),
       async directory({ create }) {
         let directory = await navigator.storage.getDirectory();
-        for (const name of ['naidan-storage', 'experimental', 'workflows', 'runs']) {
+        for (const name of opfsFormat.storage.experimental.workflows.runs.path) {
           try {
             directory = await directory.getDirectoryHandle(name, { create });
           } catch (error) {
-            if (!create && notFound({ error })) {
+            if (!create && workflowFileNotFound({ error })) {
               return undefined;
             }
             throw error;

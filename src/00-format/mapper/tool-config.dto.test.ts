@@ -1,0 +1,133 @@
+import { describe, expect, it } from 'vitest';
+import {
+  ChatGroupDtoSchema,
+  ChatMetaDtoSchema,
+  SettingsDtoSchema,
+} from '@/00-format/00-dto/dto';
+import {
+  chatGroupConfigurationToDomain,
+  chatGroupToDto,
+  chatMetaToDomain,
+  chatMetaToDto,
+  settingsToDomain,
+  settingsToDto,
+} from './mappers';
+import { DEFAULT_SETTINGS } from '@/01-models/types';
+
+const toolConfigs = [
+  { key: 'builtin.calculator', status: 'enabled' },
+  { key: 'builtin.choices', status: 'disabled' },
+  { key: 'builtin.calculator', status: 'disabled' },
+  {
+    key: 'builtin.wesh',
+    status: 'enabled',
+    naidanSysfs: {
+      accessScope: 'main_chats',
+    },
+  },
+] as const;
+
+describe('experimental tool config DTO', () => {
+  it.each([undefined, {}])('enables persistence when the saved setting is absent: %j', experimental => {
+    const dto = SettingsDtoSchema.parse({
+      ...DEFAULT_SETTINGS,
+      endpoint: { type: 'openai', url: 'http://localhost' },
+      storageType: 'local',
+      experimental,
+    });
+    expect(settingsToDomain({ dto }).experimental?.toolConfigPersistence).toBe('enabled');
+  });
+
+  it.each(['enabled', 'disabled'] as const)('preserves explicit %s persistence and tool values through reloads', persistence => {
+    const dto = SettingsDtoSchema.parse({
+      ...DEFAULT_SETTINGS,
+      endpoint: { type: 'openai', url: 'http://localhost' },
+      storageType: 'local',
+      experimental: { toolConfigPersistence: persistence, toolConfigs },
+    });
+    const domain = settingsToDomain({ dto });
+    const saved = settingsToDto({ domain });
+    const reloaded = settingsToDomain({ dto: SettingsDtoSchema.parse(saved) });
+    expect(saved.experimental?.toolConfigPersistence).toBe(persistence === 'disabled' ? 'disabled' : undefined);
+    expect(reloaded.experimental?.toolConfigPersistence).toBe(persistence);
+    expect(reloaded.experimental?.toolConfigs).toEqual(toolConfigs);
+    expect(settingsToDto({ domain: reloaded })).toStrictEqual(saved);
+  });
+
+  it.each([undefined, 'enabled'] as const)('omits the default persistence setting %s across repeated saves', persistence => {
+    const saved = settingsToDto({
+      domain: {
+        ...DEFAULT_SETTINGS,
+        endpoint: { type: 'openai', url: 'http://localhost' },
+        storageType: 'local',
+        experimental: { toolConfigPersistence: persistence },
+      },
+    });
+    expect(saved.experimental?.toolConfigPersistence).toBeUndefined();
+    expect(saved.experimental).toBeUndefined();
+    const restored = settingsToDomain({ dto: saved });
+    expect(restored.experimental?.toolConfigPersistence).toBe('enabled');
+    expect(settingsToDto({ domain: restored })).toStrictEqual(saved);
+  });
+
+  it('persists required status values under chat meta experimental storage', () => {
+    const dto = ChatMetaDtoSchema.parse({
+      id: 'chat-1',
+      title: 'Chat 1',
+      updatedAt: 2,
+      createdAt: 1,
+      experimental: { toolConfigs },
+    });
+
+    const domain = chatMetaToDomain({ dto });
+    expect(domain.toolConfigs).toEqual(toolConfigs);
+    expect(chatMetaToDto({ domain }).experimental?.toolConfigs).toEqual(toolConfigs);
+  });
+
+  it('does not accept legacy tool config entries without status', () => {
+    const dto = ChatMetaDtoSchema.parse({
+      id: 'chat-1',
+      title: 'Chat 1',
+      updatedAt: 2,
+      createdAt: 1,
+      experimental: {
+        toolConfigs: [{ key: 'builtin.calculator' }],
+      },
+    });
+
+    expect(dto.experimental?.toolConfigs).toBeUndefined();
+    expect(chatMetaToDomain({ dto }).toolConfigs).toBeUndefined();
+  });
+
+  it('round-trips chat group tool overrides', () => {
+    const dto = ChatGroupDtoSchema.parse({
+      id: 'group-1',
+      name: 'Group 1',
+      isCollapsed: false,
+      updatedAt: 1,
+      experimental: { toolConfigs },
+    });
+    const domain = chatGroupConfigurationToDomain({ dto });
+
+    expect(domain.toolConfigs).toEqual(toolConfigs);
+    expect(chatGroupToDto({ domain: { ...domain, items: [] } }).experimental?.toolConfigs).toEqual(toolConfigs);
+  });
+
+  it('round-trips global tool configs in settings', () => {
+    const dto = SettingsDtoSchema.parse({
+      endpoint: { type: 'openai', url: 'http://localhost', httpHeaders: undefined },
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+      experimental: {
+        toolConfigPersistence: 'enabled',
+        toolConfigs,
+      },
+    });
+    const domain = settingsToDomain({ dto });
+
+    expect(domain.experimental?.toolConfigs).toEqual(toolConfigs);
+    expect(settingsToDto({ domain }).experimental?.toolConfigs).toEqual(toolConfigs);
+  });
+});

@@ -1,3 +1,4 @@
+import { modelCacheOpfsRoot } from '@/00-format/model-cache-root';
 import { modelForImageCandidate } from './logic/model-files';
 import { validateLinkedModelRoot } from '@/logic/model-directory-input';
 import { temporaryModelFiles } from '@/logic/temporary-model-files';
@@ -23,7 +24,6 @@ import type { ImageRuntimeFeatures, ModelSlot, Request } from './types';
 import type { ImageBenchmarkTarget, ImageComponentChoice, ImageLibraryView, ImageModelChoice, ImageRecipeAvailability, SavedImageLoraChoice } from './library-view';
 import { useHostModelDirectories } from './composables/use-host-model-directories';
 import { createDisabledImageLibrary } from './library-standalone';
-import { OPFS_MODELS_DIR } from '@/constants';
 import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
 import type { ImageGenerationModelFile } from '@/01-models/image-generation-history';
 import type { BrowserImageModelLocation, BrowserImageModelSelection } from '@/01-models/types';
@@ -1252,7 +1252,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           }
           break;
         case 'opfs':
-          if (modelLocation({ candidate }).kind === 'opfs' && `${OPFS_MODELS_DIR}/${candidate.repositoryKey}/${entry.relativePath}` === location.path) {
+          if (modelLocation({ candidate }).kind === 'opfs' && `${modelCacheOpfsRoot.path.join('/')}/${candidate.repositoryKey}/${entry.relativePath}` === location.path) {
             return file;
           }
           break;

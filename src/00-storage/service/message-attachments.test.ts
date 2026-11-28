@@ -4,7 +4,6 @@ import { LocalStorageProvider } from './local-storage';
 import { MemoryStorageProvider } from './memory-storage';
 import { toAttachmentId, toBinaryObjectId, toChatId, toMessageId, idToRaw } from '@/01-models/ids';
 import type { MessageNode, UserMessageNode } from '@/01-models/types';
-import { STORAGE_KEY_PREFIX } from '@/constants';
 
 function user({ id, replies }: { id: string, replies: MessageNode[] }): UserMessageNode {
   return {
@@ -91,7 +90,7 @@ describe('attachment parts in storage', () => {
 
   it('does not rewrite legacy local data on read and converts the whole saved tree', async () => {
     const id = toChatId({ raw: 'legacy-chat' });
-    const key = `${STORAGE_KEY_PREFIX}lsp:chat_content:${idToRaw({ id })}`;
+    const key = `naidan:lsp:chat_content:${idToRaw({ id })}`;
     const legacy = { root: { items: [{ id: 'a', role: 'assistant', timestamp: 4, content: '<think>raw</think> A', thinking: '', replies: { items: [{ id: 'b', role: 'system', timestamp: 5, content: '', replies: { items: [] } }] } }] } };
     const bytes = JSON.stringify(legacy);
     localStorage.setItem(key, bytes);

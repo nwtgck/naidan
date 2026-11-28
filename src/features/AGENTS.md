@@ -104,8 +104,8 @@ src/utils/**
 Features must not depend directly on:
 
 ```text
-src/00-storage/00-dto/**
-src/00-storage/mapper/**
+src/00-format/00-dto/**
+src/00-format/mapper/**
 ```
 
 Use a purpose-specific public Storage service API instead of exposing persisted formats.

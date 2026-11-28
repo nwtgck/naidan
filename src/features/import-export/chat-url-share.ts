@@ -2,8 +2,6 @@ import { appUrlFromLocation } from '@/logic/app-location';
 import { storageService } from '@/00-storage/service';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
 import { ImportExportService, type IImportExportStorage } from './service';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
-import { hierarchyToDomain, hierarchyToDto } from '@/00-storage/mapper/mappers';
 import type { MessageNode, Settings } from '@/01-models/types';
 import { toBinaryObjectId, type BinaryObjectId, type ChatId } from '@/01-models/ids';
 import { GeneratedImageBlockSchema, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
@@ -32,10 +30,7 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
     listChats: () => memoryProvider.listChats(),
     listChatGroups: () => memoryProvider.listChatGroups(),
     loadChat: ({ id }) => memoryProvider.loadChat({ id }),
-    loadHierarchy: async () => {
-      const dto = await memoryProvider.loadHierarchy();
-      return dto ? hierarchyToDomain({ dto }) : null;
-    },
+    loadHierarchy: () => memoryProvider.loadHierarchy(),
     clearAll: () => memoryProvider.clearAll(),
     dumpWithoutLock: () => memoryProvider.dump(),
     restore: ({ snapshot }) => memoryProvider.restore({ snapshot }),
@@ -57,11 +52,7 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
 
   // 3. Hierarchy (minimal)
   await memoryProvider.saveHierarchy({
-    hierarchy: hierarchyToDto({
-      domain: {
-        items: [{ type: 'chat', id: chat.id }],
-      },
-    }),
+    hierarchy: { items: [{ type: 'chat', id: chat.id }] },
   });
 
   // 4. Copy binaries referenced anywhere in the exported tree. Model text and

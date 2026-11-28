@@ -4,7 +4,6 @@ import { Secret } from '@/utils/secret';
 import { EMPTY_LM_PARAMETERS, type ChatMeta, type ChatGroup, type HttpEndpoint } from '@/01-models/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
-import { STORAGE_KEY_PREFIX } from '@/constants';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
 import {
   naidanSysfsRemoteChatContentPayloadSchema,
@@ -77,10 +76,10 @@ describe('Naidan sysfs current-format transfer boundary', () => {
 
   it('reads legacy storage through V2 remote payloads and sysfs without rewriting the source', async () => {
     const saved = new Map([
-      [`${STORAGE_KEY_PREFIX}lsp:chat_meta:chat-legacy`, JSON.stringify(legacyMetadata)],
-      [`${STORAGE_KEY_PREFIX}lsp:chat_group:group-legacy`, JSON.stringify(legacyGroup)],
-      [`${STORAGE_KEY_PREFIX}lsp:chat_content:chat-legacy`, JSON.stringify(legacyContent)],
-      [`${STORAGE_KEY_PREFIX}lsp:hierarchy`, JSON.stringify({ items: [{ type: 'chat_group', id: 'group-legacy', chat_ids: ['chat-legacy'] }] })],
+      [`naidan:lsp:chat_meta:chat-legacy`, JSON.stringify(legacyMetadata)],
+      [`naidan:lsp:chat_group:group-legacy`, JSON.stringify(legacyGroup)],
+      [`naidan:lsp:chat_content:chat-legacy`, JSON.stringify(legacyContent)],
+      [`naidan:lsp:hierarchy`, JSON.stringify({ items: [{ type: 'chat_group', id: 'group-legacy', chat_ids: ['chat-legacy'] }] })],
     ]);
     for (const [key, text] of saved) {
       localStorage.setItem(key, text);
@@ -238,10 +237,10 @@ describe('Naidan sysfs current-format transfer boundary', () => {
       lmParameters: { reasoning: {} },
     };
     const saved = new Map([
-      [`${STORAGE_KEY_PREFIX}lsp:chat_meta:chat-legacy`, JSON.stringify({ ...legacyMetadata, endpoint, titleGeneration })],
-      [`${STORAGE_KEY_PREFIX}lsp:chat_group:group-legacy`, JSON.stringify({ ...legacyGroup, endpoint, titleGeneration })],
-      [`${STORAGE_KEY_PREFIX}lsp:chat_content:chat-legacy`, JSON.stringify(legacyContent)],
-      [`${STORAGE_KEY_PREFIX}lsp:hierarchy`, JSON.stringify({ items: [{ type: 'chat_group', id: 'group-legacy', chat_ids: ['chat-legacy'] }] })],
+      [`naidan:lsp:chat_meta:chat-legacy`, JSON.stringify({ ...legacyMetadata, endpoint, titleGeneration })],
+      [`naidan:lsp:chat_group:group-legacy`, JSON.stringify({ ...legacyGroup, endpoint, titleGeneration })],
+      [`naidan:lsp:chat_content:chat-legacy`, JSON.stringify(legacyContent)],
+      [`naidan:lsp:hierarchy`, JSON.stringify({ items: [{ type: 'chat_group', id: 'group-legacy', chat_ids: ['chat-legacy'] }] })],
     ]);
     for (const [key, text] of saved) {
       localStorage.setItem(key, text);

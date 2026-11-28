@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { nextTick } from 'vue';
-import { FEATURE_FLAGS_STORAGE_KEY } from '@/01-models/feature-flags';
 
 describe('useFeatureFlags', () => {
   beforeEach(() => {
@@ -21,7 +20,7 @@ describe('useFeatureFlags', () => {
   });
 
   it('falls back to defaults when localStorage contains invalid data', async () => {
-    localStorage.setItem(FEATURE_FLAGS_STORAGE_KEY, '{"volume":{"status":"broken"}}');
+    localStorage.setItem('naidan:feature_flags', '{"volume":{"status":"broken"}}');
     const { useFeatureFlags } = await import('./useFeatureFlags');
     const { featureFlags } = useFeatureFlags();
 
@@ -33,7 +32,7 @@ describe('useFeatureFlags', () => {
 
   it('falls back only the invalid feature while preserving other valid features', async () => {
     localStorage.setItem(
-      FEATURE_FLAGS_STORAGE_KEY,
+      'naidan:feature_flags',
       JSON.stringify({
         volume: {
           status: 'enabled',
@@ -70,7 +69,7 @@ describe('useFeatureFlags', () => {
     expect(featureFlags.value.volume.status).toBe('enabled');
     expect(featureFlags.value.volume.compatibilityRiskAcknowledgedAt).toEqual(expect.any(Number));
 
-    const raw = localStorage.getItem(FEATURE_FLAGS_STORAGE_KEY);
+    const raw = localStorage.getItem('naidan:feature_flags');
     expect(raw).toContain('"status":"enabled"');
   });
 });

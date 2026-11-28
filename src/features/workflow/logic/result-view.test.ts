@@ -47,6 +47,13 @@ it.each(['../secret.txt', '/result-0000.txt', 'result-0000xpng', 'result-0000\\.
   expect(fs.calls.some(call => call.includes('secret'))).toBe(false);
 });
 
+it('rejects duplicate manifest keys before opening any output', async () => {
+  using fs = createWorkflowTestFileSystem();
+  fs.setText({ path: 'index.json', text: '{"outputs":[],"outputs":[{"stepId":"x","output":"y","path":"result-0000.txt"}]}' });
+  await expect(archivedWorkflowResultSources({ directory: fs.root, signal: signal() })).rejects.toThrow('Duplicate JSON key: outputs');
+  expect(fs.calls.some(call => call.includes('result-0000.txt'))).toBe(false);
+});
+
 it('keeps old JSON archives as ordinary text and skips unknown binary/streaming outputs', async () => {
   using fs = createWorkflowTestFileSystem();
   fs.setText({ path: 'index.json', text: JSON.stringify({ outputs: ['json', 'bin', 'jsonl'].map(extension => ({ stepId: 'x', output: extension, path: `result-0000.${extension}` })) }) });

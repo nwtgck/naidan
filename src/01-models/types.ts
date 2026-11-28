@@ -399,7 +399,7 @@ export interface StorageSnapshot {
    * This is kept as a generator to manage memory efficiency.
    */
   // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move the storage snapshot contract into the storage service API.
-  contentStream: AsyncGenerator<import('@/00-storage/00-dto/dto').MigrationChunkDto>,
+  contentStream: AsyncGenerator<import('@/00-format/00-dto/dto').MigrationChunkDto>,
 }
 
 /**

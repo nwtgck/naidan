@@ -5,7 +5,7 @@ import type { NaidanSysfsRemoteChatMetaValue } from "./remote-reader-schema";
 import {
   ExperimentalChatMetaDtoSchema,
   optionalExperimentalFieldDtoSchema,
-} from "@/00-storage/00-dto/experimental.dto";
+} from "@/00-format/00-dto/experimental.dto";
 
 type RemoteExperimentalValue = NonNullable<NaidanSysfsRemoteChatMetaValue["experimental"]>;
 type RemoteExperimentalHasUnreadable = "unreadable" extends keyof RemoteExperimentalValue ? true : false;

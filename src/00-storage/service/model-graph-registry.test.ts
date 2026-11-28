@@ -65,7 +65,7 @@ it('allows only one concurrent writer from the same revision', async () => {
 
 it('fails closed on corrupt persistence, rather than silently returning an empty registry', async () => {
   const provider = new MemoryStorageProvider();
-  vi.spyOn(provider, 'loadModelGraphRegistry').mockResolvedValue({ version: 1, id: 'registry-invalid', revision: 1, registrations: [{ id: 'test-registration', label: 'broken', source: '{}', sourceSha256: '0'.repeat(64), rule: { mode: 'disabled' } }] });
+  vi.spyOn(provider, 'readModelGraphRegistryForTransfer').mockResolvedValue({ version: 1, id: 'registry-invalid', revision: 1, registrations: [{ id: 'test-registration', label: 'broken', source: '{}', sourceSha256: '0'.repeat(64), rule: { mode: 'disabled' } }] });
   await expect(readModelGraphRegistry({ provider, providerGeneration: 1, persistence: 'session' })).rejects.toThrow('digest');
 });
 
@@ -107,7 +107,7 @@ it('keeps the active provider and original registry if copying the registry fail
   const initial = await storageService.loadModelGraphRegistry();
   const entry = registration({ source: '{}' });
   const saved = await storageService.updateModelGraphRegistry({ access: initial.access, registrations: [entry] });
-  vi.spyOn(MemoryStorageProvider.prototype, 'saveModelGraphRegistry').mockRejectedValueOnce(new Error('registry copy failed'));
+  vi.spyOn(MemoryStorageProvider.prototype, 'writeModelGraphRegistryForTransfer').mockRejectedValueOnce(new Error('registry copy failed'));
   await expect(storageService.switchProvider({ type: 'memory' })).rejects.toThrow('registry copy failed');
   expect(storageService.getCurrentType()).toBe('local');
   const remaining = await storageService.loadModelGraphRegistry();

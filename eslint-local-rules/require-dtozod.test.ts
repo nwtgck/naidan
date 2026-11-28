@@ -36,7 +36,7 @@ describe('DTO dialect boundary', () => {
     "import raw = require('zod');",
     "import { missingAsUndefined } from '@/utils/zod/missingAsUndefined';",
   ])('rejects an unrestricted runtime source: %s', async code => {
-    const messages = await lint({ code, filePath: 'src/00-storage/00-dto/example.dto.ts' });
+    const messages = await lint({ code, filePath: 'src/00-format/00-dto/example.dto.ts' });
     expect(messages.map(message => message.messageId)).toEqual(['native']);
   });
 
@@ -60,7 +60,7 @@ describe('DTO dialect boundary', () => {
     'const escaped = <NativeSchema>schema;',
     'const fake = raw as DtoSchema;',
   ])('rejects assertions inside DTO definitions: %s', async code => {
-    const messages = await lint({ code, filePath: 'src/00-storage/00-dto/dto.ts' });
+    const messages = await lint({ code, filePath: 'src/00-format/00-dto/dto.ts' });
     expect(messages.map(message => message.messageId)).toEqual(['assertion']);
   });
 
@@ -70,14 +70,14 @@ describe('DTO dialect boundary', () => {
     'const { _zod: native } = schema;',
     "const { ['_zod']: native } = schema;",
   ])('rejects runtime inference-slot access: %s', async code => {
-    const messages = await lint({ code, filePath: 'src/00-storage/00-dto/example.dto.ts' });
+    const messages = await lint({ code, filePath: 'src/00-format/00-dto/example.dto.ts' });
     expect(messages.map(message => message.messageId)).toEqual(['internals']);
   });
 
   it.each([
-    'src/00-storage/00-dto/compatibility/experimental-field.ts',
+    'src/utils/persistence-compatibility/optional-experimental-field.ts',
     'src/utils/dtozod/index.ts',
-    'src/00-storage/00-dto/example.dto.test.ts',
+    'src/00-format/00-dto/example.dto.test.ts',
     'src/features/naidan-rpc-integration/contract.ts',
   ])('does not police non-DTO implementations: %s', async filePath => {
     expect(await lint({ code: "import { z } from 'zod'; z.string().min(1);", filePath })).toEqual([]);

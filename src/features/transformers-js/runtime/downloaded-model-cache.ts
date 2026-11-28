@@ -1,4 +1,4 @@
-import { OPFS_MODELS_DIR } from '@/constants';
+import { modelCacheOpfsRoot } from '@/00-format/model-cache-root';
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
 import { createOpfsModelCache, sanitizedCacheRequestPath, type OpfsModelCacheMatchObservation } from '@/features/transformers-js/runtime/opfs-model-cache';
 import { urlToPath } from '@/features/transformers-js/utils';
@@ -21,7 +21,7 @@ export function createDownloadedModelCacheScope({ modelId, revision }: {
 }) {
   const normalizedModelId = normalizeTransformersJsProductionModelId({ modelId });
   const localModelPath = normalizedModelId.startsWith('user/') || normalizedModelId.startsWith('local/')
-    ? `${OPFS_MODELS_DIR}/user/${normalizedModelId.slice(normalizedModelId.indexOf('/') + 1)}/`
+    ? `${modelCacheOpfsRoot.path.join('/')}/user/${normalizedModelId.slice(normalizedModelId.indexOf('/') + 1)}/`
     : undefined;
   const encodedModelId = normalizedModelId.split('/').map(part => encodeURIComponent(part)).join('/');
   const selectedPrefix = `/${encodedModelId}/resolve/${encodeURIComponent(revision ?? 'main')}/`;

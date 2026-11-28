@@ -6,7 +6,7 @@ import type { Chat, ChatContent, ChatGroup, ChatMeta, Hierarchy, SettingsTitleGe
 import { cloneDownloadDestination, type DownloadDestination } from '@/01-models/download';
 import { idToRaw, toChatGroupId, type ChatId, type ChatGroupId } from '@/01-models/ids';
 import { cloneChatModelLaunch, modelLaunchChatGroupPrefix, modelLaunchTargetSchema, type ModelLaunchTarget, type ChatModelLaunch } from '@/01-models/llama-cpp-browser-model-launch';
-import { chatGroupToDto, chatMetaToDto, hierarchyToDomain, hierarchyToDto } from '@/00-storage/mapper/mappers';
+import { chatGroupToDto, chatMetaToDto } from '@/00-format/mapper/mappers';
 
 export type ModelLaunchChatRequest = {
   chatId: ChatId,
@@ -145,8 +145,7 @@ function matchesModel({ chatGroup, modelId }: { chatGroup: ChatGroup, modelId: s
 async function loadOwnerState({ provider, chatId, chatGroupId }: { provider: IStorageProvider, chatId: ChatId, chatGroupId: ChatGroupId }): Promise<OwnerState> {
   const meta = await provider.loadChatMeta({ id: chatId });
   const content = await provider.loadChatContent({ id: chatId });
-  const rawHierarchy = await provider.loadHierarchy();
-  const hierarchy = rawHierarchy === null ? { items: [] } : hierarchyToDomain({ dto: rawHierarchy });
+  const hierarchy = await provider.loadHierarchy() ?? { items: [] };
   const chatGroup = await provider.loadChatGroup({ id: chatGroupId });
   return { meta, content, hierarchy, chatGroup };
 }
@@ -239,8 +238,8 @@ export async function prepareModelLaunchChat({ provider, request, beforeWrite }:
   } else {
     const meta = await provider.loadChatMeta({ id: chatId });
     const content = await provider.loadChatContent({ id: chatId });
-    const rawHierarchy = await provider.loadHierarchy();
-    state = { meta, content, hierarchy: rawHierarchy === null ? { items: [] } : hierarchyToDomain({ dto: rawHierarchy }), chatGroup: null };
+    const hierarchy = await provider.loadHierarchy() ?? { items: [] };
+    state = { meta, content, hierarchy, chatGroup: null };
   }
   switch (mode) {
   case 'resume':
@@ -375,7 +374,7 @@ export async function prepareModelLaunchChat({ provider, request, beforeWrite }:
     }
     checkBeforeWrite();
     record.hierarchyState = 'attempted';
-    await provider.saveHierarchy({ hierarchy: hierarchyToDto({ domain: state.hierarchy }) });
+    await provider.saveHierarchy({ hierarchy: state.hierarchy });
     record.hierarchyState = 'confirmed';
   }
   // A readable new Chat must already inherit its model group.

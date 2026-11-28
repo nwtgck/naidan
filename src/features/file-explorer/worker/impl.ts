@@ -1,3 +1,4 @@
+import { opfsFormat } from '@/00-format/01-layout/layout';
 import { serveByteStream, byteStreamPortSchema } from '@/utils/byte-stream-port';
 
 import { createValidatedMessagePort, workerTransfer, type WorkerServerApi } from '@/utils/worker-transport';
@@ -1061,9 +1062,8 @@ function isProtectedFileEditTarget({ session, path }: {
 }): boolean {
   return session.kind === 'native-directory'
     && session.rootSource === 'opfs-root'
-    && (path === '/naidan-storage/settings.json'
-      || path === '/naidan-storage/hierarchy.json'
-      || path === '/naidan-storage/migration-state.json');
+    && [opfsFormat.storage.settings, opfsFormat.storage.hierarchy, opfsFormat.storage.migrationState]
+      .some(entry => path === '/' + entry.path.join('/'));
 }
 
 async function isReadOnlyFileViewPath({ session, path }: {

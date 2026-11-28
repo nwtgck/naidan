@@ -1,14 +1,13 @@
 import { installSecretEqualityTester } from '@/utils/secret.test-support';
 import { Secret } from '@/utils/secret';
 import { LocalStorageProvider } from '@/00-storage/service/local-storage';
-import { STORAGE_KEY_PREFIX } from '@/constants';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ImportExportService, type IImportExportStorage } from './service';
 import JSZip from 'jszip';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the DTO dependency with the storage service API.
-import { ChatDtoSchema } from '@/00-storage/00-dto/dto';
+import { ChatDtoSchema } from '@/00-format/00-dto/dto';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the DTO dependency with the storage service API.
-import type { SettingsDto, ChatMetaDto, ChatGroupDto, MigrationChunkDto } from '@/00-storage/00-dto/dto';
+import type { SettingsDto, ChatMetaDto, ChatGroupDto, MigrationChunkDto } from '@/00-format/00-dto/dto';
 import type { ExportOptions, ImportConfig } from './types';
 import type { Mocked } from 'vitest';
 import type { Settings, ChatMeta } from '@/01-models/types';
@@ -156,7 +155,7 @@ describe('ImportExportService', () => {
       expect(reloaded?.endpoint.type).toBe('unsupported_experimental_endpoint');
       expect(reloaded?.systemPrompt).toBe('Keep this prompt');
       expect(reloaded?.defaultModelId).toBe('keep-model');
-      expect(JSON.parse(localStorage.getItem(`${STORAGE_KEY_PREFIX}lsp:settings`)!).endpoint).toEqual({ type: 'experimental_type' });
+      expect(JSON.parse(localStorage.getItem(`naidan:lsp:settings`)!).endpoint).toEqual({ type: 'experimental_type' });
     }
     await provider.saveSettings({ settings: createValidSettings() });
     const kept = await provider.loadSettings();
@@ -193,7 +192,7 @@ describe('ImportExportService', () => {
         settings: { endpoint: 'replace', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
       },
     });
-    const saved = JSON.parse(localStorage.getItem(`${STORAGE_KEY_PREFIX}lsp:settings`)!);
+    const saved = JSON.parse(localStorage.getItem(`naidan:lsp:settings`)!);
     expect(saved.experimental.browserImageGeneration).toMatchObject({ inferenceLocation: { kind: 'unavailable' } });
     expect(saved.experimental.browserImageGeneration.remoteModelEditors).toBeUndefined();
     const reloaded = await provider.loadSettings();
@@ -879,7 +878,7 @@ ${JSON.stringify({
           localStorage.clear();
         },
       };
-      const key = `${STORAGE_KEY_PREFIX}lsp:settings`;
+      const key = `naidan:lsp:settings`;
       const original = JSON.stringify({
         ...createValidSettingsDto(),
         endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'llama_cpp_browser' } } },

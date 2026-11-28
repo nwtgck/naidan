@@ -1,6 +1,8 @@
-import { ExperimentalModelGraphRegistryDtoSchema, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
+import { storedChatGroup, storedChatMeta, type StoredChatGroup, type StoredChatMeta } from '@/00-format/core-records';
+import { buildChatGroup, buildSidebarItemsFromHierarchy } from './sidebar-items';
+import { ExperimentalModelGraphRegistryDtoSchema, type ExperimentalModelGraphRegistryDto } from '@/00-format/00-dto/experimental-model-graph.dto';
 import { iterateAttachmentParts } from './message-attachments';
-import { DEFAULT_SETTINGS_ENDPOINT, type Chat, type Settings, type ChatGroup, type MessageNode, type ChatMeta, type ChatContent, type SidebarItem, type StorageSnapshot, type BinaryObject } from '@/01-models/types';
+import { DEFAULT_SETTINGS_ENDPOINT, type Chat, type Settings, type ChatGroup, type MessageNode, type ChatMeta, type ChatContent, type SidebarItem, type StorageSnapshot, type BinaryObject, type Hierarchy } from '@/01-models/types';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 import {
   type ChatMetaDto,
@@ -12,11 +14,10 @@ import {
   SettingsDtoSchema,
   HierarchyDtoSchema,
   ChatContentDtoSchema,
-} from '@/00-storage/00-dto/dto';
+} from '@/00-format/00-dto/dto';
 import {
   chatToDomain,
   chatToDto,
-  chatGroupToDomain,
   chatGroupConfigurationToDomain,
   chatGroupToDto,
   settingsToDto,
@@ -26,11 +27,10 @@ import {
   chatMetaToDomain,
   chatContentToDto,
   chatContentToDomain,
-  buildSidebarItemsFromHierarchy,
-} from '@/00-storage/mapper/mappers';
+} from '@/00-format/mapper/mappers';
 import { IStorageProvider } from './interface';
 import { idToRaw, toBinaryObjectId, toChatGroupId } from '@/01-models/ids';
-import { ExperimentalNaidanRpcRegistryDtoSchema, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+import { ExperimentalNaidanRpcRegistryDtoSchema, type ExperimentalNaidanRpcRegistryDto } from '@/00-format/00-dto/experimental-naidan-rpc.dto';
 
 /**
  * Memory Storage Implementation
@@ -50,19 +50,19 @@ export class MemoryStorageProvider extends IStorageProvider {
   private modelGraphRegistry: ExperimentalModelGraphRegistryDto | undefined;
   private naidanRpcRegistry: ExperimentalNaidanRpcRegistryDto | undefined;
 
-  async loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
+  async readNaidanRpcRegistryForTransfer(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
     return this.naidanRpcRegistry === undefined ? undefined : ExperimentalNaidanRpcRegistryDtoSchema.parse(this.naidanRpcRegistry);
   }
 
-  async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
+  async writeNaidanRpcRegistryForTransfer({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
     this.naidanRpcRegistry = registry === undefined ? undefined : ExperimentalNaidanRpcRegistryDtoSchema.parse(registry);
   }
 
-  async loadModelGraphRegistry(): Promise<ExperimentalModelGraphRegistryDto | undefined> {
+  async readModelGraphRegistryForTransfer(): Promise<ExperimentalModelGraphRegistryDto | undefined> {
     return this.modelGraphRegistry === undefined ? undefined : ExperimentalModelGraphRegistryDtoSchema.parse(this.modelGraphRegistry);
   }
 
-  async saveModelGraphRegistry({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void> {
+  async writeModelGraphRegistryForTransfer({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void> {
     this.modelGraphRegistry = registry === undefined ? undefined : ExperimentalModelGraphRegistryDtoSchema.parse(registry);
   }
 
@@ -109,22 +109,22 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   // --- Internal Data Access ---
 
-  protected async listChatMetasRaw(): Promise<ChatMetaDto[]> {
-    return Array.from(this.chatMetas.values());
+  protected async listStoredChatMetas(): Promise<StoredChatMeta[]> {
+    return Array.from(this.chatMetas.values(), dto => storedChatMeta({ dto }));
   }
 
-  protected async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
-    return Array.from(this.chatGroups.values());
+  protected async listStoredChatGroups(): Promise<StoredChatGroup[]> {
+    return Array.from(this.chatGroups.values(), dto => storedChatGroup({ dto }));
   }
 
   // --- Hierarchy Management ---
 
-  async loadHierarchy(): Promise<HierarchyDto | null> {
-    return { ...this.hierarchy };
+  async loadHierarchy(): Promise<Hierarchy> {
+    return hierarchyToDomain({ dto: this.hierarchy });
   }
 
-  async saveHierarchy({ hierarchy }: { hierarchy: HierarchyDto }): Promise<void> {
-    this.hierarchy = HierarchyDtoSchema.parse(hierarchy);
+  async saveHierarchy({ hierarchy }: { hierarchy: Hierarchy }): Promise<void> {
+    this.hierarchy = HierarchyDtoSchema.parse(hierarchyToDto({ domain: hierarchy }));
   }
 
   // --- Persistence Implementation ---
@@ -235,7 +235,7 @@ export class MemoryStorageProvider extends IStorageProvider {
       return null;
     }
     const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
-    return chatGroupToDomain({ dto: ChatGroupDtoSchema.parse(raw), hierarchy: hierarchyToDomain({ dto: this.hierarchy }), chatMetas });
+    return buildChatGroup({ configuration: chatGroupConfigurationToDomain({ dto: ChatGroupDtoSchema.parse(raw) }), hierarchy: hierarchyToDomain({ dto: this.hierarchy }), chatMetas });
   }
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
@@ -245,7 +245,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   public override async getSidebarStructure(): Promise<SidebarItem[]> {
     const hierarchy = hierarchyToDomain({ dto: this.hierarchy });
     const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
-    const chatGroups = Array.from(this.chatGroups.values()).map(dto => chatGroupToDomain({ dto, hierarchy, chatMetas }));
+    const chatGroups = Array.from(this.chatGroups.values()).map(dto => chatGroupConfigurationToDomain({ dto }));
 
     return buildSidebarItemsFromHierarchy({ hierarchy, chatMetas, chatGroups });
   }
@@ -377,7 +377,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     const settings = await this.loadSettings();
     const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
     const hierarchy = hierarchyToDomain({ dto: this.hierarchy });
-    const chatGroups = Array.from(this.chatGroups.values()).map(dto => chatGroupToDomain({ dto, hierarchy, chatMetas: [] }));
+    const chatGroups = Array.from(this.chatGroups.values()).map(dto => buildChatGroup({ configuration: chatGroupConfigurationToDomain({ dto }), hierarchy, chatMetas: [] }));
 
     const contentStream = async function* (this: MemoryStorageProvider) {
       // 1. Stream all chats
@@ -426,7 +426,7 @@ export class MemoryStorageProvider extends IStorageProvider {
       await this.saveSettings({ settings: structure.settings });
     }
     if (structure.hierarchy) {
-      await this.saveHierarchy({ hierarchy: hierarchyToDto({ domain: structure.hierarchy }) });
+      await this.saveHierarchy({ hierarchy: structure.hierarchy });
     }
     if (structure.chatMetas) {
       for (const meta of structure.chatMetas) {

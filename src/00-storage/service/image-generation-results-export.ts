@@ -1,10 +1,11 @@
-import { idToRaw, toBinaryObjectId, type BinaryObjectId, type ImageGenerationOperationId, type ImageGenerationSessionId } from '@/01-models/ids';
+import { isLegacyImageGenerationRun, legacyRunToOperation } from '@/00-format/image-generation-operation';
+import { idToRaw, toImageGenerationRunId, type BinaryObjectId, type ImageGenerationOperationId, type ImageGenerationSessionId } from '@/01-models/ids';
 import { withImageGenerationStore, type ImageGenerationStoreAccess } from './image-generation/context';
-import { imageGenerationRawIdSchema } from './image-generation/files';
+import { validateImageGenerationId } from '@/00-format/image-generation-record';
 import { imageGenerationAnnotationsTable, imageGenerationAssetTable, imageGenerationRunTable, imageGenerationSessionDirectory } from './image-generation/tables';
 import { imageGenerationOperationTable } from './image-generation/operations';
 import { readImageGenerationBinaryDeletion } from './image-generation/deletions';
-import type { ExperimentalImageGenerationAssetDto, ExperimentalImageGenerationRunDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import type { ImageGenerationAsset, ImageGenerationRun } from '@/01-models/image-generation';
 
 export type ImageGenerationResultExportSnapshot = { manifest: Blob, images: { path: string, blob: Blob }[] };
 export type ImageGenerationResultFileReference = { id: BinaryObjectId, base: string, output: { filename: string | undefined } };
@@ -12,7 +13,7 @@ export type ImageGenerationResultFileReference = { id: BinaryObjectId, base: str
 /** Explicit allowlists, not object spreads of stored requests. Model locators,
  * peer identities, arbitrary native arguments and error messages are not public
  * result metadata. Prompts are intentionally included in this user-made export. */
-function publicRequest({ run }: { run: ExperimentalImageGenerationRunDto }) {
+function publicRequest({ run }: { run: ImageGenerationRun }) {
   const p = run.request.parameters;
   const execution = (() => {
     const state = run.execution;
@@ -27,7 +28,7 @@ function publicRequest({ run }: { run: ExperimentalImageGenerationRunDto }) {
     }
   })();
   return {
-    runId: run.id,
+    runId: idToRaw({ id: run.id }),
     parameters: {
       prompt: p.prompt,
       negativePrompt: p.negativePrompt,
@@ -56,37 +57,36 @@ function publicRequest({ run }: { run: ExperimentalImageGenerationRunDto }) {
 export async function collectImageGenerationResultsMetadata({ store, sessionId, operationId, exportedAt }: {
   store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, operationId: ImageGenerationOperationId, exportedAt: number,
 }) {
-  const sessionRaw = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
-  const operationRaw = imageGenerationRawIdSchema.parse(idToRaw({ id: operationId }));
+  validateImageGenerationId({ id: sessionId });
+  validateImageGenerationId({ id: operationId });
   return withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
-      const location = await imageGenerationSessionDirectory({ directory, sessionId: sessionRaw });
+      const location = await imageGenerationSessionDirectory({ directory, sessionId });
       if (!location) {
         throw new Error('The generation session no longer exists.');
       }
-      const runTable = await imageGenerationRunTable({ directory: location, sessionId: sessionRaw, create: false });
-      const parent = await (await imageGenerationOperationTable({ directory: location, sessionId: sessionRaw, create: false })).load({ id: operationRaw });
-      const legacy = parent ? undefined : await runTable.load({ id: operationRaw });
-      if (!parent && (!legacy || legacy.operationId !== undefined)) {
+      const runTable = await imageGenerationRunTable({ directory: location, sessionId, create: false });
+      const parent = await (await imageGenerationOperationTable({ directory: location, sessionId, create: false })).load({ id: operationId });
+      const operation = parent ?? legacyRunToOperation({ run: await runTable.load({ id: toImageGenerationRunId({ raw: idToRaw({ id: operationId }) }) }), sessionId });
+      if (operation === undefined) {
         throw new Error('The generation operation is missing or incomplete.');
       }
-      const runIds = parent?.runIds ?? [legacy!.id];
-      const runs: ExperimentalImageGenerationRunDto[] = [];
-      for (const id of runIds) {
+      const runs: ImageGenerationRun[] = [];
+      for (const id of operation.runIds) {
         const run = await runTable.load({ id });
-        if (!run || (parent ? run.operationId !== parent.id : run.operationId !== undefined)) {
+        if (!run || (parent ? run.operationId !== parent.id : !isLegacyImageGenerationRun({ run }))) {
           throw new Error('A request does not belong to this generation operation.');
         }
         runs.push(run);
       }
-      const assetTable = await imageGenerationAssetTable({ directory: location, sessionId: sessionRaw, create: false });
+      const assetTable = await imageGenerationAssetTable({ directory: location, sessionId, create: false });
       const assetList = await assetTable.list();
       if (assetList.warningCount) {
         throw new Error('Image metadata is unreadable. Preserve the raw storage before exporting.');
       }
-      const annotations = await imageGenerationAnnotationsTable({ directory: location, sessionId: sessionRaw, create: false });
-      const byRun = new Map(runs.map(run => [run.id, [] as ExperimentalImageGenerationAssetDto[]]));
+      const annotations = await imageGenerationAnnotationsTable({ directory: location, sessionId, create: false });
+      const byRun = new Map(runs.map(run => [run.id, [] as ImageGenerationAsset[]]));
       const slots = new Set<string>();
       for (const summary of assetList.items) {
       // Canonical records, not a derived index, decide ZIP membership.
@@ -99,7 +99,7 @@ export async function collectImageGenerationResultsMetadata({ store, sessionId, 
           continue;
         }
         const run = runs.find(run => run.id === asset.runId)!;
-        const key = `${asset.runId}:${asset.index}`;
+        const key = `${idToRaw({ id: asset.runId })}:${asset.index}`;
         if (!Number.isSafeInteger(asset.index) || run.seeds[asset.index] !== asset.seed || slots.has(key) || asset.result.width !== run.request.parameters.width || asset.result.height !== run.request.parameters.height) {
           throw new Error('An output does not match its unique planned seed.');
         }
@@ -124,7 +124,7 @@ export async function collectImageGenerationResultsMetadata({ store, sessionId, 
           const deleted = annotation?.state === 'deleted' || !!await readImageGenerationBinaryDeletion({ directory, id: asset.result.binaryObjectId });
           const confirmed = asset.result.confirmation !== 'unconfirmed';
           const output = {
-            assetId: asset.id,
+            assetId: idToRaw({ id: asset.id }),
             index: asset.index,
             seed: asset.seed,
             width: asset.result.width,
@@ -135,13 +135,13 @@ export async function collectImageGenerationResultsMetadata({ store, sessionId, 
           };
           outputs.push(output);
           if (!deleted && confirmed) {
-            files.push({ id: toBinaryObjectId({ raw: imageGenerationRawIdSchema.parse(asset.result.binaryObjectId) }), base: `images/${String(requestIndex + 1).padStart(3, '0')}/${String(asset.index + 1).padStart(2, '0')}`, output });
+            files.push({ id: validateImageGenerationId({ id: asset.result.binaryObjectId }), base: `images/${String(requestIndex + 1).padStart(3, '0')}/${String(asset.index + 1).padStart(2, '0')}`, output });
           }
         }
         requests.push({ index: requestIndex, ...publicRequest({ run }), outputs });
       }
       return {
-        manifest: { version: 1, operationId: operationRaw, sessionId: sessionRaw, createdAt: parent?.createdAt ?? legacy!.createdAt, exportedAt, requests },
+        manifest: { version: 1, operationId: idToRaw({ id: operationId }), sessionId: idToRaw({ id: sessionId }), createdAt: operation.createdAt, exportedAt, requests },
         files,
       };
     },

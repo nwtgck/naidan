@@ -1,6 +1,6 @@
-import { rpcRegistrationFromDto, rpcRegistrationToDto } from '@/00-storage/mapper/naidan-rpc';
+import { rpcRegistrationFromDto, rpcRegistrationToDto } from '@/00-format/mapper/naidan-rpc';
 import type { NaidanRpcRegistration, NaidanRpcIdentity, NaidanRpcTransportSettings } from '@/01-models/naidan-rpc';
-import { normalizeNaidanRpcTransport } from '@/01-models/naidan-rpc';
+import { normalizeNaidanRpcTransport } from '@/00-format/mapper/naidan-rpc';
 import type { NaidanRpcRegistrationId } from '@/01-models/ids';
 import { storageService } from './index';
 import { readRpcIdentity, rememberRpcIdentity } from './naidan-rpc-identity';

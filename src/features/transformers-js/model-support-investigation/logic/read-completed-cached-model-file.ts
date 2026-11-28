@@ -1,4 +1,4 @@
-import { OPFS_MODELS_DIR } from '@/constants';
+import { modelCacheOpfsRoot } from '@/00-format/model-cache-root';
 
 function isNotFoundError({ error }: { error: unknown }): boolean {
   return error instanceof DOMException
@@ -18,7 +18,7 @@ export async function readCompletedCachedModelFile({
   repositoryPath: string,
 }): Promise<Uint8Array | undefined> {
   const pathParts = [
-    OPFS_MODELS_DIR,
+    ...modelCacheOpfsRoot.path,
     "huggingface.co",
     ...normalizedModelId.split("/"),
     "resolve",

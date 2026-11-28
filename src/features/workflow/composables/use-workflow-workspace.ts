@@ -1034,7 +1034,7 @@ function createWorkspace() {
     let resultsPath: string[] | undefined, resultError: string | undefined;
     try {
       if (result) {
-        const directory = await getOPFSTmpManager().createTmpDirectory({ prefix: 'workflow-results' });
+        const directory = await getOPFSTmpManager().createWorkflowResultsDirectory();
         try {
           // Archive immutable runtime outputs only. Reading mutable user
           // Volume files still requires the explicit open/export operation.
@@ -1095,7 +1095,7 @@ function createWorkspace() {
       action: async () => {
         const signal = new AbortController().signal;
         if (!exportDirectory || (retainedExport && writtenFiles.value.length > 0)) {
-          const directory = await getOPFSTmpManager().createTmpDirectory({ prefix: 'workflow-results' });
+          const directory = await getOPFSTmpManager().createWorkflowResultsDirectory();
           try {
             await exportWorkflowResults({ result: completed, directory, signal, writtenFiles: writtenFiles.value });
           } catch (reason) {

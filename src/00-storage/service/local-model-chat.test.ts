@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryStorageProvider } from './memory-storage';
 import { prepareLocalModelChat, type LocalModelChatRequest } from './local-model-chat';
-import { idToRaw, toChatId, toChatGroupId } from '@/01-models/ids';
+import { toChatId, toChatGroupId } from '@/01-models/ids';
 
 function request({ suffix }: { suffix: string }): LocalModelChatRequest {
   return { chatId: toChatId({ raw: `local-chat-${suffix}` }), chatGroupId: toChatGroupId({ raw: `local-cg-${suffix}` }), modelId: 'temp/actual:Q4', chatGroupName: 'Actual', titleGeneration: 'disabled' };
@@ -96,13 +96,13 @@ describe('local model chat operation persistence', () => {
       break;
     case 'missing-chat': await provider.deleteChat({ id: req.chatId });
       break;
-    case 'moved-chat': await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat', id: idToRaw({ id: req.chatId }) }] } });
+    case 'moved-chat': await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat', id: req.chatId }] } });
       break;
     case 'chat-endpoint': await provider.saveChatMeta({ meta: { ...meta, endpoint: { type: 'llama_cpp_browser' } } });
       break;
     case 'chat-model': await provider.saveChatMeta({ meta: { ...meta, modelId: req.modelId } });
       break;
-    case 'membership': await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat_group', id: 'other-group', chat_ids: [idToRaw({ id: req.chatId })] }] } });
+    case 'membership': await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat_group', id: toChatGroupId({ raw: 'other-group' }), chat_ids: [req.chatId] }] } });
       break;
     default: {
       const exhaustive: never = change;

@@ -1,52 +1,17 @@
+import { localStorageFormat } from '@/00-format/01-layout/layout';
 import { computed } from 'vue';
 import { useStorage } from '@vueuse/core';
 import {
   createDefaultFeatureFlags,
-  FEATURE_FLAGS_STORAGE_KEY,
-  FeatureFlagsSchema,
-  parseFeatureFlag,
   type FeatureFlagName,
   type FeatureFlags,
-} from '@/01-models/feature-flags';
+} from '@/00-format/feature-flags';
 
-const featureFlags = useStorage<FeatureFlags>(
-  FEATURE_FLAGS_STORAGE_KEY,
-  createDefaultFeatureFlags(),
-  localStorage,
-  {
-    serializer: {
-      read: (value) => {
-        if (!value) {
-          return createDefaultFeatureFlags();
-        }
-
-        try {
-          const parsed = JSON.parse(value) as unknown;
-          if (parsed && typeof parsed === 'object') {
-            const record = parsed as Partial<Record<FeatureFlagName, unknown>>;
-            const recovered: FeatureFlags = {
-              volume: parseFeatureFlag({
-                feature: 'volume',
-                value: record.volume,
-              }),
-              wesh_tool: parseFeatureFlag({
-                feature: 'wesh_tool',
-                value: record.wesh_tool,
-              }),
-            };
-
-            return FeatureFlagsSchema.parse(recovered);
-          }
-        } catch {
-          // Fall through to defaults for malformed localStorage state.
-        }
-
-        return createDefaultFeatureFlags();
-      },
-      write: (value) => JSON.stringify(FeatureFlagsSchema.parse(value)),
-    },
-  },
-);
+const featureFlags = localStorageFormat.featureFlags.mount({
+  connect: ({ key, defaults, read, write }) => useStorage<FeatureFlags>(key, defaults, localStorage, {
+    serializer: { read: text => read({ text }), write: flags => write({ flags }) },
+  }),
+});
 
 export function useFeatureFlags() {
   const isFeatureEnabled = ({ feature }: { feature: FeatureFlagName }) => {

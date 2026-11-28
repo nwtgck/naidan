@@ -7,7 +7,7 @@ import {
   ChatGroupDtoV2Schema,
   ChatMetaDtoV2Schema,
   MessageBranchDtoV2Schema,
-} from '@/00-storage/00-dto/dto';
+} from '@/00-format/00-dto/dto';
 
 // Sysfs exposes the current representation. Legacy persistence readers remain
 // separate; transferring a chat does not rewrite its saved V1 record.

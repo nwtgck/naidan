@@ -4,9 +4,9 @@ import { expect, it } from 'vitest';
 import { reactive } from 'vue';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey, toImageGenerationId, toImageGenerationSessionId, toBinaryObjectId } from '@/01-models/ids';
 import { generationRunFixture } from '@/00-storage/service/image-generation/index.test-support';
-import { imageGenerationRequestToDomain, imageGenerationRequestToDto, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
-import { ExperimentalImageGenerationDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
-import { ExperimentalImageGenerationRunDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { imageGenerationRequestToDomain, imageGenerationRequestToDto, imageGenerationToDomain, imageGenerationToDto } from '@/00-format/mapper/image-generation-history';
+import { ExperimentalImageGenerationDtoSchema } from '@/00-format/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationRunDtoSchema } from '@/00-format/00-dto/experimental-image-generation.dto';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
 
 function remote() {

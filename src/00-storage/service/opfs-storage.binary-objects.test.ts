@@ -255,6 +255,43 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     expect(result!.type).toBe('image/png');
   });
 
+  it('lists the recorded ID and backs up bytes using the index key', async () => {
+    const lookupId = 'stored-a1';
+    const recordedId = 'recorded-b2';
+    await provider.init();
+    await provider.saveFile({
+      binaryObjectId: toBinaryObjectId({ raw: lookupId }),
+      blob: new Blob(['stored bytes']),
+      name: 'stored.txt',
+      mimeType: 'text/plain',
+    });
+    const root = await mockRoot.getDirectoryHandle('naidan-storage');
+    const binaries = await root.getDirectoryHandle('binary-objects');
+    const shard = await binaries.getDirectoryHandle('a1');
+    const index = await shard.getFileHandle('index.json');
+    const writable = await index.createWritable();
+    await writable.write(JSON.stringify({
+      objects: {
+        [lookupId]: { id: recordedId, name: 'stored.txt', mimeType: 'text/plain', size: 12, createdAt: 1 },
+      },
+    }));
+    await writable.close();
+
+    const listed = [];
+    for await (const object of provider.listBinaryObjects()) {
+      listed.push(object.id);
+    }
+    expect(listed).toEqual([toBinaryObjectId({ raw: recordedId })]);
+    const snapshot = await provider.dump();
+    const chunks = [];
+    for await (const chunk of snapshot.contentStream) {
+      if (chunk.type === 'binary_object') {
+        chunks.push({ id: chunk.id, text: await chunk.blob.text() });
+      }
+    }
+    expect(chunks).toEqual([{ id: lookupId, text: 'stored bytes' }]);
+  });
+
   it('should correctly hydrate multiple attachments in a message tree', async () => {
     await provider.init();
     const id1 = '00000000-0000-4000-a000-0000000000a1';

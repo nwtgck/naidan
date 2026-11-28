@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
 import { DEFAULT_SETTINGS, EMPTY_LM_PARAMETERS, type Chat, type ChatGroup, type HttpEndpoint, type Settings } from '@/01-models/types';
-import { idToRaw, toChatId, toChatGroupId, toProviderProfileId } from '@/01-models/ids';
+import { toChatId, toChatGroupId, toProviderProfileId } from '@/01-models/ids';
 import { Secret } from '@/utils/secret';
 import { clonePlainData } from '@/utils/clone-plain-data';
 import { revealHttpHeaders } from '@/01-models/endpoint';
@@ -47,7 +47,7 @@ describe('intentional ZIP credential transfer', () => {
     await provider.saveChatMeta({ meta: chat });
     await provider.saveChatContent({ id: chat.id, content: chat });
     await provider.saveChatGroup({ chatGroup: group });
-    await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat_group', id: idToRaw({ id: group.id }), chat_ids: [idToRaw({ id: chat.id })] }] } });
+    await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat_group', id: group.id, chat_ids: [chat.id] }] } });
     const { stream } = await createService({ provider }).exportData({});
     const bytes = await new Response(stream).arrayBuffer();
     const zip = await JSZip.loadAsync(bytes);

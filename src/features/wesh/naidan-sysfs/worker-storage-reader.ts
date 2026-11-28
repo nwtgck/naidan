@@ -1,5 +1,5 @@
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
-import { chatContentToDomain, chatMetaToDomain, hierarchyToDomain, lmParametersToDomain } from '@/00-storage/mapper/mappers';
+import { chatContentToDomain, chatMetaToDomain, lmParametersToDomain } from '@/00-format/mapper/mappers';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 import type { BinaryObjectId, ChatGroupId, ChatId } from '@/01-models/ids';
 import type { ChatGroup } from '@/01-models/types';
@@ -28,8 +28,7 @@ export async function createOpfsNaidanSysfsStorageReader(): Promise<NaidanSysfsS
 
   return {
     async loadHierarchy() {
-      const dto = await provider.loadHierarchy();
-      return dto ? hierarchyToDomain({ dto }) : { items: [] };
+      return await provider.loadHierarchy();
     },
     async getSidebarStructure() {
       return (await provider.getSidebarStructure()).map(item => redactSysfsSidebarItem({ item }));

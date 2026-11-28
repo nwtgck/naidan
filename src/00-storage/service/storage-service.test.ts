@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only preload keeps real strings available without changing storage runtime dependencies.
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { storageService } from './index';
-import type { MigrationChunkDto } from '@/00-storage/00-dto/dto';
+import type { MigrationChunkDto } from '@/00-format/00-dto/dto';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -11,10 +11,10 @@ beforeEach(async () => {
 const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
   mockLocalProvider: {
     init: vi.fn().mockResolvedValue(undefined),
-    loadNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
-    loadModelGraphRegistry: vi.fn().mockResolvedValue(undefined),
-    saveModelGraphRegistry: vi.fn().mockResolvedValue(undefined),
-    saveNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
+    readNaidanRpcRegistryForTransfer: vi.fn().mockResolvedValue(undefined),
+    readModelGraphRegistryForTransfer: vi.fn().mockResolvedValue(undefined),
+    writeModelGraphRegistryForTransfer: vi.fn().mockResolvedValue(undefined),
+    writeNaidanRpcRegistryForTransfer: vi.fn().mockResolvedValue(undefined),
     dump: vi.fn(),
     restore: vi.fn(),
     loadChat: vi.fn().mockResolvedValue(null),
@@ -26,10 +26,10 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
   },
   mockOpfsProvider: {
     init: vi.fn().mockResolvedValue(undefined),
-    loadNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
-    loadModelGraphRegistry: vi.fn().mockResolvedValue(undefined),
-    saveModelGraphRegistry: vi.fn().mockResolvedValue(undefined),
-    saveNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
+    readNaidanRpcRegistryForTransfer: vi.fn().mockResolvedValue(undefined),
+    readModelGraphRegistryForTransfer: vi.fn().mockResolvedValue(undefined),
+    writeModelGraphRegistryForTransfer: vi.fn().mockResolvedValue(undefined),
+    writeNaidanRpcRegistryForTransfer: vi.fn().mockResolvedValue(undefined),
     dump: vi.fn(),
     restore: vi.fn(),
     loadChat: vi.fn().mockResolvedValue(null),

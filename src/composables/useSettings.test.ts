@@ -3,7 +3,6 @@ import { Secret } from '@/utils/secret';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSettings } from './useSettings';
 import { DEFAULT_SETTINGS, EMPTY_LM_PARAMETERS, type Settings } from '@/01-models/types';
-import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
 import { flushPromises } from '@vue/test-utils';
 import {
   currentLocale,
@@ -227,7 +226,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     'uses browser locale %s as %s without persisting it during initialization',
     async (browserLocale, expectedLocale) => {
       vi.stubGlobal('navigator', { language: browserLocale });
-      localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+      localStorage.setItem('naidan:storage_type', 'local');
 
       const { init, settings } = useSettings();
       await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
@@ -333,24 +332,24 @@ describe('useSettings Initialization and Bootstrap', () => {
   });
 
   it('should initialize StorageService with correct type from bootstrap key', async () => {
-    localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'opfs');
+    localStorage.setItem('naidan:storage_type', 'opfs');
     const { init } = useSettings();
     await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
     expect(mocks.init).toHaveBeenCalledWith({ type: 'opfs' });
   });
 
   it('should determine, persist and pass opfs to StorageService if bootstrap key is missing (new user)', async () => {
-    localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
+    localStorage.removeItem('naidan:storage_type');
 
     const { init } = useSettings();
     await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
     expect(mocks.init).toHaveBeenCalledWith({ type: 'opfs' });
-    expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('opfs');
+    expect(localStorage.getItem('naidan:storage_type')).toBe('opfs');
   });
 
   it('should sync settings.value.storageType with detected bootstrapType during init', async () => {
-    localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
+    localStorage.removeItem('naidan:storage_type');
     localStorage.clear();
 
     const { init, settings } = useSettings();
@@ -364,7 +363,7 @@ describe('useSettings Initialization and Bootstrap', () => {
   });
 
   it('should preserve detected storageType when saving settings (onboarding simulation)', async () => {
-    localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
+    localStorage.removeItem('naidan:storage_type');
     localStorage.clear();
 
     const { init, save, settings } = useSettings();
@@ -502,7 +501,7 @@ describe('useSettings Initialization and Bootstrap', () => {
   });
 
   it('preloads fake LM language data when persisted mode is enabled during initialization', async () => {
-    localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+    localStorage.setItem('naidan:storage_type', 'local');
     mocks.loadSettings.mockResolvedValue({
       ...DEFAULT_SETTINGS,
       endpoint: { type: 'openai', url: '' },
@@ -522,7 +521,7 @@ describe('useSettings Initialization and Bootstrap', () => {
   it('should report error and fallback if invalid storage type is in localStorage', async () => {
     await ensureAllStringsForTest({ locale: 'en' });
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'invalid-type');
+    localStorage.setItem('naidan:storage_type', 'invalid-type');
 
     const { init } = useSettings();
     await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
@@ -540,31 +539,31 @@ describe('useSettings Initialization and Bootstrap', () => {
 
   describe('Storage Type Query Parameter', () => {
     it('should use storage-type from override if not already initialized', async () => {
-      localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
+      localStorage.removeItem('naidan:storage_type');
 
       const { init } = useSettings();
       await init({ storageTypeOverride: 'memory', dataZipBase64: undefined, modelRefresh: 'background' });
 
       expect(mocks.init).toHaveBeenCalledWith({ type: 'memory' });
-      expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('memory');
+      expect(localStorage.getItem('naidan:storage_type')).toBe('memory');
     });
 
     it('should ignore storage-type from override if already initialized and show confirm', async () => {
       await ensureAllStringsForTest({ locale: 'en' });
-      localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+      localStorage.setItem('naidan:storage_type', 'local');
 
       const { init } = useSettings();
       await init({ storageTypeOverride: 'memory', dataZipBase64: undefined, modelRefresh: 'background' });
 
       expect(mocks.init).toHaveBeenCalledWith({ type: 'local' });
-      expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('local');
+      expect(localStorage.getItem('naidan:storage_type')).toBe('local');
       expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
         title: 'Storage Already Initialized',
       }));
     });
 
     it('should NOT show confirm if storage-type from override matches already initialized type', async () => {
-      localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+      localStorage.setItem('naidan:storage_type', 'local');
 
       const { init } = useSettings();
       await init({ storageTypeOverride: 'local', dataZipBase64: undefined, modelRefresh: 'background' });
@@ -574,14 +573,14 @@ describe('useSettings Initialization and Bootstrap', () => {
     });
 
     it('should ignore invalid storage-type from override', async () => {
-      localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
+      localStorage.removeItem('naidan:storage_type');
 
       const { init } = useSettings();
       await init({ storageTypeOverride: 'invalid', dataZipBase64: undefined, modelRefresh: 'background' });
 
       // Should fallback to detection (opfs in this mock environment)
       expect(mocks.init).toHaveBeenCalledWith({ type: 'opfs' });
-      expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('opfs');
+      expect(localStorage.getItem('naidan:storage_type')).toBe('opfs');
     });
 
     it('should successfully initialize with "memory" when provided as a string override (simulating router query param)', async () => {
@@ -589,13 +588,13 @@ describe('useSettings Initialization and Bootstrap', () => {
       // const storageTypeOverride = router.currentRoute.value.query['storage-type'];
       // await settingsStore.init({ storageTypeOverride });
 
-      localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
+      localStorage.removeItem('naidan:storage_type');
       const { init } = useSettings();
 
       await init({ storageTypeOverride: 'memory', dataZipBase64: undefined, modelRefresh: 'background' });
 
       expect(mocks.init).toHaveBeenCalledWith({ type: 'memory' });
-      expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('memory');
+      expect(localStorage.getItem('naidan:storage_type')).toBe('memory');
     });
 
     it('should import data from dataZipBase64 during init', async () => {
@@ -618,7 +617,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       };
       const read = Promise.withResolvers<Settings>();
       mocks.loadSettings.mockReturnValueOnce(read.promise).mockResolvedValue(persisted);
-      localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+      localStorage.setItem('naidan:storage_type', 'local');
       let importLocale: string | undefined;
       let translated: string | undefined;
       const zipFailure = new Error('Invalid ZIP fixture');

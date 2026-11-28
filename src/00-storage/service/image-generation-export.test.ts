@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 import { idToRaw, toImageGenerationTagId } from '@/01-models/ids';
 import * as service from './image-generation';
 import { collectImageGenerationSessionMetadata } from './image-generation-export';
+import { loadImageGenerationComposition } from './image-generation/composition';
 import { createImageGenerationStorageHarness, generationRunFixture, generationSessionFixture, generationAssetFixture, generationDraftFixture } from './image-generation/index.test-support';
 
 installSecretEqualityTester();
@@ -126,6 +127,27 @@ it.each(['draft', 'asset', 'annotations'])('exports %s file snapshots with futur
   expect(exported).toBeDefined();
   expect(await exported!.blob.text()).toBe(file.text);
   expect(file.text).toContain('future');
+});
+
+it('retains structurally readable composition drafts that fail editor validation', async () => {
+  const h = await setup();
+  const directory = await fs.directory({ path: '/naidan-storage/experimental/image-generation/sessions/aa/session-aa' });
+  const file = await directory.getFileHandle('composition-draft.json', { create: true });
+  file.text = JSON.stringify({
+    version: 1,
+    sessionId: 'session-aa',
+    mode: 'multiple',
+    revision: -1,
+    updatedAt: 1,
+    jobs: [],
+    slots: [],
+    future: true,
+  });
+
+  await expect(loadImageGenerationComposition({ store: h.store, sessionId: h.session.id })).rejects.toThrow('Invalid image generation composition draft');
+  const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
+  const composition = snapshot.metadata.find(entry => entry.path === 'composition-draft.json');
+  expect(await composition?.blob.text()).toBe(file.text);
 });
 
 it('excludes translation destinations and authentication from shareable session exports', async () => {

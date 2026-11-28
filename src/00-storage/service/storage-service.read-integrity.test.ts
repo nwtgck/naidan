@@ -5,7 +5,7 @@ import { StorageService } from './index';
 import { LocalStorageProvider } from './local-storage';
 import type { ChatContent, ChatMeta } from '@/01-models/types';
 import { toChatId, toMessageId } from '@/01-models/ids';
-import { STORAGE_KEY_PREFIX, LOCK_CHAT_CONTENT_PREFIX, LOCK_METADATA } from '@/constants';
+import { LOCK_CHAT_CONTENT_PREFIX, LOCK_METADATA } from '@/constants';
 
 const { notify, report, locks } = vi.hoisted(() => ({ notify: vi.fn(), report: vi.fn(), locks: vi.fn() }));
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only event sink observes the existing storage notification boundary.
@@ -24,8 +24,8 @@ vi.mock('./synchronizer', () => ({
 }));
 
 const id = toChatId({ raw: 'read-before-write' });
-const contentKey = `${STORAGE_KEY_PREFIX}lsp:chat_content:read-before-write`;
-const metaKey = `${STORAGE_KEY_PREFIX}lsp:chat_meta:read-before-write`;
+const contentKey = `naidan:lsp:chat_content:read-before-write`;
+const metaKey = `naidan:lsp:chat_meta:read-before-write`;
 const replacementContent: ChatContent = { root: { items: [] } };
 const replacementMeta: ChatMeta = { id, title: 'New title', createdAt: 0, updatedAt: 1, debugEnabled: false };
 let service: StorageService;

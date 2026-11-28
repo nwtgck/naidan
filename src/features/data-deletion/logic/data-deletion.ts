@@ -1,18 +1,11 @@
-import {
-  FEATURE_FLAGS_STORAGE_KEY,
-} from '@/01-models/feature-flags';
+import { indexedDbFormat, localStorageFormat, opfsFormat } from '@/00-format/01-layout/layout';
 import {
   LOCK_CHAT_CONTENT_PREFIX,
   LOCK_METADATA,
   OPFS_TMP_CLEANUP_LOCK_KEY,
-  OPFS_TMP_DIR,
-  OPFS_MODELS_DIR,
-  OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY,
-  STORAGE_BOOTSTRAP_KEY,
-  STORAGE_KEY_PREFIX,
+  SYNC_KEY_PREFIX,
   SYNC_LOCK_KEY,
   SYNC_SIGNAL_KEY,
-  THEME_MODE_STORAGE_KEY,
 } from '@/constants';
 
 export type DataDeletionGroup = 'localStorage' | 'opfs' | 'indexedDb' | 'cacheStorage';
@@ -71,9 +64,6 @@ type DeleteSelectorResult =
   | { status: 'deleted' }
   | { status: 'skipped', message: string };
 
-const NAIDAN_STORAGE_DIR = 'naidan-storage';
-const HOST_VOLUME_DB_NAME = 'naidan-volumes';
-const LOCAL_STORAGE_NAIDAN_SYNC_PREFIX = `${STORAGE_KEY_PREFIX}sync:`;
 const LOCAL_STORAGE_UNAVAILABLE_MESSAGE = 'localStorage is unavailable in this runtime.';
 const OPFS_UNAVAILABLE_MESSAGE = 'OPFS is unavailable in this runtime.';
 const INDEXED_DB_UNAVAILABLE_MESSAGE = 'IndexedDB is unavailable in this runtime.';
@@ -81,18 +71,18 @@ const INDEXED_DB_LISTING_UNAVAILABLE_MESSAGE = 'indexedDB.databases() is unavail
 const CACHE_STORAGE_UNAVAILABLE_MESSAGE = 'Cache Storage is unavailable in this runtime.';
 
 const LOCAL_STORAGE_KNOWN_KEYS = [
-  THEME_MODE_STORAGE_KEY,
-  FEATURE_FLAGS_STORAGE_KEY,
-  STORAGE_BOOTSTRAP_KEY,
+  localStorageFormat.themeMode.key,
+  localStorageFormat.featureFlags.key,
+  localStorageFormat.storageType.key,
   SYNC_SIGNAL_KEY,
   SYNC_LOCK_KEY,
   LOCK_METADATA,
   OPFS_TMP_CLEANUP_LOCK_KEY,
-  OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY,
+  localStorageFormat.pendingTmpCleanups.key,
 ] as const;
 
 const LOCAL_STORAGE_KNOWN_PREFIXES = [
-  `${STORAGE_KEY_PREFIX}lsp:`,
+  localStorageFormat.provider.prefix,
   LOCK_CHAT_CONTENT_PREFIX,
 ] as const;
 
@@ -102,7 +92,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'localStorage',
     label: 'localStorage: naidan:* all',
     description: 'All Naidan-prefixed localStorage keys.',
-    selector: { kind: 'localStoragePrefix', prefix: STORAGE_KEY_PREFIX },
+    selector: { kind: 'localStoragePrefix', prefix: localStorageFormat.prefix },
     advanced: false,
   },
   {
@@ -110,7 +100,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'localStorage',
     label: 'localStorage: naidan:lsp:*',
     description: 'LocalStorageProvider chats, settings, groups, and hierarchy.',
-    selector: { kind: 'localStoragePrefix', prefix: `${STORAGE_KEY_PREFIX}lsp:` },
+    selector: { kind: 'localStoragePrefix', prefix: localStorageFormat.provider.prefix },
     advanced: false,
   },
   {
@@ -118,7 +108,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'localStorage',
     label: 'localStorage: naidan:theme_mode',
     description: 'Theme mode preference.',
-    selector: { kind: 'localStorageKey', key: THEME_MODE_STORAGE_KEY },
+    selector: { kind: 'localStorageKey', key: localStorageFormat.themeMode.key },
     advanced: true,
   },
   {
@@ -126,7 +116,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'localStorage',
     label: 'localStorage: naidan:feature_flags',
     description: 'Feature flag state.',
-    selector: { kind: 'localStorageKey', key: FEATURE_FLAGS_STORAGE_KEY },
+    selector: { kind: 'localStorageKey', key: localStorageFormat.featureFlags.key },
     advanced: true,
   },
   {
@@ -134,7 +124,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'localStorage',
     label: 'localStorage: naidan:storage_type',
     description: 'Storage bootstrap choice.',
-    selector: { kind: 'localStorageKey', key: STORAGE_BOOTSTRAP_KEY },
+    selector: { kind: 'localStorageKey', key: localStorageFormat.storageType.key },
     advanced: true,
   },
   {
@@ -142,7 +132,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'localStorage',
     label: 'localStorage: naidan:sync:*',
     description: 'Synchronization signals and locks.',
-    selector: { kind: 'localStoragePrefix', prefix: LOCAL_STORAGE_NAIDAN_SYNC_PREFIX },
+    selector: { kind: 'localStoragePrefix', prefix: SYNC_KEY_PREFIX },
     advanced: true,
   },
   {
@@ -150,7 +140,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'localStorage',
     label: 'localStorage: naidan:opfs_tmp:pending_owner_cleanups',
     description: 'Pending OPFS tmp owner cleanups.',
-    selector: { kind: 'localStorageKey', key: OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY },
+    selector: { kind: 'localStorageKey', key: localStorageFormat.pendingTmpCleanups.key },
     advanced: true,
   },
   {
@@ -166,7 +156,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-storage',
     description: 'OPFSStorageProvider persistent application data.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.storage.path.join('/') },
     advanced: false,
   },
   {
@@ -174,7 +164,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-storage/settings.json',
     description: 'OPFS settings file.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/settings.json` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.storage.settings.path.join('/') },
     advanced: true,
   },
   {
@@ -182,7 +172,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-storage/hierarchy.json',
     description: 'OPFS sidebar hierarchy file.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/hierarchy.json` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.storage.hierarchy.path.join('/') },
     advanced: true,
   },
   {
@@ -190,7 +180,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-storage/chat-metas',
     description: 'OPFS chat metadata directory.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/chat-metas` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.storage.chatMetas.path.join('/') },
     advanced: true,
   },
   {
@@ -198,7 +188,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-storage/chat-contents',
     description: 'OPFS chat content directory.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/chat-contents` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.storage.chatContents.path.join('/') },
     advanced: true,
   },
   {
@@ -206,7 +196,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-storage/chat-groups',
     description: 'OPFS chat group directory.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/chat-groups` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.storage.chatGroups.path.join('/') },
     advanced: true,
   },
   {
@@ -214,7 +204,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-storage/binary-objects',
     description: 'Binary objects and attachment bodies.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/binary-objects` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.storage.binaryObjects.path.join('/') },
     advanced: true,
   },
   {
@@ -222,7 +212,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-storage/volumes',
     description: 'Managed OPFS volume directory.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/volumes` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.storage.volumes.path.join('/') },
     advanced: true,
   },
   {
@@ -230,7 +220,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-storage/volume-shards',
     description: 'Managed OPFS volume shards.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/volume-shards` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.storage.volumeShards.path.join('/') },
     advanced: true,
   },
   {
@@ -238,7 +228,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-storage/migration-state.json',
     description: 'Storage migration state.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/migration-state.json` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.storage.migrationState.path.join('/') },
     advanced: true,
   },
   {
@@ -246,7 +236,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-storage/uploaded-files',
     description: 'Legacy uploaded files area.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/uploaded-files` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.storage.uploadedFiles.path.join('/') },
     advanced: true,
   },
   {
@@ -254,7 +244,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-tmp',
     description: 'Temporary working directories.',
-    selector: { kind: 'opfsPath', path: `/${OPFS_TMP_DIR}` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.tmp.path.join('/') },
     advanced: false,
   },
   {
@@ -262,7 +252,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /models',
     description: 'Shared model files for local inference engines.',
-    selector: { kind: 'opfsPath', path: `/${OPFS_MODELS_DIR}` },
+    selector: { kind: 'opfsPath', path: '/' + opfsFormat.models.path.join('/') },
     advanced: false,
   },
   {
@@ -270,7 +260,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /models/user',
     description: 'User-provided local model cache.',
-    selector: { kind: 'opfsPath', path: `/${OPFS_MODELS_DIR}/user` },
+    selector: { kind: 'opfsPath', path: `/${opfsFormat.models.path.join('/')}/user` },
     advanced: true,
   },
   {
@@ -286,7 +276,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'indexedDb',
     label: 'IndexedDB: naidan-volumes',
     description: 'Stored host volume directory handles.',
-    selector: { kind: 'indexedDbDatabase', name: HOST_VOLUME_DB_NAME },
+    selector: { kind: 'indexedDbDatabase', name: indexedDbFormat.hostVolumes.name },
     advanced: false,
   },
   {
@@ -453,7 +443,7 @@ function selectorIncludes({ parent, child }: { parent: DataDeletionSelector, chi
     case 'localStorageKey':
       return child.key.startsWith(parent.prefix);
     case 'localStorageUnknownNaidanKeys':
-      return STORAGE_KEY_PREFIX.startsWith(parent.prefix);
+      return localStorageFormat.prefix.startsWith(parent.prefix);
     case 'opfsPath':
     case 'opfsRemoteModels':
     case 'indexedDbDatabase':
@@ -471,7 +461,7 @@ function selectorIncludes({ parent, child }: { parent: DataDeletionSelector, chi
     case 'opfsPath':
       return isSameOrChildPath({ parentPath: parent.path, childPath: child.path });
     case 'opfsRemoteModels':
-      return isSameOrChildPath({ parentPath: parent.path, childPath: `/${OPFS_MODELS_DIR}` });
+      return isSameOrChildPath({ parentPath: parent.path, childPath: '/' + opfsFormat.models.path.join('/') });
     case 'localStoragePrefix':
     case 'localStorageKey':
     case 'localStorageUnknownNaidanKeys':
@@ -623,7 +613,7 @@ function getLocalStorageKeyIfExists({ key }: { key: string }): readonly string[]
 }
 
 function getUnknownLocalStorageNaidanKeys(): readonly string[] {
-  return getLocalStorageKeysByPrefix({ prefix: STORAGE_KEY_PREFIX }).filter(key => {
+  return getLocalStorageKeysByPrefix({ prefix: localStorageFormat.prefix }).filter(key => {
     if (LOCAL_STORAGE_KNOWN_KEYS.includes(key as typeof LOCAL_STORAGE_KNOWN_KEYS[number])) {
       return false;
     }
@@ -710,18 +700,18 @@ async function previewRemoteModelsSelector(): Promise<{ entries: readonly DataDe
     };
   }
 
-  const models = await getChildDirectoryIfExists({ parent: root, name: OPFS_MODELS_DIR });
+  const models = await getChildDirectoryIfExists({ parent: root, name: opfsFormat.models.name });
   if (models === undefined) {
     return {
       entries: [],
-      notes: [`OPFS path not found: /${OPFS_MODELS_DIR}`],
+      notes: [`OPFS path not found: /${opfsFormat.models.name}`],
     };
   }
 
   const entries: DataDeletionPreviewEntry[] = [];
   for await (const child of models.values()) {
     if (child.kind === 'directory' && child.name !== 'user') {
-      entries.push({ path: `/${OPFS_MODELS_DIR}/${child.name}`, location: 'OPFS' });
+      entries.push({ path: `/${opfsFormat.models.path.join('/')}/${child.name}`, location: 'OPFS' });
     }
   }
 
@@ -769,7 +759,7 @@ async function deleteRemoteModelDirectories(): Promise<DeleteSelectorResult> {
   if (root === undefined) {
     return { status: 'skipped', message: OPFS_UNAVAILABLE_MESSAGE };
   }
-  const models = await getChildDirectoryIfExists({ parent: root, name: OPFS_MODELS_DIR });
+  const models = await getChildDirectoryIfExists({ parent: root, name: opfsFormat.models.name });
   if (models === undefined) {
     return { status: 'deleted' };
   }
@@ -901,7 +891,7 @@ async function previewUnknownNaidanIndexedDbs(): Promise<{ entries: readonly Dat
   }
   }
 
-  const names = databaseNames.names.filter(name => name.toLowerCase().includes('naidan') && name !== HOST_VOLUME_DB_NAME);
+  const names = databaseNames.names.filter(name => name.toLowerCase().includes('naidan') && name !== indexedDbFormat.hostVolumes.name);
   return {
     entries: names.map(name => ({ path: name, location: 'IndexedDB' as const })),
     notes: [],
@@ -937,7 +927,7 @@ async function deleteUnknownNaidanIndexedDbs(): Promise<DeleteSelectorResult> {
   }
   }
 
-  const names = databaseNames.names.filter(name => name.toLowerCase().includes('naidan') && name !== HOST_VOLUME_DB_NAME);
+  const names = databaseNames.names.filter(name => name.toLowerCase().includes('naidan') && name !== indexedDbFormat.hostVolumes.name);
   for (const name of names) {
     await deleteIndexedDbDatabase({ name });
   }

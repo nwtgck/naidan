@@ -25,6 +25,7 @@ Code under `src/01-models/**` may depend on `src/constants.ts`, `src/utils/**`, 
 Code under `src/01-models/**` must not depend on:
 
 ```text
+src/00-format/**
 src/00-storage/**
 src/features/**
 src/components/**

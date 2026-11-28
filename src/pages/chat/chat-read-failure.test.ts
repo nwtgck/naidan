@@ -3,7 +3,6 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { computed, defineComponent, effectScope, nextTick, ref, watch } from 'vue';
 import type { Chat, ChatContent, ChatMeta } from '@/01-models/types';
 import { toChatId } from '@/01-models/ids';
-import { STORAGE_KEY_PREFIX } from '@/constants';
 import { LocalStorageProvider } from '@/00-storage/service/local-storage';
 import { createChatDataStore } from '@/composables/chat/global/chat-data-store';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -94,7 +93,7 @@ const router = {
 };
 
 function recordKey({ id, kind }: { id: string, kind: 'meta' | 'content' }) {
-  return `${STORAGE_KEY_PREFIX}lsp:chat_${kind}:${id}`;
+  return `naidan:lsp:chat_${kind}:${id}`;
 }
 
 function saveRecord({ id, content }: { id: string, content: string }) {

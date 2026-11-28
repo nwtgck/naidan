@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { DEFAULT_SETTINGS, type LlamaCppBrowserSettings, type Settings } from '@/01-models/types';
-import { STORAGE_KEY_PREFIX } from '@/constants';
 import { LocalStorageProvider } from './local-storage';
 
-const settingsKey = `${STORAGE_KEY_PREFIX}lsp:settings`;
+const settingsKey = `naidan:lsp:settings`;
 
 describe('persisted llama.cpp browser destination preferences', () => {
   beforeEach(() => {

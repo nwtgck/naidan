@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StorageSynchronizer } from './synchronizer';
-import { SYNC_SIGNAL_KEY, SYNC_LOCK_KEY } from '@/constants';
+import { SYNC_LOCK_KEY } from '@/constants';
 
 describe('StorageSynchronizer', () => {
   let synchronizer: StorageSynchronizer;
@@ -140,11 +140,11 @@ describe('StorageSynchronizer', () => {
       synchronizer.notify({ event: { type: 'chat_content', id: '123', timestamp: 123456789 } });
 
       expect(setItemSpy).toHaveBeenCalledWith(
-        SYNC_SIGNAL_KEY,
+        'naidan:sync:signal',
         expect.stringContaining('"type":"chat_content"'),
       );
       expect(setItemSpy).toHaveBeenCalledWith(
-        SYNC_SIGNAL_KEY,
+        'naidan:sync:signal',
         expect.stringContaining('"id":"123"'),
       );
     });
@@ -157,7 +157,7 @@ describe('StorageSynchronizer', () => {
 
       // Simulate storage event from another window
       const storageEvent = new StorageEvent('storage', {
-        key: SYNC_SIGNAL_KEY,
+        key: 'naidan:sync:signal',
         newValue: JSON.stringify(eventData),
       });
       window.dispatchEvent(storageEvent);
@@ -179,7 +179,7 @@ describe('StorageSynchronizer', () => {
       // Must provide id for chat_content type per schema
       const eventData = { type: 'chat_content', id: 'any', timestamp: Date.now() };
       const storageEvent = new StorageEvent('storage', {
-        key: SYNC_SIGNAL_KEY,
+        key: 'naidan:sync:signal',
         newValue: JSON.stringify(eventData),
       });
       window.dispatchEvent(storageEvent);
@@ -195,7 +195,7 @@ describe('StorageSynchronizer', () => {
       unsubscribe();
 
       const storageEvent = new StorageEvent('storage', {
-        key: SYNC_SIGNAL_KEY,
+        key: 'naidan:sync:signal',
         newValue: JSON.stringify({ type: 'settings', timestamp: Date.now() }),
       });
       window.dispatchEvent(storageEvent);
@@ -209,7 +209,7 @@ describe('StorageSynchronizer', () => {
       synchronizer.subscribe({ listener });
 
       const storageEvent = new StorageEvent('storage', {
-        key: SYNC_SIGNAL_KEY,
+        key: 'naidan:sync:signal',
         newValue: '{ invalid json',
       });
       window.dispatchEvent(storageEvent);

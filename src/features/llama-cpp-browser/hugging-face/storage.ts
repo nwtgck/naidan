@@ -1,10 +1,10 @@
+import { modelCacheOpfsRoot } from '@/00-format/model-cache-root';
 import { hostDownloadMarker } from './host-download-marker';
 import { isHostDestination, hostModelRoot, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 import { formatHuggingFaceModelId, matchingRepositoryModelVariants, parseRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { storageService } from '@/00-storage/service';
 import { idToRaw, type HostModelDirectoryId } from '@/01-models/ids';
 import { formatHostModelId } from '@/features/llama-cpp-browser/runtime/host-model-aliases';
-import { OPFS_MODELS_DIR } from '@/constants';
 import { quantizationName, rankedProjectors } from './presentation';
 import { modelGroups } from './model-variants';
 import { selectRepositoryModel } from './model-selector';
@@ -21,7 +21,7 @@ export function isMissing({ error }: { error: unknown }): boolean {
 export async function repositoryFolder({ repository, create, destination }: { repository: string, create: boolean, destination?: ModelDestination }): Promise<FileSystemDirectoryHandle> {
   const [owner, repo] = repositorySchema.parse(repository).split('/');
   let folder = isHostDestination(destination) ? await hostModelRoot({ destination, mode: create ? 'readwrite' : 'read' }) : await opfsRoot();
-  const path = isHostDestination(destination) ? [owner!, repo!] : [OPFS_MODELS_DIR, 'huggingface.co', owner!, repo!, 'resolve', 'main'];
+  const path = isHostDestination(destination) ? [owner!, repo!] : [...modelCacheOpfsRoot.path, 'huggingface.co', owner!, repo!, 'resolve', 'main'];
   for (const name of path) {
     folder = await folder.getDirectoryHandle(name, { create });
   }
@@ -59,7 +59,7 @@ export async function writeJournal({ folder, journal }: { folder: FileSystemDire
 export async function visitRepositories({ visit, destination, onIssue }: { destination?: ModelDestination, onIssue?: ({ repository, error }: { repository: string, error: unknown }) => void, visit: ({ repository, folder }: { repository: string, folder: FileSystemDirectoryHandle }) => Promise<void> }): Promise<void> {
   let host: FileSystemDirectoryHandle;
   try {
-    host = isHostDestination(destination) ? await hostModelRoot({ destination, mode: 'read' }) : await (await (await opfsRoot()).getDirectoryHandle(OPFS_MODELS_DIR)).getDirectoryHandle('huggingface.co');
+    host = isHostDestination(destination) ? await hostModelRoot({ destination, mode: 'read' }) : await (await (await opfsRoot()).getDirectoryHandle(modelCacheOpfsRoot.name)).getDirectoryHandle('huggingface.co');
   } catch (error) {
     if (isMissing({ error })) {
       return;

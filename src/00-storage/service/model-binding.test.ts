@@ -5,8 +5,8 @@ import { StorageService, ChatContentBindingChangedError } from './index';
 import { LocalStorageProvider } from './local-storage';
 import { DEFAULT_SETTINGS, type ChatMeta, type ChatGroup, type ChatContent, type MessageNode } from '@/01-models/types';
 import { toChatId, toChatGroupId, toMessageId } from '@/01-models/ids';
-import { ChatContentDtoSchema, ChatMetaDtoSchema } from '@/00-storage/00-dto/dto';
-import { chatContentToDomain, chatContentToDto } from '@/00-storage/mapper/mappers';
+import { ChatContentDtoSchema, ChatMetaDtoSchema } from '@/00-format/00-dto/dto';
+import { chatContentToDomain, chatContentToDto } from '@/00-format/mapper/mappers';
 import { chatModelBindingAssistantFingerprint } from '@/01-models/chat-message';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Observe real persistence without application notifications.
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn(), addInfoEvent: vi.fn() }) }));

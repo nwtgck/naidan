@@ -4,7 +4,6 @@ import { LocalStorageProvider } from '@/00-storage/service/local-storage';
 import { DEFAULT_SETTINGS } from '@/01-models/types';
 import type { Settings } from '@/01-models/types';
 import { toNaidanRpcRegistrationId } from '@/01-models/ids';
-import { STORAGE_KEY_PREFIX } from '@/constants';
 import { loadLmProvider } from './providerFactory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeLmFetch } from '@/features/fake-lm/api/fakeLmFetch';
@@ -58,7 +57,7 @@ describe('createOllamaProvider', () => {
 });
 
 describe('loadLmProvider for persisted experimental endpoints', () => {
-  const storageKey = `${STORAGE_KEY_PREFIX}lsp:settings`;
+  const storageKey = `naidan:lsp:settings`;
 
   beforeEach(() => {
     rpcManager.get.mockReset();

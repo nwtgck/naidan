@@ -1,17 +1,15 @@
-import { UnavailableRpcRecordError } from './image-generation/unavailable-record';
+import { opfsFormat } from '@/00-format/01-layout/layout';
+import { validateImageGenerationId } from '@/00-format/image-generation-record';
+import { imageGenerationIo, imageGenerationIsNotFound } from './image-generation/files';
 import { assertImageGenerationBinariesNotDeleted } from './image-generation/deletions';
 import { imageGenerationRoot } from './image-generation/context';
 import { z } from 'zod';
-import type { ImageGenerationHistoryPage, ImageGenerationHistoryQuery, ImageGenerationRecord } from '@/01-models/image-generation-history';
+import type { ImageGenerationHistoryPage, ImageGenerationHistoryQuery, ImageGenerationRecord, ImageGenerationSummary } from '@/01-models/image-generation-history';
 import { idToRaw, type ImageGenerationId } from '@/01-models/ids';
 import type { StorageType } from '@/01-models/types';
 import { SYNC_LOCK_KEY } from '@/constants';
-import { ExperimentalImageGenerationDtoSchema, ExperimentalImageGenerationIndexDtoSchema, unavailableDirectRpcRecord } from '@/00-storage/00-dto/experimental-image-generation.dto';
-import { type ExperimentalImageGenerationDto, type ExperimentalImageGenerationIndexDto, type ExperimentalImageGenerationSummaryDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
-import { imageGenerationSummaryToDomain, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 
 const historyLock = 'naidan-experimental-image-generation-history';
-const rawIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{2,128}$/);
 const querySchema = z.object({ text: z.string().max(4096), offset: z.number().int().nonnegative(), limit: z.number().int().min(1).max(100) }).strict();
 
 function assertStorage({ storageType }: { storageType: StorageType }): void {
@@ -37,17 +35,13 @@ async function withHistoryLock<T>({ operation }: { operation: () => Promise<T> }
   return navigator.locks.request(SYNC_LOCK_KEY, () => navigator.locks.request(historyLock, operation));
 }
 
-function isNotFound({ error }: { error: unknown }): boolean {
-  return (error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError';
-}
-
 async function getDirectory({ create }: { create: boolean }): Promise<FileSystemDirectoryHandle | undefined> {
   let directory = await navigator.storage.getDirectory();
-  for (const name of ['naidan-storage', 'experimental', 'image-generation', 'generations']) {
+  for (const name of opfsFormat.storage.experimental.imageGeneration.generations.path) {
     try {
       directory = await directory.getDirectoryHandle(name, { create });
     } catch (error) {
-      if (!create && isNotFound({ error })) {
+      if (!create && imageGenerationIsNotFound({ error })) {
         return undefined;
       }
       throw error;
@@ -56,148 +50,8 @@ async function getDirectory({ create }: { create: boolean }): Promise<FileSystem
   return directory;
 }
 
-async function readText({ directory, name }: { directory: FileSystemDirectoryHandle, name: string }): Promise<string | undefined> {
-  let handle: FileSystemFileHandle;
-  try {
-    handle = await directory.getFileHandle(name);
-  } catch (error) {
-    if (isNotFound({ error })) {
-      return undefined;
-    }
-    throw error;
-  }
-  // Once a handle exists, a failed read is not an absent record.
-  return (await handle.getFile()).text();
-}
-
-async function writeText({ directory, name, text }: { directory: FileSystemDirectoryHandle, name: string, text: string }): Promise<void> {
-  let handle: FileSystemFileHandle;
-  let created = false;
-  try {
-    handle = await directory.getFileHandle(name);
-  } catch (error) {
-    if (!isNotFound({ error })) {
-      throw error;
-    }
-    handle = await directory.getFileHandle(name, { create: true });
-    created = true;
-  }
-  let writable: FileSystemWritableFileStream | undefined;
-  try {
-    writable = await handle.createWritable();
-    await writable.write(text);
-    await writable.close();
-  } catch (error) {
-    try {
-      await writable?.abort();
-    } catch { /* Retain the original write failure. */ }
-    if (created) {
-      try {
-        await directory.removeEntry(name);
-      } catch { /* Report the failed save, including when cleanup cannot finish. */ }
-    }
-    throw error;
-  }
-}
-
-function summarize({ record }: { record: ExperimentalImageGenerationDto }): ExperimentalImageGenerationSummaryDto {
-  return {
-    id: record.id,
-    createdAt: record.createdAt,
-    prompt: record.request.parameters.prompt,
-    modelName: (() => {
-      const runtime = record.request.runtime;
-      switch (runtime.profile) {
-      case 'naidan-rpc': return runtime.modelSelection?.primary.file.location.path ?? runtime.label;
-      case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return record.request.models.find(model => model.slot === 'model' || model.slot === 'diffusion')?.file.name ?? '';
-      default: {
-        const exhaustive: never = runtime;
-        throw new Error(String(exhaustive));
-      }
-      }
-    })(),
-    binaryObjectId: record.result.binaryObjectId,
-    width: record.result.width,
-    height: record.result.height,
-    previewCount: record.previews.length,
-  };
-}
-
-async function readRecord({ directory, rawId }: { directory: FileSystemDirectoryHandle, rawId: string }): Promise<ExperimentalImageGenerationDto | undefined> {
-  const text = await readText({ directory, name: `${rawId}.json` });
-  if (text === undefined) {
-    return undefined;
-  }
-  const raw: unknown = JSON.parse(text);
-  const unavailable = unavailableDirectRpcRecord({ raw });
-  if (unavailable !== undefined) {
-    if (unavailable.id !== rawId) {
-      throw new Error('Image generation record identity does not match its filename');
-    }
-    throw new UnavailableRpcRecordError({ id: rawId });
-  }
-  const record = ExperimentalImageGenerationDtoSchema.parse(raw);
-  if (record.id !== rawId) {
-    throw new Error('Image generation record identity does not match its filename');
-  }
-  return record;
-}
-
-async function readIndex({ directory, shard }: { directory: FileSystemDirectoryHandle, shard: string }): Promise<{ index: ExperimentalImageGenerationIndexDto, unavailable: string[] }> {
-  const text = await readText({ directory, name: 'index.json' });
-  // A corrupt index remains an explicit error. It is never replaced with an
-  // empty index, even when individual records could otherwise be read.
-  const index = text === undefined ? { generations: {} } : ExperimentalImageGenerationIndexDtoSchema.parse(JSON.parse(text));
-  const files = new Set<string>();
-  for await (const [name, handle] of directory.entries()) {
-    if (handle.kind !== 'file' || name === 'index.json' || !name.endsWith('.json')) {
-      continue;
-    }
-    const rawId = rawIdSchema.parse(name.slice(0, -5));
-    if (rawId.slice(-2).toLowerCase() !== shard) {
-      throw new Error('Image generation record is in the wrong shard');
-    }
-    files.add(rawId);
-  }
-  let changed = false;
-  for (const [rawId, summary] of Object.entries(index.generations)) {
-    if (summary.id !== rawId || rawId.slice(-2).toLowerCase() !== shard) {
-      throw new Error('Image generation index identity mismatch');
-    }
-    if (!files.has(rawId)) {
-      delete index.generations[rawId];
-      changed = true;
-    }
-  }
-  const unavailable: string[] = [];
-  for (const rawId of files) {
-    try {
-      const record = await readRecord({ directory, rawId });
-      if (!record) {
-        throw new Error('Image generation record disappeared during index recovery');
-      }
-      const summary = summarize({ record });
-      if (JSON.stringify(index.generations[rawId]) !== JSON.stringify(summary)) {
-        Object.defineProperty(index.generations, rawId, { value: summary, configurable: true, enumerable: true, writable: true });
-        changed = true;
-      }
-    } catch (error) {
-      if (!(error instanceof UnavailableRpcRecordError)) {
-        throw error;
-      }
-      unavailable.push(rawId);
-      if (Object.hasOwn(index.generations, rawId)) {
-        delete index.generations[rawId];
-        changed = true;
-      }
-    }
-  }
-  // Unavailable membership comes from the actual files on every pass. Rewriting
-  // readable summaries cannot erase an opaque sibling from later mutations.
-  if (changed) {
-    await writeText({ directory, name: 'index.json', text: JSON.stringify(index) });
-  }
-  return { index, unavailable };
+function historyIo({ directory }: { directory: FileSystemDirectoryHandle }) {
+  return imageGenerationIo({ directory, path: opfsFormat.storage.experimental.imageGeneration.generations.path });
 }
 
 /** Called once when a direct-generation save owner is created. */
@@ -214,18 +68,6 @@ export async function captureImageGenerationHistoryTarget({ storageType }: { sto
   });
 }
 
-async function isDeleted({ directory, rawId }: { directory: FileSystemDirectoryHandle, rawId: string }): Promise<boolean> {
-  const text = await readText({ directory, name: `${rawId}.deleted` });
-  if (text === undefined) {
-    return false;
-  }
-  const marker = z.strictObject({ id: rawIdSchema }).parse(JSON.parse(text));
-  if (marker.id !== rawId) {
-    throw new Error('Image history deletion identity mismatch');
-  }
-  return true;
-}
-
 export async function saveImageGenerationRecord({ storageType, record, writeImages, expectedDirectory }: {
   storageType: StorageType,
   record: ImageGenerationRecord,
@@ -233,150 +75,54 @@ export async function saveImageGenerationRecord({ storageType, record, writeImag
   expectedDirectory?: FileSystemDirectoryHandle,
 }): Promise<void> {
   assertStorage({ storageType });
-  const dto = ExperimentalImageGenerationDtoSchema.parse(imageGenerationToDto({ record }));
+  const prepared = opfsFormat.storage.experimental.imageGeneration.generations.prepareWrite({ value: record });
   await withHistoryLock({
     operation: async () => {
-      const parent = await getDirectory({ create: expectedDirectory === undefined });
-      if (expectedDirectory && (!parent || !await expectedDirectory.isSameEntry(parent))) {
+      const directory = await getDirectory({ create: expectedDirectory === undefined });
+      if (expectedDirectory && (!directory || !await expectedDirectory.isSameEntry(directory))) {
         throw new Error('Image history store changed or was removed');
       }
-      if (!parent) {
+      if (!directory) {
         throw new Error('Image generation directory unavailable');
       }
-      const shard = dto.id.slice(-2).toLowerCase();
-      const directory = await parent.getDirectoryHandle(shard, { create: true });
-      if (await isDeleted({ directory, rawId: dto.id })) {
-        throw new Error('This image history record was deleted');
-      }
-      const { index } = await readIndex({ directory, shard });
-      const existing = await readRecord({ directory, rawId: dto.id });
-      if (existing && JSON.stringify(existing) !== JSON.stringify(dto)) {
-        throw new Error('Image generation records are immutable');
-      }
-      const root = await imageGenerationRoot({ create: false });
-      if (!root) {
-        throw new Error('Image generation directory unavailable');
-      }
-      await assertImageGenerationBinariesNotDeleted({
-        directory: root,
-        ids: [dto.result.binaryObjectId,
-          ...dto.previews.map(image => image.binaryObjectId),
-          ...(dto.request.imageInputs.initImage ? [dto.request.imageInputs.initImage.binaryObjectId] : []),
-          ...dto.request.imageInputs.referenceImages.map(image => image.binaryObjectId)],
+      await prepared.write({
+        io: historyIo({ directory }),
+        async beforeCommit({ binaryIds }) {
+          const root = await imageGenerationRoot({ create: false });
+          if (!root) {
+            throw new Error('Image generation directory unavailable');
+          }
+          await assertImageGenerationBinariesNotDeleted({ directory: root, ids: binaryIds });
+          await writeImages();
+        },
       });
-      await writeImages();
-      if (!existing) {
-        await writeText({ directory, name: `${dto.id}.json`, text: JSON.stringify(dto) });
-      }
-      Object.defineProperty(index.generations, dto.id, { value: summarize({ record: dto }), configurable: true, enumerable: true, writable: true });
-      await writeText({ directory, name: 'index.json', text: JSON.stringify(index) });
     },
   });
 }
 
 export async function loadImageGenerationRecord({ storageType, id }: { storageType: StorageType, id: ImageGenerationId }): Promise<ImageGenerationRecord | undefined> {
   assertStorage({ storageType });
-  const rawId = rawIdSchema.parse(idToRaw({ id }));
+  validateImageGenerationId({ id });
   return withHistoryLock({
     operation: async () => {
-      const parent = await getDirectory({ create: false });
-      if (!parent) {
-        return undefined;
-      }
-      let directory: FileSystemDirectoryHandle;
-      try {
-        directory = await parent.getDirectoryHandle(rawId.slice(-2).toLowerCase());
-      } catch (error) {
-        if (isNotFound({ error })) {
-          return undefined;
-        }
-        throw error;
-      }
-      const dto = await readRecord({ directory, rawId });
-      return dto && imageGenerationToDomain({ dto });
+      const directory = await getDirectory({ create: false });
+      return directory && opfsFormat.storage.experimental.imageGeneration.generations.load({ io: historyIo({ directory }), id });
     },
   });
 }
 
 export async function deleteImageGenerationRecord({ storageType, id }: { storageType: StorageType, id: ImageGenerationId }): Promise<void> {
   assertStorage({ storageType });
-  const rawId = rawIdSchema.parse(idToRaw({ id }));
+  validateImageGenerationId({ id });
   await withHistoryLock({
     operation: async () => {
-      const parent = await getDirectory({ create: true });
-      if (!parent) {
-        return;
+      const directory = await getDirectory({ create: true });
+      if (directory) {
+        // Binary objects can be independently reused by other records.
+        await opfsFormat.storage.experimental.imageGeneration.generations.remove({ io: historyIo({ directory }), id });
       }
-      const shard = rawId.slice(-2).toLowerCase();
-      let directory: FileSystemDirectoryHandle;
-      try {
-        directory = await parent.getDirectoryHandle(shard, { create: true });
-      } catch (error) {
-        if (isNotFound({ error })) {
-          return;
-        }
-        throw error;
-      }
-      const { index } = await readIndex({ directory, shard });
-      const existing = await readRecord({ directory, rawId });
-      // Commit deletion intent before removing metadata. Even a lost response
-      // cannot make a retained save recreate this identity on another attempt.
-      if (!await isDeleted({ directory, rawId })) {
-        await writeText({ directory, name: `${rawId}.deleted`, text: JSON.stringify({ id: rawId }) });
-      }
-      if (existing) {
-        await directory.removeEntry(`${rawId}.json`);
-      }
-      delete index.generations[rawId];
-      await writeText({ directory, name: 'index.json', text: JSON.stringify(index) });
-    // Binary objects may be reused as input images or by chats. Deleting a
-    // history record deliberately keeps those immutable bytes available.
     },
   });
-}
-
-async function queryShard({ directory, shard, warn }: {
-  directory: FileSystemDirectoryHandle,
-  shard: string,
-  warn: ({ path, cause }: { path: string, cause: unknown }) => void,
-}): Promise<ExperimentalImageGenerationSummaryDto[]> {
-  try {
-    const { index, unavailable } = await readIndex({ directory, shard });
-    for (const id of unavailable) {
-      warn({ path: `${shard}/${id}.json`, cause: new UnavailableRpcRecordError({ id: id }) });
-    }
-    return Object.values(index.generations);
-  } catch (cause) {
-    warn({ path: shard, cause });
-  }
-  // Abrupt termination can leave a newly created empty record/index before
-  // its writable stream commits. Keep every original byte untouched and expose
-  // readable records with an explicit partial-result warning. Save/delete still
-  // refuse corrupt indexes; this fallback never manufactures a replacement.
-  const summaries: ExperimentalImageGenerationSummaryDto[] = [];
-  try {
-    for await (const [name, handle] of directory.entries()) {
-      if (handle.kind !== 'file' || name === 'index.json' || !name.endsWith('.json')) {
-        continue;
-      }
-      try {
-        const rawId = rawIdSchema.parse(name.slice(0, -5));
-        if (rawId.slice(-2).toLowerCase() !== shard) {
-          throw new Error('Image generation record is in the wrong shard');
-        }
-        const record = await readRecord({ directory, rawId });
-        if (!record) {
-          throw new Error('Image generation record disappeared during history reading');
-        }
-        summaries.push(summarize({ record }));
-      } catch (cause) {
-        warn({ path: `${shard}/${name}`, cause });
-      }
-    }
-  } catch (cause) {
-    warn({ path: shard, cause });
-  }
-  return summaries;
 }
 
 /** Run this from the history Worker: file enumeration, parsing and matching stay off the UI thread. */
@@ -393,7 +139,7 @@ export async function queryImageGenerationHistory({ storageType, query }: {
       if (!parent) {
         return { items: [], total: 0, warnings: [], warningCount: 0 };
       }
-      const matches: ExperimentalImageGenerationSummaryDto[] = [];
+      const matches: ImageGenerationSummary[] = [];
       const warnings: ImageGenerationHistoryPage['warnings'] = [];
       let warningCount = 0;
       function warn({ path, cause }: { path: string, cause: unknown }): void {
@@ -402,19 +148,14 @@ export async function queryImageGenerationHistory({ storageType, query }: {
           warnings.push({ path: path.slice(0, 1024), message: (cause instanceof Error ? cause.message : String(cause)).slice(0, 1024) });
         }
       }
-      for await (const [shard, directory] of parent.entries()) {
-        if (directory.kind !== 'directory' || !/^[a-z0-9_-]{2}$/.test(shard)) {
-          continue;
-        }
-        for (const summary of await queryShard({ directory, shard, warn })) {
-          const haystack = `${summary.prompt}\n${summary.modelName}`.toLocaleLowerCase();
-          if (words.every(word => haystack.includes(word))) {
-            matches.push(summary);
-          }
+      for await (const summary of opfsFormat.storage.experimental.imageGeneration.generations.list({ io: historyIo({ directory: parent }), warn })) {
+        const haystack = `${summary.prompt}\n${summary.modelName}`.toLocaleLowerCase();
+        if (words.every(word => haystack.includes(word))) {
+          matches.push(summary);
         }
       }
-      matches.sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
-      return { items: matches.slice(offset, offset + limit).map(dto => imageGenerationSummaryToDomain({ dto })), total: matches.length, warnings, warningCount };
+      matches.sort((left, right) => right.createdAt - left.createdAt || idToRaw({ id: left.id }).localeCompare(idToRaw({ id: right.id })));
+      return { items: matches.slice(offset, offset + limit), total: matches.length, warnings, warningCount };
     },
   });
 }

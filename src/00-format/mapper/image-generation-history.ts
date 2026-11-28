@@ -1,0 +1,149 @@
+import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
+import { ExperimentalImageGenerationRuntimeDtoSchema } from '@/00-format/00-dto/experimental-image-generation.dto';
+import type { ImageGenerationModelFile, ImageGenerationRecord, ImageGenerationSummary } from '@/01-models/image-generation-history';
+import { idToRaw, toBinaryObjectId, toHostModelDirectoryId, toImageGenerationId } from '@/01-models/ids';
+import { exactObject } from '@/utils/exact-object';
+import type { ExperimentalImageGenerationDto, ExperimentalImageGenerationSummaryDto } from '@/00-format/00-dto/experimental-image-generation.dto';
+
+type ModelFileDto = ExperimentalImageGenerationDto['request']['models'][number]['file'];
+
+export function imageGenerationModelFileToDomain({ file }: { file: ModelFileDto }): ImageGenerationModelFile {
+  switch (file.type) {
+  case 'file': return exactObject<Extract<ImageGenerationModelFile, { type: 'file' }>>()({ ...file });
+  case 'opfs': case 'temp': return exactObject<Extract<ImageGenerationModelFile, { type: 'opfs' | 'temp' }>>()({ ...file });
+  case 'host': return exactObject<Extract<ImageGenerationModelFile, { type: 'host' }>>()({ ...file, directoryId: toHostModelDirectoryId({ raw: file.directoryId }) });
+  default: {
+    const exhaustive: never = file;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+export function imageGenerationModelFileToDto({ file }: { file: ImageGenerationModelFile }): ModelFileDto {
+  switch (file.type) {
+  case 'file': return exactObject<Extract<ModelFileDto, { type: 'file' }>>()({ ...file });
+  case 'opfs': case 'temp': return exactObject<Extract<ModelFileDto, { type: 'opfs' | 'temp' }>>()({ ...file });
+  case 'host': return exactObject<Extract<ModelFileDto, { type: 'host' }>>()({ ...file, directoryId: idToRaw({ id: file.directoryId }) });
+  default: {
+    const exhaustive: never = file;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+export function imageGenerationRequestBodyToDomain({ request }: { request: Omit<ExperimentalImageGenerationDto['request'], 'runtime'> }): Omit<ImageGenerationRecord['request'], 'runtime'> {
+  const { models, loras, imageInputs, parameters, preview, ...requestMetadata } = request;
+  const { initImage, referenceImages, ...inputMetadata } = imageInputs;
+  return exactObject<Omit<ImageGenerationRecord['request'], 'runtime'>>()({
+    ...requestMetadata,
+    parameters: exactObject<ImageGenerationRecord['request']['parameters']>()({ ...parameters }),
+    preview: exactObject<ImageGenerationRecord['request']['preview']>()({ ...preview }),
+    models: models.map(({ file, companions, ...model }) => exactObject<ImageGenerationRecord['request']['models'][number]>()({
+      ...model,
+      file: imageGenerationModelFileToDomain({ file }),
+      companions: companions.map(({ file, ...companion }) => exactObject<ImageGenerationRecord['request']['models'][number]['companions'][number]>()({ ...companion, file: imageGenerationModelFileToDomain({ file }) })),
+    })),
+    loras: loras.map(({ file, ...lora }) => exactObject<ImageGenerationRecord['request']['loras'][number]>()({ ...lora, file: imageGenerationModelFileToDomain({ file }) })),
+    imageInputs: exactObject<ImageGenerationRecord['request']['imageInputs']>()({
+      ...inputMetadata,
+      initImage: initImage && exactObject<NonNullable<ImageGenerationRecord['request']['imageInputs']['initImage']>>()({ ...initImage, binaryObjectId: toBinaryObjectId({ raw: initImage.binaryObjectId }) }),
+      referenceImages: referenceImages.map(image => exactObject<ImageGenerationRecord['request']['imageInputs']['referenceImages'][number]>()({ ...image, binaryObjectId: toBinaryObjectId({ raw: image.binaryObjectId }) })),
+    }),
+  });
+}
+
+export function imageGenerationRequestBodyToDto({ request }: { request: Omit<ImageGenerationRecord['request'], 'runtime'> }): Omit<ExperimentalImageGenerationDto['request'], 'runtime'> {
+  const { models, loras, imageInputs, parameters, preview, ...requestMetadata } = request;
+  const { initImage, referenceImages, ...inputMetadata } = imageInputs;
+  return exactObject<Omit<ExperimentalImageGenerationDto['request'], 'runtime'>>()({
+    ...requestMetadata,
+    parameters: exactObject<ExperimentalImageGenerationDto['request']['parameters']>()({ ...parameters }),
+    preview: exactObject<ExperimentalImageGenerationDto['request']['preview']>()({ ...preview }),
+    models: models.map(({ file, companions, ...model }) => exactObject<ExperimentalImageGenerationDto['request']['models'][number]>()({
+      ...model,
+      file: imageGenerationModelFileToDto({ file }),
+      companions: companions.map(({ file, ...companion }) => exactObject<ExperimentalImageGenerationDto['request']['models'][number]['companions'][number]>()({ ...companion, file: imageGenerationModelFileToDto({ file }) })),
+    })),
+    loras: loras.map(({ file, ...lora }) => exactObject<ExperimentalImageGenerationDto['request']['loras'][number]>()({ ...lora, file: imageGenerationModelFileToDto({ file }) })),
+    imageInputs: exactObject<ExperimentalImageGenerationDto['request']['imageInputs']>()({
+      ...inputMetadata,
+      initImage: initImage && exactObject<NonNullable<ExperimentalImageGenerationDto['request']['imageInputs']['initImage']>>()({ ...initImage, binaryObjectId: idToRaw({ id: initImage.binaryObjectId }) }),
+      referenceImages: referenceImages.map(image => exactObject<ExperimentalImageGenerationDto['request']['imageInputs']['referenceImages'][number]>()({ ...image, binaryObjectId: idToRaw({ id: image.binaryObjectId }) })),
+    }),
+  });
+}
+
+export function imageGenerationRuntimeToDomain({ runtime, validateRuntime = true }: { runtime: ExperimentalImageGenerationDto['request']['runtime'], validateRuntime?: boolean }): ImageGenerationRecord['request']['runtime'] {
+  switch (runtime.profile) {
+  case 'naidan-rpc':
+    if (validateRuntime) {
+      validateRemoteRuntime({ runtime });
+    }
+    return { ...ExperimentalImageGenerationRuntimeDtoSchema.options[1].parse(runtime), registrationId: toNaidanRpcRegistrationId({ raw: runtime.registrationId }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: runtime.peerPublicKey }) };
+  case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return { ...runtime };
+  default: {
+    const exhaustive: never = runtime;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+export function imageGenerationRuntimeToDto({ runtime }: { runtime: ImageGenerationRecord['request']['runtime'] }): ExperimentalImageGenerationDto['request']['runtime'] {
+  const dto = ExperimentalImageGenerationRuntimeDtoSchema.parse(runtime);
+  switch (dto.profile) {
+  case 'naidan-rpc': validateRemoteRuntime({ runtime: dto });
+    break;
+  case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': break;
+  default: {
+    const exhaustive: never = dto;
+    throw new Error(String(exhaustive));
+  }
+  }
+  return dto;
+}
+
+function validateRemoteRuntime({ runtime }: { runtime: { registrationId: string; peerPublicKey: string } }): void {
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(runtime.registrationId) || !/^[A-Za-z0-9_-]{43}$/.test(runtime.peerPublicKey)) {
+    throw new Error('Invalid RPC execution provenance');
+  }
+}
+
+export function imageGenerationRequestToDomain({ request, validateRuntime }: { request: ExperimentalImageGenerationDto['request'], validateRuntime?: boolean }): ImageGenerationRecord['request'] {
+  const { runtime, ...body } = request;
+  return exactObject<ImageGenerationRecord['request']>()({ ...imageGenerationRequestBodyToDomain({ request: body }), runtime: imageGenerationRuntimeToDomain({ runtime, validateRuntime }) });
+}
+
+export function imageGenerationRequestToDto({ request }: { request: ImageGenerationRecord['request'] }): ExperimentalImageGenerationDto['request'] {
+  const { runtime, ...body } = request;
+  return exactObject<ExperimentalImageGenerationDto['request']>()({ ...imageGenerationRequestBodyToDto({ request: body }), runtime: imageGenerationRuntimeToDto({ runtime }) });
+}
+
+export function imageGenerationToDomain({ dto }: { dto: ExperimentalImageGenerationDto }): ImageGenerationRecord {
+  const { id, request, result, previews, ...metadata } = dto;
+  return exactObject<ImageGenerationRecord>()({
+    ...metadata,
+    id: toImageGenerationId({ raw: id }),
+    request: imageGenerationRequestToDomain({ request }),
+    result: exactObject<ImageGenerationRecord['result']>()({ ...result, binaryObjectId: toBinaryObjectId({ raw: result.binaryObjectId }) }),
+    previews: previews.map(preview => exactObject<ImageGenerationRecord['previews'][number]>()({ ...preview, binaryObjectId: toBinaryObjectId({ raw: preview.binaryObjectId }) })),
+  });
+}
+
+export function imageGenerationToDto({ record }: { record: ImageGenerationRecord }): ExperimentalImageGenerationDto {
+  const { id, request, result, previews, ...metadata } = record;
+  return exactObject<ExperimentalImageGenerationDto>()({
+    ...metadata,
+    id: idToRaw({ id }),
+    request: imageGenerationRequestToDto({ request }),
+    result: exactObject<ExperimentalImageGenerationDto['result']>()({ ...result, binaryObjectId: idToRaw({ id: result.binaryObjectId }) }),
+    previews: previews.map(preview => exactObject<ExperimentalImageGenerationDto['previews'][number]>()({ ...preview, binaryObjectId: idToRaw({ id: preview.binaryObjectId }) })),
+  });
+}
+
+export function imageGenerationSummaryToDomain({ dto }: { dto: ExperimentalImageGenerationSummaryDto }): ImageGenerationSummary {
+  return exactObject<ImageGenerationSummary>()({ ...dto, id: toImageGenerationId({ raw: dto.id }), binaryObjectId: toBinaryObjectId({ raw: dto.binaryObjectId }) });
+}
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+export const TEST_ONLY = {
+};

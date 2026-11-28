@@ -1,5 +1,5 @@
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
-import { chatContentToDto, chatGroupToDto, chatMetaToDto } from '@/00-storage/mapper/mappers';
+import { chatContentToDto, chatGroupToDto, chatMetaToDto } from '@/00-format/mapper/mappers';
 import { idToRaw, toBinaryObjectId, toChatGroupId, toChatId } from '@/01-models/ids';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
 import type { ChatGroup, SidebarItem } from '@/01-models/types';

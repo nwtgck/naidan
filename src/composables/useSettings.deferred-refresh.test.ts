@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
-import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
 import type { ChangeListener } from '@/00-storage/service/synchronizer';
 import type { storageService } from '@/00-storage/service';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -75,7 +74,7 @@ beforeEach(async () => {
   mocks.idleTasks.length = 0;
   mocks.stored = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: 'https://saved.example/v1' }, defaultModelId: 'saved-model' };
   mocks.loadProvider.mockResolvedValue({ listModels: mocks.listModels });
-  localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+  localStorage.setItem('naidan:storage_type', 'local');
   await ensureAllStringsForTest({ locale: 'en' });
 });
 

@@ -1,61 +1,14 @@
-import type { ZodError } from 'zod';
 import type { StorageType } from '@/01-models/types';
-import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
-import { StorageTypeDtoSchema } from '@/00-storage/00-dto/dto';
+import { localStorageFormat } from '@/00-format/01-layout/layout';
 
-function parseStorageType({
-  rawStorageType,
-}: {
-  rawStorageType: string,
-}):
-  | { status: 'valid', savedStorageType: StorageType }
-  | { status: 'invalid', savedStorageTypeValidationError: ZodError } {
-  const parsedStorageType = StorageTypeDtoSchema.safeParse(rawStorageType);
-  if (parsedStorageType.success) {
-    return {
-      status: 'valid',
-      savedStorageType: parsedStorageType.data,
-    };
-  }
-
-  return {
-    status: 'invalid',
-    savedStorageTypeValidationError: parsedStorageType.error,
-  };
+export function readStoredBootstrapStorageType(): ReturnType<typeof localStorageFormat.storageType.read> {
+  return localStorageFormat.storageType.read({ storage: typeof localStorage === 'undefined' ? undefined : localStorage });
 }
 
-export function readStoredBootstrapStorageType(): {
-  rawSavedStorageType: string | null,
-  parsedSavedStorageType:
-    | { status: 'valid', savedStorageType: StorageType }
-    | { status: 'invalid', savedStorageTypeValidationError: ZodError }
-    | { status: 'missing' },
-    } {
-  const rawSavedStorageType = typeof localStorage !== 'undefined'
-    ? localStorage.getItem(STORAGE_BOOTSTRAP_KEY)
-    : null;
-
-  if (rawSavedStorageType === null) {
-    return {
-      rawSavedStorageType,
-      parsedSavedStorageType: { status: 'missing' },
-    };
+export function writeStoredBootstrapStorageType({ type }: { type: StorageType }): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorageFormat.storageType.write({ storage: localStorage, type });
   }
-
-  return {
-    rawSavedStorageType,
-    parsedSavedStorageType: parseStorageType({ rawStorageType: rawSavedStorageType }),
-  };
-}
-
-export function parseBootstrapStorageTypeOverride({
-  rawStorageType,
-}: {
-  rawStorageType: string,
-}):
-  | { status: 'valid', savedStorageType: StorageType }
-  | { status: 'invalid', savedStorageTypeValidationError: ZodError } {
-  return parseStorageType({ rawStorageType });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

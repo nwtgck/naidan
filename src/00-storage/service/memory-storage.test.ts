@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStorageProvider } from './memory-storage';
 import type { Chat, ChatContent, ChatGroup } from '@/01-models/types';
-import type { MigrationChunkDto } from '@/00-storage/00-dto/dto';
+import type { MigrationChunkDto } from '@/00-format/00-dto/dto';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-models/ids';
 
 describe('MemoryStorageProvider', () => {
@@ -113,7 +113,7 @@ describe('MemoryStorageProvider', () => {
 
     await provider.saveChatContent({ id: mockChat.id, content: mockChat });
     await provider.saveChatMeta({ meta: mockChat });
-    await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat', id: idToRaw({ id: mockChat.id }) }] } });
+    await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat', id: mockChat.id }] } });
     const list = await provider.listChats();
     expect(list).toHaveLength(1);
     expect(list[0]?.id).toBe(mockChat.id);
@@ -216,8 +216,8 @@ describe('MemoryStorageProvider', () => {
     it('should save and load hierarchy correctly', async () => {
       const mockHierarchy = {
         items: [
-          { type: 'chat' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb1' },
-          { type: 'chat_group' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb2', chat_ids: ['019bd241-2d57-716b-a9fd-1efbba88cfb3'] },
+          { type: 'chat' as const, id: toChatId({ raw: '019bd241-2d57-716b-a9fd-1efbba88cfb1' }) },
+          { type: 'chat_group' as const, id: toChatGroupId({ raw: '019bd241-2d57-716b-a9fd-1efbba88cfb2' }), chat_ids: [toChatId({ raw: '019bd241-2d57-716b-a9fd-1efbba88cfb3' })] },
         ],
       };
 
@@ -264,7 +264,7 @@ describe('MemoryStorageProvider', () => {
       await provider.saveHierarchy({
         hierarchy: {
           items: [
-            { type: 'chat_group', id: idToRaw({ id: mockGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
+            { type: 'chat_group', id: mockGroup.id, chat_ids: [mockChat.id] },
           ],
         },
       });

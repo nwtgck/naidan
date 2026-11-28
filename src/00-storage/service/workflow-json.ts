@@ -1,93 +1,12 @@
-import { z } from 'zod';
 import type { JsonValue } from '@/01-models/lm';
 import type { WorkflowDefinition, WorkflowStep, WorkflowValue, WorkflowMessage, WorkflowModelConfiguration } from '@/01-models/workflow';
-import { ExperimentalWorkflowDefinitionDtoSchema, ExperimentalWorkflowStepDtoSchema, ExperimentalWorkflowValueDtoSchema, ExperimentalWorkflowModelConfigurationDtoSchema } from '@/00-storage/00-dto/experimental-workflow.dto';
-import { workflowDefinitionToDomain, workflowDefinitionToDto, workflowStepToDomain, workflowStepToDto, workflowValueToDomain, workflowValueToDto, workflowModelConfigurationToDomain } from '@/00-storage/mapper/workflow';
+import { ExperimentalWorkflowDefinitionDtoSchema, ExperimentalWorkflowStepDtoSchema, ExperimentalWorkflowValueDtoSchema, ExperimentalWorkflowModelConfigurationDtoSchema } from '@/00-format/00-dto/experimental-workflow.dto';
+import { workflowDefinitionToDomain, workflowDefinitionToDto, workflowStepToDomain, workflowStepToDto, workflowValueToDomain, workflowValueToDto, workflowModelConfigurationToDomain } from '@/00-format/mapper/workflow';
 
-export const WORKFLOW_DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;
+import { workflowJsonFormat } from '@/00-format/workflow-json';
 
-/** Check depth and duplicate keys before recursively validating a document.
- * JSON.parse owns syntax; this scanner only records object keys and nesting. */
 export function parseWorkflowJson({ text }: { text: string }): JsonValue {
-  if (text.length > WORKFLOW_DOCUMENT_MAX_BYTES || new TextEncoder().encode(text).byteLength > WORKFLOW_DOCUMENT_MAX_BYTES) {
-    throw new Error('Workflow JSON exceeds the 2 MiB editing limit.');
-  }
-  const value: unknown = JSON.parse(text);
-  let index = 0;
-  function space(): void {
-    while (/\s/.test(text[index] ?? '') && index < text.length) {
-      index++;
-    }
-  }
-  function string(): string {
-    const start = index++;
-    while (index < text.length) {
-      const c = text[index++];
-      if (c === '\\') {
-        index++;
-        continue;
-      }
-      if (c === '"') {
-        return z.string().parse(JSON.parse(text.slice(start, index)));
-      }
-    }
-    throw new Error('Unterminated JSON string.');
-  }
-  function visit({ depth }: { depth: number }): void {
-    if (depth > 64) {
-      throw new Error('Workflow JSON is nested too deeply.');
-    }
-    space();
-    const c = text[index];
-    if (c === '"') {
-      string();
-      return;
-    }
-    if (c === '{') {
-      index++;
-      space();
-      const keys = new Set<string>();
-      while (text[index] !== '}') {
-        space();
-        const key = string();
-        if (keys.has(key)) {
-          throw new Error(`Duplicate JSON key: ${key}`);
-        }
-        keys.add(key);
-        space();
-        index++;
-        visit({ depth: depth + 1 });
-        space();
-        if (text[index] === ',') {
-          index++;
-        } else {
-          break;
-        }
-      }
-      index++;
-      return;
-    }
-    if (c === '[') {
-      index++;
-      space();
-      while (text[index] !== ']') {
-        visit({ depth: depth + 1 });
-        space();
-        if (text[index] === ',') {
-          index++;
-        } else {
-          break;
-        }
-      }
-      index++;
-      return;
-    }
-    while (index < text.length && !/[\s,}\]]/.test(text[index] ?? '')) {
-      index++;
-    }
-  }
-  visit({ depth: 0 });
-  return z.json().parse(value);
+  return workflowJsonFormat.toDto({ text });
 }
 
 function object(value: unknown): value is Record<string, unknown> {

@@ -1,16 +1,20 @@
+import { opfsFormat } from '@/00-format/01-layout/layout';
 import { createWeshTerminalSessions } from '@/features/wesh-terminal/composables/useWeshTerminalSessions';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
 import type { Mount } from '@/01-models/types';
 import { buildWorkerMountsForChat } from '@/features/wesh/chat-worker-mounts';
 import type { NaidanSysfsAccessScope } from '@/features/wesh/types';
 
+const { path: opfsPath, home: homeEntry, tmp: tmpEntry } = opfsFormat.chatWesh.global;
+const home = '/' + homeEntry.path.slice(opfsPath.length).join('/');
+const tmp = '/' + tmpEntry.path.slice(opfsPath.length).join('/');
 const store = createWeshTerminalSessions({
-  opfsRootName: 'naidan-chat-wesh',
+  opfsPath,
   user: 'user',
-  initialEnv: { HOME: '/home/user', TMPDIR: '/tmp' },
-  initialCwd: '/home/user',
-  homeDirectory: '/home/user',
-  tmpDirectory: '/tmp',
+  initialEnv: { HOME: home, TMPDIR: tmp },
+  initialCwd: home,
+  homeDirectory: home,
+  tmpDirectory: tmp,
 });
 
 type SessionArgs = {

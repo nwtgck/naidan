@@ -1,14 +1,5 @@
-import { z } from 'zod';
-
-export const THEME_MODE_VALUES = [
-  'light',
-  'dark',
-  'system',
-] as const;
-
-export const ThemeModeSchema = z.enum(THEME_MODE_VALUES);
-
-export type ThemeMode = z.infer<typeof ThemeModeSchema>;
+// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Vite reads this module before resolving application aliases.
+export { THEME_MODE_VALUES, ThemeModeSchema, type ThemeMode } from '../../../00-format/theme-mode.ts';
 
 export const RESOLVED_THEME_VALUES = [
   'light',

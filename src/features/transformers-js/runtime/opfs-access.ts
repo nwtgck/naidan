@@ -1,4 +1,4 @@
-import { OPFS_MODELS_DIR } from '@/constants';
+import { modelCacheOpfsRoot } from '@/00-format/model-cache-root';
 /** Cooperative locks cover the existing model storage, not the inference lane.
  * Every participant acquires root, model, file in that order. No lock stealing,
  * timeout-based release or shared-to-exclusive upgrade is permitted.
@@ -20,7 +20,7 @@ export function supportsOpfsCoordination(): boolean {
 
 function canonicalParts({ path }: { path: string }): string[] {
   const parts = path.split('/').filter(part => part.length > 0);
-  if (parts[0] !== OPFS_MODELS_DIR || parts.some(part => part === '.' || part === '..')) {
+  if (parts[0] !== modelCacheOpfsRoot.name || parts.some(part => part === '.' || part === '..')) {
     throw new Error('Invalid model storage path');
   }
   return parts;

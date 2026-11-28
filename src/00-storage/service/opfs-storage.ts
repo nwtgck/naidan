@@ -1,67 +1,34 @@
-import { ExperimentalModelGraphRegistryDtoSchema, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
+import { indexedDbRequestSuccessHandles } from './indexed-db';
+import { buildChatGroup, buildSidebarItemsFromHierarchy } from './sidebar-items';
+import type { FileLocation } from '@/00-format/file-record';
+import type { StoredChatMeta, StoredChatGroup } from '@/00-format/core-records';
+import { openDirectoryPath } from '@/utils/file-system-directory-path';
+import { indexedDbFormat, opfsFormat, storageMigrations } from '@/00-format/01-layout/layout';
+import type { LegacyUploadedFileMetadata } from '@/00-format/migrations/legacy-uploaded-file-content';
+import { type ExperimentalModelGraphRegistryDto } from '@/00-format/00-dto/experimental-model-graph.dto';
 import { iterateAttachmentParts } from './message-attachments';
-import { readLegacyUploadedFileMetadata, remapLegacyUploadedFileReferences } from './legacy-uploaded-file-content';
-import { createLegacyUploadedFileId } from './legacy-uploaded-file-id';
 import { generateId } from '@/01-models/id';
 import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
-import { DEFAULT_SETTINGS_ENDPOINT, type Chat, type Settings, type ChatGroup, type SidebarItem, type MessageNode, type ChatMeta, type ChatContent, type StorageSnapshot, type BinaryObject, type Volume, type VolumeType } from '@/01-models/types';
+import { DEFAULT_SETTINGS_ENDPOINT, type Chat, type Settings, type ChatGroup, type SidebarItem, type MessageNode, type ChatMeta, type ChatContent, type StorageSnapshot, type BinaryObject, type Hierarchy, type Volume, type VolumeType } from '@/01-models/types';
 import {
-  type ChatMetaDto,
-  type ChatGroupDto,
-  type HierarchyDto,
   type MigrationChunkDto,
-  ChatMetaDtoSchema,
-  ChatGroupDtoSchema,
-  SettingsDtoSchema,
-  HierarchyDtoSchema,
-  ChatContentDtoSchema,
-  type VolumeDto,
-  type VolumeIndexDto,
-  VolumeIndexDtoSchema,
-} from '@/00-storage/00-dto/dto';
+} from '@/00-format/00-dto/dto';
 import {
   chatToDomain,
   chatToDto,
-  chatGroupToDomain,
-  chatGroupConfigurationToDomain,
-  chatGroupToDto,
-  settingsToDomain,
-  settingsToDto,
-  hierarchyToDomain,
-  hierarchyToDto,
-  chatMetaToDto,
-  chatMetaToDomain,
-  chatContentToDto,
-  chatContentToDomain,
-  buildSidebarItemsFromHierarchy,
-  binaryObjectToDomain,
-  volumeToDomain,
-  volumeToDto,
-} from '@/00-storage/mapper/mappers';
+} from '@/00-format/mapper/mappers';
 import { IStorageProvider } from './interface';
 
-import {
-  type MigrationStateDto,
-  type BinaryShardIndexDto,
-  MigrationStateDtoSchema,
-  BinaryShardIndexDtoSchema,
-} from '@/00-storage/00-dto/dto';
-import { toBinaryObjectId, toChatGroupId, toChatId } from '@/01-models/ids';
+import { toBinaryObjectId } from '@/01-models/ids';
 import { promiseAllKeyed } from '@/utils/promise';
-import { ExperimentalNaidanRpcRegistryDtoSchema, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+import { type ExperimentalNaidanRpcRegistryDto } from '@/00-format/00-dto/experimental-naidan-rpc.dto';
 import type { StoredVolumeAccess } from '@/01-models/volume-access';
 import type { StorageSynchronizer } from './synchronizer';
 
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>,
 }
-
-const MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS = 'v1_uploaded_files_to_binary_objects';
-const MODEL_GRAPH_REGISTRY_FILE = 'experimental-model-graph-registry.json';
-const NAIDAN_RPC_REGISTRY_FILE = 'naidan-rpc-connections.json';
-
-type BinaryShardIndex = BinaryShardIndexDto;
 
 let volumeSynchronizer: StorageSynchronizer | undefined;
 
@@ -71,61 +38,74 @@ async function getVolumeSynchronizer(): Promise<StorageSynchronizer> {
   return volumeSynchronizer;
 }
 
-function isVolumeEntryNotFound({ error }: { error: unknown }): boolean {
+function isEntryNotFound({ error }: { error: unknown }): boolean {
   return (error instanceof Error || error instanceof DOMException) && error.name === 'NotFoundError';
 }
 
 export class OPFSStorageProvider extends IStorageProvider {
   private root: FileSystemDirectoryHandle | null = null;
-  private readonly STORAGE_DIR = 'naidan-storage';
   readonly canPersistBinary = true;
 
-  async loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
-    const directory = await this.getExperimentalDir({ create: false });
-    if (!directory) {
-      return undefined;
-    }
-    let handle: FileSystemFileHandle;
-    try {
-      handle = await directory.getFileHandle(NAIDAN_RPC_REGISTRY_FILE);
-    } catch (error) {
-      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
-        return undefined;
-      }
-      throw error;
-    }
-    return ExperimentalNaidanRpcRegistryDtoSchema.parse(JSON.parse(await (await handle.getFile()).text()));
+  async readNaidanRpcRegistryForTransfer(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
+    return opfsFormat.storage.experimental.rpcConnections.readForTransfer({ readText: this.readRegistryText });
   }
 
-  async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
-    if (registry === undefined) {
-      const directory = await this.getExperimentalDir({ create: false });
-      if (!directory) {
-        return;
-      }
-      try {
-        await directory.removeEntry(NAIDAN_RPC_REGISTRY_FILE);
-      } catch (error) {
-        if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
-          throw error;
-        }
-      }
+  async writeNaidanRpcRegistryForTransfer({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
+    await opfsFormat.storage.experimental.rpcConnections.writeForTransfer({
+      registry,
+      writeText: this.writeRegistryText,
+      removeFile: this.deleteRegistry,
+    });
+  }
+
+  async readModelGraphRegistryForTransfer(): Promise<ExperimentalModelGraphRegistryDto | undefined> {
+    return opfsFormat.storage.experimental.modelGraph.readForTransfer({ readText: this.readRegistryText });
+  }
+
+  async writeModelGraphRegistryForTransfer({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void> {
+    await opfsFormat.storage.experimental.modelGraph.writeForTransfer({
+      registry,
+      writeText: this.writeRegistryText,
+      removeFile: this.deleteRegistry,
+    });
+  }
+
+  private readRegistryText = async ({ file }: { file: FileLocation }): Promise<string | undefined> => {
+    const directory = await this.getRegistryDirectory({ file, create: false });
+    if (directory === undefined) {
+      return undefined;
+    }
+    return this.readDirectoryFileText({ directory, name: file.name });
+  };
+
+  private deleteRegistry = async ({ file }: { file: FileLocation }): Promise<void> => {
+    const directory = await this.getRegistryDirectory({ file, create: false });
+    if (directory === undefined) {
       return;
     }
-    const text = JSON.stringify(ExperimentalNaidanRpcRegistryDtoSchema.parse(registry));
-    const directory = await this.getExperimentalDir({ create: true });
-    if (!directory) {
+    try {
+      await directory.removeEntry(file.name);
+    } catch (error) {
+      if (!isEntryNotFound({ error })) {
+        throw error;
+      }
+    }
+  };
+
+  private writeRegistryText = async ({ file, text }: { file: FileLocation, text: string }): Promise<void> => {
+    const directory = await this.getRegistryDirectory({ file, create: true });
+    if (directory === undefined) {
       throw new Error('Experimental storage directory is unavailable.');
     }
     let handle: FileSystemFileHandle;
     let created = false;
     try {
-      handle = await directory.getFileHandle(NAIDAN_RPC_REGISTRY_FILE);
+      handle = await directory.getFileHandle(file.name);
     } catch (error) {
-      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
+      if (!isEntryNotFound({ error })) {
         throw error;
       }
-      handle = await directory.getFileHandle(NAIDAN_RPC_REGISTRY_FILE, { create: true });
+      handle = await directory.getFileHandle(file.name, { create: true });
       created = true;
     }
     let writable: FileSystemWritableFileStream | undefined;
@@ -139,120 +119,52 @@ export class OPFSStorageProvider extends IStorageProvider {
       } catch { /* Preserve the original save failure. */ }
       if (created) {
         try {
-          await directory.removeEntry(NAIDAN_RPC_REGISTRY_FILE);
+          await directory.removeEntry(file.name);
         } catch { /* Cleanup failure does not turn a failed save into success. */ }
       }
       throw error;
     }
-  }
+  };
 
-  async loadModelGraphRegistry(): Promise<ExperimentalModelGraphRegistryDto | undefined> {
-    const directory = await this.getExperimentalDir({ create: false });
-    if (!directory) {
-      return undefined;
-    }
-    let handle: FileSystemFileHandle;
-    try {
-      handle = await directory.getFileHandle(MODEL_GRAPH_REGISTRY_FILE);
-    } catch (error) {
-      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
-        return undefined;
-      }
-      throw error;
-    }
-    return ExperimentalModelGraphRegistryDtoSchema.parse(JSON.parse(await (await handle.getFile()).text()));
-  }
-
-  async saveModelGraphRegistry({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void> {
-    if (registry === undefined) {
-      const directory = await this.getExperimentalDir({ create: false });
-      if (!directory) {
-        return;
-      }
-      try {
-        await directory.removeEntry(MODEL_GRAPH_REGISTRY_FILE);
-      } catch (error) {
-        if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
-          throw error;
-        }
-      }
-      return;
-    }
-    const text = JSON.stringify(ExperimentalModelGraphRegistryDtoSchema.parse(registry));
-    const directory = await this.getExperimentalDir({ create: true });
-    if (!directory) {
-      throw new Error('Experimental storage directory is unavailable.');
-    }
-    let handle: FileSystemFileHandle;
-    let created = false;
-    try {
-      handle = await directory.getFileHandle(MODEL_GRAPH_REGISTRY_FILE);
-    } catch (error) {
-      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
-        throw error;
-      }
-      handle = await directory.getFileHandle(MODEL_GRAPH_REGISTRY_FILE, { create: true });
-      created = true;
-    }
-    let writable: FileSystemWritableFileStream | undefined;
-    try {
-      writable = await handle.createWritable();
-      await writable.write(text);
-      await writable.close();
-    } catch (error) {
-      try {
-        await writable?.abort();
-      } catch { /* Preserve the original save failure. */ }
-      if (created) {
-        try {
-          await directory.removeEntry(MODEL_GRAPH_REGISTRY_FILE);
-        } catch { /* Cleanup failure does not turn a failed save into success. */ }
-      }
-      throw error;
-    }
-  }
-
-  private async getExperimentalDir({ create }: { create: boolean }): Promise<FileSystemDirectoryHandle | undefined> {
+  private async getRegistryDirectory({ file, create }: { file: FileLocation, create: boolean }): Promise<FileSystemDirectoryHandle | undefined> {
     await this.ensureRoot();
     try {
-      return await this.root!.getDirectoryHandle('experimental', { create });
+      return await this.getStorageDirectory({ path: file.path.slice(0, -1), create });
     } catch (error) {
-      if (!create && (error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
+      if (!create && isEntryNotFound({ error })) {
         return undefined;
       }
       throw error;
     }
   }
 
-  private async readChatRecord({ directory, id }: {
-    directory: 'chat-metas' | 'chat-contents',
-    id: ChatId,
-  }): Promise<string | null> {
-    await this.ensureRoot();
-    const dir = await this.getDir({ name: directory });
-    let fileHandle: FileSystemFileHandle;
+  private readChatText = async ({ file }: { file: FileLocation }): Promise<string | undefined> => {
+    const directory = await this.getStorageDirectory({ path: file.path.slice(0, -1), create: true });
+    return this.readDirectoryFileText({ directory, name: file.name });
+  };
+
+  private async readDirectoryFileText({ directory, name, acceptLegacyNotFoundCode }: {
+    directory: FileSystemDirectoryHandle,
+    name: string,
+    acceptLegacyNotFoundCode?: true,
+  }): Promise<string | undefined> {
+    let handle: FileSystemFileHandle;
     try {
-      fileHandle = await dir.getFileHandle(`${idToRaw({ id })}.json`);
+      handle = await directory.getFileHandle(name);
     } catch (error) {
-      // Only a missing entry at lookup means absence. An acquired handle that
-      // later fails to read must never let an updater overwrite an empty chat.
-      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
-        return null;
+      // Only a failed lookup means absence. Once acquired, unreadable files
+      // must never be presented to subsequent updates as empty records.
+      if (isEntryNotFound({ error }) || (acceptLegacyNotFoundCode
+        && (error instanceof DOMException || error instanceof Error) && 'code' in error && error.code === 8)) {
+        return undefined;
       }
       throw error;
     }
-    const file = await fileHandle.getFile();
-    return file.text();
+    return (await handle.getFile()).text();
   }
 
   private async loadUnhydratedChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
-    const rawContent = await this.readChatRecord({ directory: 'chat-contents', id });
-    if (rawContent === null) {
-      return null;
-    }
-    return chatContentToDomain({
-      dto: ChatContentDtoSchema.parse(JSON.parse(rawContent)),
-    });
+    return await opfsFormat.storage.chatContents.read({ id, readText: this.readChatText }) ?? null;
   }
 
   async init(): Promise<void> {
@@ -263,32 +175,13 @@ export class OPFSStorageProvider extends IStorageProvider {
   private async ensureRoot(): Promise<void> {
     if (!this.root) {
       const opfsRoot = await navigator.storage.getDirectory();
-      this.root = await opfsRoot.getDirectoryHandle(this.STORAGE_DIR, { create: true });
+      this.root = await openDirectoryPath({ root: opfsRoot, path: opfsFormat.storage.path, create: true });
     }
-  }
-
-  private async loadMigrationState(): Promise<MigrationStateDto> {
-    try {
-      const fileHandle = await this.root!.getFileHandle('migration-state.json');
-      const file = await fileHandle.getFile();
-      return MigrationStateDtoSchema.parse(JSON.parse(await file.text()));
-    } catch {
-      return { completedMigrations: [] };
-    }
-  }
-
-  private async saveMigrationState({ state }: { state: MigrationStateDto }): Promise<void> {
-    const fileHandle = await this.root!.getFileHandle('migration-state.json', { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(state));
-    await writable.close();
   }
 
   private async runMigrations(): Promise<void> {
-    const state = await this.loadMigrationState();
-    const completed = new Set(state.completedMigrations.map(m => m.name));
-
-    if (!completed.has(MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS)) {
+    const state = await opfsFormat.storage.migrationState.read({ readText: this.readStorageText });
+    if (!state.hasCompleted({ name: storageMigrations.uploadedFilesToBinaryObjects.id })) {
       const outcome = await this.migrateV1UploadedFilesToBinaryObjects();
       // Unreadable or unwritten content may still reference the legacy directory.
       // Leave it retryable while allowing unrelated readable chats to be used.
@@ -300,18 +193,20 @@ export class OPFSStorageProvider extends IStorageProvider {
         throw new Error(`Unhandled migration outcome: ${_ex}`);
       }
       }
-      state.completedMigrations.push({
-        name: MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS,
+      await state.markCompleted({
+        name: storageMigrations.uploadedFilesToBinaryObjects.id,
         completedAt: Date.now(),
+        writeText: this.writeStorageText,
       });
-      await this.saveMigrationState({ state });
     }
   }
 
   private async migrateV1UploadedFilesToBinaryObjects(): Promise<'completed' | 'deferred'> {
+    let legacyParent: FileSystemDirectoryHandle;
     let legacyDir: FileSystemDirectoryHandle;
     try {
-      legacyDir = await this.root!.getDirectoryHandle('uploaded-files');
+      legacyParent = await this.getStorageDirectory({ path: storageMigrations.uploadedFilesToBinaryObjects.from.path.slice(0, -1), create: undefined });
+      legacyDir = await legacyParent.getDirectoryHandle(storageMigrations.uploadedFilesToBinaryObjects.from.name);
     } catch (error) {
       // Only failure to locate the source directory means migration is unnecessary.
       // A missing file later in the copy/write sequence must not mark success.
@@ -322,32 +217,29 @@ export class OPFSStorageProvider extends IStorageProvider {
       throw error;
     }
     try {
-      console.log(`[OPFSStorageProvider] Starting migration: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`);
+      console.log(`[OPFSStorageProvider] Starting migration: ${storageMigrations.uploadedFilesToBinaryObjects.id}`);
 
       // Read one document at a time; keep only metadata, not all conversation bodies.
-      const contentDir = await this.getDir({ name: 'chat-contents' });
-      const metadata = new Map<string, Map<string, { mimeType: string, createdAt: number } | undefined>>();
+      const contentDir = await this.getStorageDirectory({ path: storageMigrations.uploadedFilesToBinaryObjects.chatContents.path, create: true });
+      const metadata = new Map<string, Map<string, LegacyUploadedFileMetadata | 'conflict'>>();
       let deferred = false;
       for await (const entry of contentDir.values()) {
         const entryKind = entry.kind;
         switch (entryKind) {
         case 'file':
-          if (entry.name.endsWith('.json')) {
+          if (storageMigrations.uploadedFilesToBinaryObjects.isChatContentFile({ name: entry.name })) {
             try {
               const file = await (entry as FileSystemFileHandle).getFile();
-              for (const { attachmentId, name, mimeType, createdAt } of readLegacyUploadedFileMetadata({ serialized: await file.text() })) {
+              for (const { attachmentId, name, mimeType, createdAt } of storageMigrations.uploadedFilesToBinaryObjects.readMetadata({ serialized: await file.text() })) {
                 let files = metadata.get(attachmentId);
                 if (!files) {
                   files = new Map();
                   metadata.set(attachmentId, files);
                 }
-                const previous = files.get(name);
-                if (files.has(name) && (previous?.mimeType !== mimeType || previous.createdAt !== createdAt)) {
-                  // One binary index cannot preserve contradictory legacy metadata.
-                  files.set(name, undefined);
+                const merged = storageMigrations.uploadedFilesToBinaryObjects.mergeMetadata({ previous: files.get(name), current: { mimeType, createdAt } });
+                files.set(name, merged);
+                if (merged === 'conflict') {
                   deferred = true;
-                } else {
-                  files.set(name, { mimeType, createdAt });
                 }
               }
             } catch (error) {
@@ -368,58 +260,37 @@ export class OPFSStorageProvider extends IStorageProvider {
       // 1. Copy each source file to a stable migration ID before changing references.
       const idMap = new Map<string, Map<string, string>>();
 
-      for await (const attachmentDirEntry of legacyDir.values()) {
-        const entryKind = attachmentDirEntry.kind;
-        switch (entryKind) {
-        case 'directory': {
-          const attachmentId = attachmentDirEntry.name;
-          for await (const fileEntry of (attachmentDirEntry as FileSystemDirectoryHandle).values()) {
-            const fileKind = fileEntry.kind;
-            switch (fileKind) {
-            case 'file': {
-              const blob = await (fileEntry as FileSystemFileHandle).getFile();
-              const sourceMetadata = metadata.get(attachmentId);
-              const recorded = sourceMetadata?.get(fileEntry.name);
-              if (sourceMetadata?.has(fileEntry.name) && recorded === undefined) {
-                // Retain the source and its references for a later explicit repair.
-                continue;
-              }
-              const newBinaryObjectId = await createLegacyUploadedFileId({ attachmentId, name: fileEntry.name });
-              const existing = await this.getBinaryObject({ binaryObjectId: newBinaryObjectId });
-              await this.saveFileWithMetadata({
-                blob,
-                binaryObjectId: newBinaryObjectId,
-                name: fileEntry.name,
-                mimeType: recorded?.mimeType ?? existing?.mimeType,
-                createdAt: recorded?.createdAt ?? existing?.createdAt ?? Date.now(),
-              });
-              let files = idMap.get(attachmentId);
-              if (!files) {
-                files = new Map();
-                idMap.set(attachmentId, files);
-              }
-              files.set(fileEntry.name, idToRaw({ id: newBinaryObjectId }));
-              break;
-            }
-            case 'directory':
-              deferred = true;
-              break;
-            default: {
-              const _ex: never = fileKind;
-              throw new Error(`Unhandled file kind: ${_ex}`);
-            }
-            }
-          }
-          break;
-        }
-        case 'file':
+      for await (const source of storageMigrations.uploadedFilesToBinaryObjects.listSources({
+        attachments: legacyDir.values(),
+        listFiles: ({ directory }) => (directory as FileSystemDirectoryHandle).values(),
+      })) {
+        if (source === undefined) {
           deferred = true;
-          break;
-        default: {
-          const _ex: never = entryKind;
-          throw new Error(`Unhandled entry kind: ${_ex}`);
+          continue;
         }
+        const { attachmentId, file } = source;
+        const blob = await (file as FileSystemFileHandle).getFile();
+        const recorded = metadata.get(attachmentId)?.get(file.name);
+        if (recorded === 'conflict') {
+          // Retain the source and its references for a later explicit repair.
+          continue;
         }
+        const binaryObjectId = await storageMigrations.uploadedFilesToBinaryObjects.toBinaryObjectId({ attachmentId, name: file.name });
+        const existing = await this.getBinaryObject({ binaryObjectId });
+        const { name, mimeType, createdAt } = storageMigrations.uploadedFilesToBinaryObjects.selectMetadata({ originalName: file.name, recorded, existing });
+        await this.saveFileWithMetadata({
+          blob,
+          binaryObjectId,
+          name,
+          mimeType,
+          createdAt: createdAt === 'copy-time' ? Date.now() : createdAt,
+        });
+        let files = idMap.get(attachmentId);
+        if (!files) {
+          files = new Map();
+          idMap.set(attachmentId, files);
+        }
+        files.set(file.name, idToRaw({ id: binaryObjectId }));
       }
 
       // 2. Reread current content and rewrite only references whose copies succeeded.
@@ -427,10 +298,10 @@ export class OPFSStorageProvider extends IStorageProvider {
         const entryKind = entry.kind;
         switch (entryKind) {
         case 'file': {
-          if (entry.name.endsWith('.json')) {
+          if (storageMigrations.uploadedFilesToBinaryObjects.isChatContentFile({ name: entry.name })) {
             try {
               const file = await (entry as FileSystemFileHandle).getFile();
-              const rewritten = remapLegacyUploadedFileReferences({
+              const rewritten = storageMigrations.uploadedFilesToBinaryObjects.rewriteReferences({
                 serialized: await file.text(),
                 binaryObjectIds: idMap,
               });
@@ -472,75 +343,73 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
 
       // 3. Cleanup, after every inspected chat reference was committed.
-      await this.root!.removeEntry('uploaded-files', { recursive: true });
-      console.log(`[OPFSStorageProvider] Migration completed: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`);
+      await legacyParent.removeEntry(storageMigrations.uploadedFilesToBinaryObjects.from.name, { recursive: true });
+      console.log(`[OPFSStorageProvider] Migration completed: ${storageMigrations.uploadedFilesToBinaryObjects.id}`);
       return 'completed';
     } catch (error) {
-      console.error(`[OPFSStorageProvider] Migration failed: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`, error);
+      console.error(`[OPFSStorageProvider] Migration failed: ${storageMigrations.uploadedFilesToBinaryObjects.id}`, error);
       throw error;
     }
   }
 
-  private async getDir({ name, parent = this.root! }: { name: string, parent?: FileSystemDirectoryHandle }): Promise<FileSystemDirectoryHandle> {
+  private async getStorageDirectory({ path, create }: {
+    path: readonly string[], create: boolean | undefined,
+  }): Promise<FileSystemDirectoryHandle> {
+    if (!opfsFormat.storage.path.every((segment, index) => segment === path[index])) {
+      const root = await navigator.storage.getDirectory();
+      return openDirectoryPath({ root, path, create });
+    }
     await this.ensureRoot();
-    return await parent.getDirectoryHandle(name, { create: true });
+    return openDirectoryPath({ root: this.root!, path: path.slice(opfsFormat.storage.path.length), create });
   }
+
+  private async getEntryParent({ file, create }: { file: FileLocation, create: true | undefined }): Promise<FileSystemDirectoryHandle> {
+    return this.getStorageDirectory({ path: file.path.slice(0, -1), create });
+  }
+
+  private async createStorageFile({ file }: { file: FileLocation }): Promise<FileSystemFileHandle> {
+    const directory = await this.getStorageDirectory({ path: file.path.slice(0, -1), create: true });
+    return directory.getFileHandle(file.name, { create: true });
+  }
+
+  private readStorageText = async ({ file }: { file: FileLocation }): Promise<string | undefined> => {
+    const directory = await this.getStorageDirectory({ path: file.path.slice(0, -1), create: undefined });
+    return this.readDirectoryFileText({ directory, name: file.name });
+  };
+
+  private writeStorageText = async ({ file, text }: { file: FileLocation, text: string }): Promise<void> => {
+    const handle = await this.createStorageFile({ file });
+    const writable = await handle.createWritable();
+    await writable.write(text);
+    await writable.close();
+  };
 
   // --- Binary Object Storage (Sharded) ---
 
-  private getBinaryObjectShardPath({ id }: { id: BinaryObjectId }): string {
-    return idToRaw({ id }).slice(-2).toLowerCase();
-  }
-
   private async getBinaryObjectsDir(): Promise<FileSystemDirectoryHandle> {
-    return await this.getDir({ name: 'binary-objects' });
+    return await this.getStorageDirectory({ path: opfsFormat.storage.binaryObjects.path, create: true });
   }
 
-  private async getShardDir({ shard }: { shard: string }): Promise<FileSystemDirectoryHandle> {
-    const baseDir = await this.getBinaryObjectsDir();
-    return await this.getDir({ name: shard, parent: baseDir });
-  }
-
-  private async loadShardIndex({ shard }: { shard: string }): Promise<BinaryShardIndex> {
-    const dir = await this.getShardDir({ shard });
-    let fileHandle: FileSystemFileHandle;
-    try {
-      fileHandle = await dir.getFileHandle('index.json');
-    } catch (error) {
-      const isNotFound = (error instanceof DOMException || error instanceof Error)
-        && (error.name === 'NotFoundError' || ('code' in error && error.code === 8));
-      if (isNotFound) {
-        return { objects: {} };
-      }
-      throw error;
-    }
-    // Invalid or unreadable metadata is not an empty index to overwrite.
-    const file = await fileHandle.getFile();
-    return BinaryShardIndexDtoSchema.parse(JSON.parse(await file.text()));
-  }
-
-  private async saveShardIndex({ shard, index }: { shard: string, index: BinaryShardIndex }): Promise<void> {
-    const dir = await this.getShardDir({ shard: shard });
-    const fileHandle = await dir.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(index));
-    await writable.close();
-  }
+  private readBinaryIndexText = async ({ file }: { file: FileLocation }): Promise<string | undefined> => this.readDirectoryFileText({
+    directory: await this.getEntryParent({ file, create: true }),
+    name: file.name,
+    acceptLegacyNotFoundCode: true,
+  });
 
   private async hydrateAttachments({ nodes }: { nodes: MessageNode[] }): Promise<void> {
-    const shardCache = new Map<string, BinaryShardIndex>();
+    const shardCache = new Map<string, Awaited<ReturnType<typeof opfsFormat.storage.binaryObjects.index.readShard>>>();
 
     for (const part of iterateAttachmentParts({ nodes })) {
       const att = part.attachment;
       switch (att.status) {
       case 'persisted': {
-        const shard = this.getBinaryObjectShardPath({ id: att.binaryObjectId });
+        const shard = opfsFormat.storage.binaryObjects.shardName({ id: att.binaryObjectId });
         let index = shardCache.get(shard);
         if (!index) {
-          index = await this.loadShardIndex({ shard });
+          index = await opfsFormat.storage.binaryObjects.index.readShard({ shard, readText: this.readBinaryIndexText });
           shardCache.set(shard, index);
         }
-        const meta = index.objects[idToRaw({ id: att.binaryObjectId })];
+        const meta = index.get({ id: att.binaryObjectId });
         if (meta) {
           att.mimeType = meta.mimeType;
           att.size = meta.size;
@@ -563,147 +432,89 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   // --- Internal Data Access ---
 
-  protected async listChatMetasRaw(): Promise<ChatMetaDto[]> {
+  protected async listStoredChatMetas(): Promise<StoredChatMeta[]> {
+    return await this.listChatRecords({ collection: opfsFormat.storage.chatMetas });
+  }
+
+  protected async listStoredChatGroups(): Promise<StoredChatGroup[]> {
+    return await this.listChatRecords({ collection: opfsFormat.storage.chatGroups });
+  }
+
+  private async listChatRecords<T>({ collection }: {
+    collection: {
+      path: readonly string[],
+      readListed({ name, readText }: {
+        name: string, readText({ file }: { file: FileLocation }): Promise<string>,
+      }): Promise<T | undefined>,
+    },
+  }): Promise<T[]> {
     await this.ensureRoot();
-    const dir = await this.getDir({ name: 'chat-metas' });
-    const dtos: ChatMetaDto[] = [];
+    const dir = await this.getStorageDirectory({ path: collection.path, create: true });
+    const records: T[] = [];
     for await (const entry of dir.values()) {
       const kind = entry.kind;
       switch (kind) {
       case 'file': {
-        if (entry.name.endsWith('.json')) {
-          const file = await (entry as FileSystemFileHandle).getFile();
-          dtos.push(ChatMetaDtoSchema.parse(JSON.parse(await file.text())));
+        const record = await collection.readListed({
+          name: entry.name,
+          readText: async () => (await (entry as FileSystemFileHandle).getFile()).text(),
+        });
+        if (record !== undefined) {
+          records.push(record);
         }
         break;
       }
       case 'directory':
         break;
       default: {
-        const _ex: never = kind;
-        throw new Error(`Unhandled entry kind: ${_ex}`);
+        const exhaustive: never = kind;
+        throw new Error(`Unhandled entry kind: ${exhaustive}`);
       }
       }
     }
-    return dtos;
+    return records;
   }
 
-  protected async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
-    await this.ensureRoot();
-    const dir = await this.getDir({ name: 'chat-groups' });
-    const dtos: ChatGroupDto[] = [];
-    for await (const entry of dir.values()) {
-      const kind = entry.kind;
-      switch (kind) {
-      case 'file': {
-        if (entry.name.endsWith('.json')) {
-          const file = await (entry as FileSystemFileHandle).getFile();
-          dtos.push(ChatGroupDtoSchema.parse(JSON.parse(await file.text())));
-        }
-        break;
-      }
-      case 'directory':
-        break;
-      default: {
-        const _ex: never = kind;
-        throw new Error(`Unhandled entry kind: ${_ex}`);
-      }
-      }
-    }
-    return dtos;
+  async loadHierarchy(): Promise<Hierarchy> {
+    // A failed read after lookup must propagate so automatic creation cannot
+    // overwrite the existing hierarchy.
+    return await opfsFormat.storage.hierarchy.read({ readText: this.readStorageText }) ?? { items: [] };
   }
 
-  // --- Hierarchy Management ---
-
-  async loadHierarchy(): Promise<HierarchyDto | null> {
-    await this.ensureRoot();
-    let fileHandle: FileSystemFileHandle;
-    try {
-      fileHandle = await this.root!.getFileHandle('hierarchy.json');
-    } catch (error) {
-      // Only a missing lookup proves empty history; unreadable history must not
-      // permit automatic creation to replace an existing hierarchy.
-      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
-        return { items: [] };
-      }
-      throw error;
-    }
-    const file = await fileHandle.getFile();
-    return HierarchyDtoSchema.parse(JSON.parse(await file.text()));
+  async saveHierarchy({ hierarchy }: { hierarchy: Hierarchy }): Promise<void> {
+    await opfsFormat.storage.hierarchy.write({ hierarchy, writeText: this.writeStorageText });
   }
-
-  async saveHierarchy({ hierarchy }: { hierarchy: HierarchyDto }): Promise<void> {
-    await this.ensureRoot();
-    const fileHandle = await this.root!.getFileHandle('hierarchy.json', { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(hierarchy));
-    await writable.close();
-  }
-
-  // --- Persistence Implementation ---
 
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
-    const dto = chatMetaToDto({ domain: meta });
-    const serialized = JSON.stringify(ChatMetaDtoSchema.parse(dto));
-    const dir = await this.getDir({ name: 'chat-metas' });
-    const fileHandle = await dir.getFileHandle(`${idToRaw({ id: meta.id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(serialized);
-    await writable.close();
+    await opfsFormat.storage.chatMetas.write({ meta, writeText: this.writeStorageText });
   }
 
   async saveChatContent({ id, content }: { id: ChatId, content: ChatContent }): Promise<void> {
-    const dto = chatContentToDto({ domain: content });
-    ChatContentDtoSchema.parse(dto);
-    const dir = await this.getDir({ name: 'chat-contents' });
-    const fileHandle = await dir.getFileHandle(`${idToRaw({ id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
-    await writable.close();
+    await opfsFormat.storage.chatContents.write({ id, content, writeText: this.writeStorageText });
   }
 
   async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
-    const rawMeta = await this.readChatRecord({ directory: 'chat-metas', id });
-    const rawContent = await this.readChatRecord({ directory: 'chat-contents', id });
-    const meta = rawMeta === null ? null : ChatMetaDtoSchema.parse(JSON.parse(rawMeta));
-    const content = rawContent === null ? null : ChatContentDtoSchema.parse(JSON.parse(rawContent));
-    if (meta === null || content === null) {
+    const chat = await opfsFormat.storage.chats.read({ id, readText: this.readChatText });
+    if (chat === undefined) {
       return null;
     }
-
-    const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
-
-    // Resolve groupId from hierarchy
-    const hierarchy = await this.loadHierarchy();
-    if (hierarchy) {
-      const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-      if (group) {
-        chat.groupId = toChatGroupId({ raw: group.id });
-      }
+    const groupId = await opfsFormat.storage.hierarchy.findChatGroupId({ id, readText: this.readStorageText });
+    if (groupId !== undefined) {
+      chat.groupId = groupId;
     }
-
-    // Hydrate attachments with metadata from BinaryObject indices
     await this.hydrateAttachments({ nodes: chat.root.items });
-
     return chat;
   }
 
   async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
-    const rawMeta = await this.readChatRecord({ directory: 'chat-metas', id });
-    if (rawMeta === null) {
+    const meta = await opfsFormat.storage.chatMetas.read({ id, readText: this.readChatText });
+    if (meta === undefined) {
       return null;
     }
-    const meta = chatMetaToDomain({ dto: ChatMetaDtoSchema.parse(JSON.parse(rawMeta)) });
-
-    // Resolve groupId from hierarchy
-    const hierarchy = await this.loadHierarchy();
-    if (hierarchy) {
-      const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-      if (group) {
-        meta.groupId = toChatGroupId({ raw: group.id });
-      }
+    const groupId = await opfsFormat.storage.hierarchy.findChatGroupId({ id, readText: this.readStorageText });
+    if (groupId !== undefined) {
+      meta.groupId = groupId;
     }
-
     return meta;
   }
 
@@ -723,81 +534,54 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async deleteChat({ id }: { id: ChatId }): Promise<void> {
     try {
-      const metaDir = await this.getDir({ name: 'chat-metas' });
-      const contentDir = await this.getDir({ name: 'chat-contents' });
-      await metaDir.removeEntry(`${idToRaw({ id })}.json`);
-      await contentDir.removeEntry(`${idToRaw({ id })}.json`);
+      const meta = opfsFormat.storage.chatMetas.file({ id });
+      const content = opfsFormat.storage.chatContents.file({ id });
+      const metaDir = await this.getEntryParent({ file: meta, create: true });
+      const contentDir = await this.getEntryParent({ file: content, create: true });
+      await metaDir.removeEntry(meta.name);
+      await contentDir.removeEntry(content.name);
     } catch { /* ignore */ }
   }
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
-    const dto = chatGroupToDto({ domain: chatGroup });
-    const serialized = JSON.stringify(ChatGroupDtoSchema.parse(dto));
-    const dir = await this.getDir({ name: 'chat-groups' });
-    const fileHandle = await dir.getFileHandle(`${idToRaw({ id: chatGroup.id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(serialized);
-    await writable.close();
+    await opfsFormat.storage.chatGroups.write({ chatGroup, writeText: this.writeStorageText });
   }
 
   async loadChatGroupConfiguration({ id }: { id: ChatGroupId }): Promise<Omit<ChatGroup, 'items'> | null> {
-    await this.ensureRoot();
-    const dir = await this.getDir({ name: 'chat-groups' });
-    let handle: FileSystemFileHandle;
-    try {
-      handle = await dir.getFileHandle(`${idToRaw({ id })}.json`);
-    } catch (error) {
-      // An acquired file that later fails to read is not a missing group.
-      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
-        return null;
-      }
-      throw error;
-    }
-    const groupDto = ChatGroupDtoSchema.parse(JSON.parse(await (await handle.getFile()).text()));
-    return chatGroupConfigurationToDomain({ dto: groupDto });
+    const group = await opfsFormat.storage.chatGroups.read({ id, readText: this.readChatText });
+    return group?.configuration() ?? null;
   }
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
-    await this.ensureRoot();
-    const dir = await this.getDir({ name: 'chat-groups' });
-    let handle: FileSystemFileHandle;
-    try {
-      handle = await dir.getFileHandle(`${idToRaw({ id })}.json`);
-    } catch (error) {
-      // An acquired file that later fails to read is not a missing group.
-      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
-        return null;
-      }
-      throw error;
+    const group = await opfsFormat.storage.chatGroups.read({ id, readText: this.readChatText });
+    if (group === undefined) {
+      return null;
     }
-    const groupDto = ChatGroupDtoSchema.parse(JSON.parse(await (await handle.getFile()).text()));
     const { hierarchy, allMetas } = await promiseAllKeyed({
       hierarchy: this.loadHierarchy(),
-      allMetas: this.listChatMetasRaw(),
+      allMetas: this.listStoredChatMetas(),
     });
-    const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
-    const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
-    return chatGroupToDomain({ dto: groupDto, hierarchy: h, chatMetas });
+    const chatMetas = allMetas.map(record => record.toDomain());
+    return buildChatGroup({ configuration: group.configuration(), hierarchy, chatMetas });
   }
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
     try {
-      const dir = await this.getDir({ name: 'chat-groups' });
-      await dir.removeEntry(`${idToRaw({ id })}.json`);
+      const file = opfsFormat.storage.chatGroups.file({ id });
+      const dir = await this.getEntryParent({ file, create: true });
+      await dir.removeEntry(file.name);
     } catch { /* ignore */ }
   }
 
   public override async getSidebarStructure(): Promise<SidebarItem[]> {
-    const { rawHierarchy, rawMetas, rawGroups } = await promiseAllKeyed({
-      rawHierarchy: this.loadHierarchy(),
-      rawMetas: this.listChatMetasRaw(),
-      rawGroups: this.listChatGroupsRaw(),
+    const { hierarchy, metas, groups } = await promiseAllKeyed({
+      hierarchy: this.loadHierarchy(),
+      metas: this.listStoredChatMetas(),
+      groups: this.listStoredChatGroups(),
     });
 
-    const hierarchy = hierarchyToDomain({ dto: rawHierarchy || { items: [] } });
-    const chatMetas = rawMetas.map(dto => chatMetaToDomain({ dto }));
-    const chatGroups = rawGroups.map(dto => chatGroupToDomain({ dto, hierarchy, chatMetas }));
-
+    const chatMetas = metas.map(record => record.toDomain());
+    const chatGroups = groups.map(record => record.configuration());
     return buildSidebarItemsFromHierarchy({ hierarchy, chatMetas, chatGroups });
   }
 
@@ -810,33 +594,35 @@ export class OPFSStorageProvider extends IStorageProvider {
     mimeType: string | undefined,
     createdAt: number,
   }): Promise<void> {
-    const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
-    const dir = await this.getShardDir({ shard: shard });
+    const files = opfsFormat.storage.binaryObjects.files({ id: binaryObjectId });
+    const dir = await this.getStorageDirectory({ path: files.parentPath, create: true });
 
     // Do not touch an existing body if its shard metadata cannot be read safely.
-    const index = await this.loadShardIndex({ shard });
+    const entry = await opfsFormat.storage.binaryObjects.index.forId({ id: binaryObjectId }).edit({ readText: this.readBinaryIndexText });
 
-    // 1. Write Blob
-    const binFileName = `${idToRaw({ id: binaryObjectId })}.bin`;
-    const fileHandle = await dir.getFileHandle(binFileName, { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    // Convert blob to ArrayBuffer for compatibility
-    await writable.write(await blob.arrayBuffer());
-    await writable.close();
+    await files.write({
+      async writeBody({ name }) {
+        const handle = await dir.getFileHandle(name, { create: true }) as FileSystemFileHandleWithWritable;
+        const writable = await handle.createWritable();
+        // Convert blob to ArrayBuffer for compatibility.
+        await writable.write(await blob.arrayBuffer());
+        await writable.close();
+      },
+      async createMarker({ name }) {
+        await dir.getFileHandle(name, { create: true });
+      },
+    });
 
-    // 2. Write Marker
-    const markerName = `.${binFileName}.complete`;
-    await dir.getFileHandle(markerName, { create: true });
-
-    // 3. Update Index
-    index.objects[idToRaw({ id: binaryObjectId })] = {
-      id: idToRaw({ id: binaryObjectId }),
-      mimeType: mimeType ?? (blob.type || 'application/octet-stream'),
-      size: blob.size,
-      createdAt,
-      name,
-    };
-    await this.saveShardIndex({ shard: shard, index: index });
+    // Update the index after the body and its marker are written.
+    await entry.put({
+      object: {
+        mimeType: mimeType ?? (blob.type || 'application/octet-stream'),
+        size: blob.size,
+        createdAt,
+        name,
+      },
+      writeText: this.writeStorageText,
+    });
   }
 
   async saveFile({ blob, binaryObjectId, name, mimeType }: {
@@ -856,21 +642,15 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null> {
     try {
-      const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
-      const dir = await this.getShardDir({ shard: shard });
-      const rawId = idToRaw({ id: binaryObjectId });
-      const fileName = `${rawId}.bin`;
-      const markerName = `.${fileName}.complete`;
+      const files = opfsFormat.storage.binaryObjects.files({ id: binaryObjectId });
+      const dir = await this.getStorageDirectory({ path: files.parentPath, create: true });
 
-      // Verify completion marker
-      await dir.getFileHandle(markerName);
-
-      const fileHandle = await dir.getFileHandle(fileName);
-      const { file, index } = await promiseAllKeyed({
+      const fileHandle = await files.open({ openFile: ({ name }) => dir.getFileHandle(name) });
+      const { file, metadata } = await promiseAllKeyed({
         file: fileHandle.getFile(),
-        index: this.loadShardIndex({ shard: shard }),
+        metadata: opfsFormat.storage.binaryObjects.index.forId({ id: binaryObjectId }).read({ readText: this.readBinaryIndexText }),
       });
-      const mimeType = index.objects[rawId]?.mimeType;
+      const mimeType = metadata?.mimeType;
 
       return mimeType === undefined || mimeType === file.type
         ? file
@@ -883,10 +663,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<BinaryObject | null> {
     try {
-      const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
-      const index = await this.loadShardIndex({ shard: shard });
-      const dto = index.objects[idToRaw({ id: binaryObjectId })];
-      return dto === undefined ? null : binaryObjectToDomain({ dto });
+      return await opfsFormat.storage.binaryObjects.index.forId({ id: binaryObjectId }).read({ readText: this.readBinaryIndexText }) ?? null;
     } catch (e) {
       console.error('Failed to get binary object info:', e);
       return null;
@@ -902,7 +679,7 @@ export class OPFSStorageProvider extends IStorageProvider {
         case 'directory': {
           // Check if shard has any files other than index.json
           for await (const shardEntry of (entry as FileSystemDirectoryHandle).values()) {
-            if (shardEntry.name !== 'index.json') {
+            if (shardEntry.name !== opfsFormat.storage.binaryObjects.index.name) {
               return true;
             }
           }
@@ -930,9 +707,9 @@ export class OPFSStorageProvider extends IStorageProvider {
         const kind = shardEntry.kind;
         switch (kind) {
         case 'directory': {
-          const index = await this.loadShardIndex({ shard: shardEntry.name });
-          for (const obj of Object.values(index.objects)) {
-            yield binaryObjectToDomain({ dto: obj });
+          const index = await opfsFormat.storage.binaryObjects.index.readShard({ shard: shardEntry.name, readText: this.readBinaryIndexText });
+          for (const { object } of index.entries()) {
+            yield object;
           }
           break;
         }
@@ -951,49 +728,33 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<void> {
     await this.ensureRoot();
-    const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
-    const dir = await this.getShardDir({ shard: shard });
-    const fileName = `${idToRaw({ id: binaryObjectId })}.bin`;
-    const markerName = `.${fileName}.complete`;
+    const files = opfsFormat.storage.binaryObjects.files({ id: binaryObjectId });
+    const dir = await this.getStorageDirectory({ path: files.parentPath, create: true });
 
-    try {
-      await dir.removeEntry(fileName);
-    } catch (error) {
-      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
-        throw error;
-      }
-    }
-    try {
-      await dir.removeEntry(markerName);
-    } catch (error) {
-      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
-        throw error;
-      }
-    }
+    await files.remove({
+      async removeFile({ name }) {
+        try {
+          await dir.removeEntry(name);
+        } catch (error) {
+          if (!isEntryNotFound({ error })) {
+            throw error;
+          }
+        }
+      },
+    });
 
-    const index = await this.loadShardIndex({ shard: shard });
-    if (index.objects[idToRaw({ id: binaryObjectId })]) {
-      delete index.objects[idToRaw({ id: binaryObjectId })];
-      await this.saveShardIndex({ shard: shard, index: index });
-    }
+    const entry = await opfsFormat.storage.binaryObjects.index.forId({ id: binaryObjectId }).edit({ readText: this.readBinaryIndexText });
+    await entry.remove({ writeText: this.writeStorageText });
   }
 
   async saveSettings({ settings }: { settings: Settings }): Promise<void> {
-    const dto = settingsToDto({ domain: settings });
-    const serialized = JSON.stringify(SettingsDtoSchema.parse(dto));
-    await this.ensureRoot();
-    const fileHandle = await this.root!.getFileHandle('settings.json', { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(serialized);
-    await writable.close();
+    await opfsFormat.storage.settings.write({ settings, writeText: this.writeStorageText });
   }
 
   async loadSettings(): Promise<Settings | null> {
     await this.ensureRoot();
     try {
-      const fileHandle = await this.root!.getFileHandle('settings.json');
-      const file = await fileHandle.getFile();
-      return settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(await file.text())) });
+      return await opfsFormat.storage.settings.read({ readText: this.readStorageText }) ?? null;
     } catch (error) {
       // Unavailable RPC bytes must not masquerade as absent settings.
       return null;
@@ -1015,21 +776,20 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async dump(): Promise<StorageSnapshot> {
     await this.ensureRoot();
-    const { settings, hierarchy, rawMetas, rawGroups } = await promiseAllKeyed({
+    const { settings, hierarchy, metas, groups } = await promiseAllKeyed({
       settings: this.loadSettings(),
       hierarchy: this.loadHierarchy(),
-      rawMetas: this.listChatMetasRaw(),
-      rawGroups: this.listChatGroupsRaw(),
+      metas: this.listStoredChatMetas(),
+      groups: this.listStoredChatGroups(),
     });
 
-    const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
-    const chatGroups = rawGroups.map(dto => chatGroupToDomain({ dto, hierarchy: h, chatMetas: [] }));
-    const chatMetas = rawMetas.map(dto => chatMetaToDomain({ dto }));
+    const chatGroups = groups.map(record => buildChatGroup({ configuration: record.configuration(), hierarchy, chatMetas: [] }));
+    const chatMetas = metas.map(record => record.toDomain());
 
     const contentStream = async function* (this: OPFSStorageProvider): AsyncGenerator<MigrationChunkDto> {
       // 1. Stream all chats
-      for (const meta of rawMetas) {
-        const chat = await this.loadChat({ id: toChatId({ raw: meta.id }) });
+      for (const meta of metas) {
+        const chat = await this.loadChat({ id: meta.id });
         if (chat) {
           yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
         }
@@ -1037,25 +797,23 @@ export class OPFSStorageProvider extends IStorageProvider {
 
       // 2. Stream all binary objects directly from storage (independent of chat references)
       // Existing index read failures must abort export instead of finalizing a
-      // partial backup. Only a missing index is handled by loadShardIndex.
+      // partial backup. An absent index is treated as empty.
       const baseDir = await this.getBinaryObjectsDir();
       for await (const shardEntry of baseDir.values()) {
         const kind = shardEntry.kind;
         switch (kind) {
         case 'directory': {
-          const shard = shardEntry.name;
-          const index = await this.loadShardIndex({ shard: shard });
-          for (const bId of Object.keys(index.objects)) {
-            const meta = index.objects[bId]!;
-            const blob = await this.getFile({ binaryObjectId: toBinaryObjectId({ raw: bId }) });
+          const index = await opfsFormat.storage.binaryObjects.index.readShard({ shard: shardEntry.name, readText: this.readBinaryIndexText });
+          for (const { lookupId, object } of index.entries()) {
+            const blob = await this.getFile({ binaryObjectId: lookupId });
             if (blob) {
               yield {
                 type: 'binary_object' as const,
-                id: bId,
-                name: meta.name ?? 'file',
-                mimeType: meta.mimeType,
-                size: meta.size,
-                createdAt: meta.createdAt,
+                id: idToRaw({ id: lookupId }),
+                name: object.name ?? 'file',
+                mimeType: object.mimeType,
+                size: object.size,
+                createdAt: object.createdAt,
                 blob,
               };
             }
@@ -1081,7 +839,7 @@ export class OPFSStorageProvider extends IStorageProvider {
           storageType: 'opfs',
           endpoint: { ...DEFAULT_SETTINGS_ENDPOINT },
         } satisfies Settings,
-        hierarchy: h,
+        hierarchy,
         chatMetas,
         chatGroups,
       },
@@ -1098,7 +856,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       await this.saveSettings({ settings: structure.settings });
     }
     if (structure.hierarchy) {
-      await this.saveHierarchy({ hierarchy: hierarchyToDto({ domain: structure.hierarchy }) });
+      await this.saveHierarchy({ hierarchy: structure.hierarchy });
     }
     if (structure.chatMetas) {
       for (const meta of structure.chatMetas) {
@@ -1140,42 +898,14 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   // --- Volume Management ---
 
-  private readonly hostVolumeDB = new HostVolumeDB();
-
-  private getVolumeShardPath({ id }: { id: VolumeId }): string {
-    return idToRaw({ id }).slice(-2).toLowerCase();
-  }
-
-  private async getVolumesBaseDir(): Promise<FileSystemDirectoryHandle> {
-    return await this.getDir({ name: 'volumes' });
-  }
+  private readonly hostVolumeDB = indexedDbFormat.hostVolumes.bind({ requests: indexedDbRequestSuccessHandles });
 
   private async findVolumesBaseDir(): Promise<FileSystemDirectoryHandle | undefined> {
     await this.ensureRoot();
     try {
-      return await this.root!.getDirectoryHandle('volumes');
+      return await this.getStorageDirectory({ path: opfsFormat.storage.volumes.path, create: undefined });
     } catch (error) {
-      if (isVolumeEntryNotFound({ error })) {
-        return undefined;
-      }
-      throw error;
-    }
-  }
-
-  private async getVolumeShardDir({ shard }: { shard: string }): Promise<FileSystemDirectoryHandle> {
-    const baseDir = await this.getVolumesBaseDir();
-    return await this.getDir({ name: shard, parent: baseDir });
-  }
-
-  private async findVolumeShardDir({ shard }: { shard: string }): Promise<FileSystemDirectoryHandle | undefined> {
-    const baseDir = await this.findVolumesBaseDir();
-    if (baseDir === undefined) {
-      return undefined;
-    }
-    try {
-      return await baseDir.getDirectoryHandle(shard);
-    } catch (error) {
-      if (isVolumeEntryNotFound({ error })) {
+      if (isEntryNotFound({ error })) {
         return undefined;
       }
       throw error;
@@ -1189,22 +919,21 @@ export class OPFSStorageProvider extends IStorageProvider {
     return await synchronizer.withLock({ lockKey: 'naidan-volume-files', fn: operation });
   }
 
-  private async loadVolumeShardIndex({ shard }: { shard: string }): Promise<VolumeIndexDto> {
-    const dir = await this.findVolumeShardDir({ shard });
-    if (dir === undefined) {
-      return { volumes: {} };
-    }
-    let fileHandle: FileSystemFileHandle;
+  private readVolumeIndexText = async ({ file }: { file: FileLocation }): Promise<string | undefined> => {
+    const directory = await this.findEntryParent({ file });
+    return directory === undefined ? undefined : this.readDirectoryFileText({ directory, name: file.name });
+  };
+
+  private async findEntryParent({ file }: { file: FileLocation }): Promise<FileSystemDirectoryHandle | undefined> {
+    await this.ensureRoot();
     try {
-      fileHandle = await dir.getFileHandle('index.json');
+      return await this.getStorageDirectory({ path: file.path.slice(0, -1), create: undefined });
     } catch (error) {
-      if (isVolumeEntryNotFound({ error })) {
-        return { volumes: {} };
+      if (isEntryNotFound({ error })) {
+        return undefined;
       }
       throw error;
     }
-    const file = await fileHandle.getFile();
-    return VolumeIndexDtoSchema.parse(JSON.parse(await file.text()));
   }
 
   private async withVolumeIndexLock({ shard, operation }: {
@@ -1224,25 +953,11 @@ export class OPFSStorageProvider extends IStorageProvider {
     });
   }
 
-  private async updateVolumeShardIndex({ shard, update }: {
-    shard: string,
-    update({ index }: { index: VolumeIndexDto }): Promise<void>,
-  }): Promise<void> {
-    await this.withVolumeIndexLock({
-      shard,
-      operation: async () => {
-        const index = await this.loadVolumeShardIndex({ shard });
-        await update({ index });
-        await this.saveVolumeShardIndex({ shard, index });
-      },
-    });
-  }
-
-  private async createVolumeDirectory({ volumeId }: { volumeId: VolumeId }): Promise<{ root: FileSystemDirectoryHandle, parent: FileSystemDirectoryHandle }> {
-    const shard = this.getVolumeShardPath({ id: volumeId });
-    const parent = await this.getVolumeShardDir({ shard });
-    const root = await parent.getDirectoryHandle(idToRaw({ id: volumeId }), { create: true });
-    return { root, parent };
+  private async createVolumeDirectory({ volumeId }: { volumeId: VolumeId }): Promise<{ root: FileSystemDirectoryHandle, parent: FileSystemDirectoryHandle, name: string }> {
+    const location = opfsFormat.storage.volumes.root({ id: volumeId });
+    const parent = await this.getEntryParent({ file: location, create: true });
+    const root = await parent.getDirectoryHandle(location.name, { create: true });
+    return { root, parent, name: location.name };
   }
 
   override async ensureVolumeDirectory({ volumeId }: { volumeId: VolumeId }): Promise<FileSystemDirectoryHandle> {
@@ -1250,17 +965,19 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   override async publishVolume({ volume, root }: { volume: Volume, root: FileSystemDirectoryHandle | undefined }): Promise<void> {
-    const shard = this.getVolumeShardPath({ id: volume.id });
+    const { id, ...metadata } = volume;
+    const record = opfsFormat.storage.volumes.index.forId({ id });
     await this.withVolumeIndexLock({
-      shard,
+      shard: record.shard,
       operation: async () => {
         switch (volume.type) {
         case 'opfs': {
-          const directory = await this.findVolumeShardDir({ shard });
+          const location = opfsFormat.storage.volumes.root({ id });
+          const directory = await this.findEntryParent({ file: location });
           if (directory === undefined) {
             throw new DOMException('The browser folder no longer exists', 'NotFoundError');
           }
-          const current = await directory.getDirectoryHandle(idToRaw({ id: volume.id }));
+          const current = await directory.getDirectoryHandle(location.name);
           // A path reused after clearAll must not publish an older copy task.
           if (root !== undefined && !await current.isSameEntry(root)) {
             throw new DOMException('The browser folder was replaced before publication', 'InvalidStateError');
@@ -1268,71 +985,69 @@ export class OPFSStorageProvider extends IStorageProvider {
           break;
         }
         case 'host':
-          await this.getVolumeShardDir({ shard });
+          await this.getStorageDirectory({ path: record.shardPath, create: true });
           break;
         default: {
           const exhaustive: never = volume.type;
           throw new Error(`Unhandled volume type: ${String(exhaustive)}`);
         }
         }
-        const index = await this.loadVolumeShardIndex({ shard });
-        index.volumes[idToRaw({ id: volume.id })] = volumeToDto({ domain: volume });
-        await this.saveVolumeShardIndex({ shard, index });
+        const entry = await record.edit({ readText: this.readVolumeIndexText });
+        await entry.put({ volume: metadata, writeText: this.writeVolumeIndexText });
       },
     });
   }
 
   override async probeVolumeAccess({ volumeId }: { volumeId: VolumeId }): Promise<StoredVolumeAccess> {
-    const shard = this.getVolumeShardPath({ id: volumeId });
-    const index = await this.loadVolumeShardIndex({ shard });
-    const dto = index.volumes[idToRaw({ id: volumeId })];
-    if (dto !== undefined) {
-      switch (dto.type) {
+    const volume = await opfsFormat.storage.volumes.index.forId({ id: volumeId }).read({ readText: this.readVolumeIndexText });
+    if (volume !== undefined) {
+      switch (volume.type) {
       case 'host': {
-        const handle = await this.hostVolumeDB.get({ id: idToRaw({ id: volumeId }) });
-        return handle ? { kind: 'native', volume: volumeToDomain({ dto }), handle } : { kind: 'missing', volumeId };
+        const handle = await this.hostVolumeDB.get({ id: volumeId });
+        return handle ? { kind: 'native', volume, handle } : { kind: 'missing', volumeId };
       }
       case 'opfs':
         break;
       default: {
-        const exhaustive: never = dto;
+        const exhaustive: never = volume.type;
         throw new Error(`Unhandled volume type: ${String(exhaustive)}`);
       }
       }
     }
-    const shardDir = await this.findVolumeShardDir({ shard });
-    if (shardDir === undefined) {
+    const location = opfsFormat.storage.volumes.root({ id: volumeId });
+    const parent = await this.findEntryParent({ file: location });
+    if (parent === undefined) {
       return { kind: 'missing', volumeId };
     }
     let handle: FileSystemDirectoryHandle;
     try {
-      handle = await shardDir.getDirectoryHandle(idToRaw({ id: volumeId }));
+      handle = await parent.getDirectoryHandle(location.name);
     } catch (error) {
-      if (isVolumeEntryNotFound({ error })) {
+      if (isEntryNotFound({ error })) {
         return { kind: 'missing', volumeId };
       }
       throw error;
     }
-    return dto === undefined ? { kind: 'incomplete', volumeId, handle } : { kind: 'native', volume: volumeToDomain({ dto }), handle };
+    return volume === undefined ? { kind: 'incomplete', volumeId, handle } : { kind: 'native', volume, handle };
   }
 
   override async deleteUnpublishedVolumeDirectory({ volumeId }: { volumeId: VolumeId }): Promise<void> {
-    const shard = this.getVolumeShardPath({ id: volumeId });
+    const record = opfsFormat.storage.volumes.index.forId({ id: volumeId });
     await this.withVolumeIndexLock({
-      shard,
+      shard: record.shard,
       operation: async () => {
-        const index = await this.loadVolumeShardIndex({ shard });
-        if (index.volumes[idToRaw({ id: volumeId })] !== undefined) {
+        if (await record.read({ readText: this.readVolumeIndexText }) !== undefined) {
           throw new DOMException('The folder has already been published', 'InvalidStateError');
         }
-        const shardDir = await this.findVolumeShardDir({ shard });
-        if (shardDir === undefined) {
+        const location = opfsFormat.storage.volumes.root({ id: volumeId });
+        const parent = await this.findEntryParent({ file: location });
+        if (parent === undefined) {
           return;
         }
         try {
-          await shardDir.removeEntry(idToRaw({ id: volumeId }), { recursive: true });
+          await parent.removeEntry(location.name, { recursive: true });
         } catch (error) {
-          if (!isVolumeEntryNotFound({ error })) {
+          if (!isEntryNotFound({ error })) {
             throw error;
           }
         }
@@ -1340,15 +1055,15 @@ export class OPFSStorageProvider extends IStorageProvider {
     });
   }
 
-  private async saveVolumeShardIndex({ shard, index }: { shard: string, index: VolumeIndexDto }): Promise<void> {
-    const dir = await this.findVolumeShardDir({ shard });
-    if (dir === undefined) {
+  private writeVolumeIndexText = async ({ file, text }: { file: FileLocation, text: string }): Promise<void> => {
+    const directory = await this.findEntryParent({ file });
+    if (directory === undefined) {
       throw new DOMException('The browser folder index no longer exists', 'NotFoundError');
     }
-    const fileHandle = await dir.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
+    const handle = await directory.getFileHandle(file.name, { create: true });
+    const writable = await handle.createWritable();
     try {
-      await writable.write(JSON.stringify(index));
+      await writable.write(text);
       await writable.close();
     } catch (error) {
       try {
@@ -1356,7 +1071,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       } catch { /* Preserve the metadata failure, including if abort also fails. */ }
       throw error;
     }
-  }
+  };
 
   private async copyDirectory({ source, destination }: { source: FileSystemDirectoryHandle, destination: FileSystemDirectoryHandle }): Promise<void> {
     for await (const entry of source.values()) {
@@ -1392,10 +1107,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       for await (const shardEntry of baseDir.values()) {
         switch (shardEntry.kind) {
         case 'directory': {
-          const index = await this.loadVolumeShardIndex({ shard: shardEntry.name });
-          for (const volDto of Object.values(index.volumes)) {
-            yield volumeToDomain({ dto: volDto });
-          }
+          yield* opfsFormat.storage.volumes.index.listShard({ shard: shardEntry.name, readText: this.readVolumeIndexText });
           break;
         }
         case 'file':
@@ -1418,7 +1130,6 @@ export class OPFSStorageProvider extends IStorageProvider {
     const id = generateId<VolumeId>();
     const createdAt = Date.now();
 
-    let volumeDto: VolumeDto;
     let volumeRoot: FileSystemDirectoryHandle | undefined;
 
     switch (type) {
@@ -1426,22 +1137,10 @@ export class OPFSStorageProvider extends IStorageProvider {
       volumeRoot = await this.ensureVolumeDirectory({ volumeId: id });
       await this.copyDirectory({ source: sourceHandle, destination: volumeRoot });
 
-      volumeDto = {
-        type: 'opfs',
-        id: idToRaw({ id }),
-        name,
-        createdAt,
-      };
       break;
     }
     case 'host': {
-      await this.hostVolumeDB.put({ id: idToRaw({ id }), handle: sourceHandle });
-      volumeDto = {
-        type: 'host',
-        id: idToRaw({ id }),
-        name,
-        createdAt,
-      };
+      await this.hostVolumeDB.put({ id, handle: sourceHandle });
       break;
     }
     default: {
@@ -1450,7 +1149,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
     }
 
-    const volume = volumeToDomain({ dto: volumeDto });
+    const volume: Volume = { id, name, type, createdAt };
     await this.publishVolume({ volume, root: volumeRoot });
     return volume;
   }
@@ -1464,11 +1163,11 @@ export class OPFSStorageProvider extends IStorageProvider {
     const id = generateId<VolumeId>();
     const createdAt = Date.now();
 
-    const { root: volumeDir, parent: shardDir } = await this.withVolumeFilesLock({ operation: () => this.createVolumeDirectory({ volumeId: id }) });
+    const { root: volumeDir, parent, name: directoryName } = await this.withVolumeFilesLock({ operation: () => this.createVolumeDirectory({ volumeId: id }) });
 
     for (let i = 0; i < entries.length; i++) {
       if (signal?.aborted) {
-        await shardDir.removeEntry(idToRaw({ id }), { recursive: true }).catch(() => {});
+        await parent.removeEntry(directoryName, { recursive: true }).catch(() => {});
         throw new DOMException('Cancelled by user', 'AbortError');
       }
 
@@ -1496,14 +1195,13 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
     }
 
-    const volumeDto: VolumeDto = {
+    const volume: Volume = {
       type: 'opfs',
-      id: idToRaw({ id }),
+      id,
       name,
       createdAt,
     };
 
-    const volume = volumeToDomain({ dto: volumeDto });
     await this.publishVolume({ volume, root: volumeDir });
     return volume;
   }
@@ -1529,105 +1227,50 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async renameVolume({ volumeId, name }: { volumeId: VolumeId, name: string }): Promise<void> {
-    const shard = this.getVolumeShardPath({ id: volumeId });
-    await this.updateVolumeShardIndex({
-      shard,
-      update: async ({ index }) => {
-        const volume = index.volumes[idToRaw({ id: volumeId })];
-        if (!volume) {
-          throw new Error(`Volume not found: ${idToRaw({ id: volumeId })}`);
-        }
-        index.volumes[idToRaw({ id: volumeId })] = { ...volume, name };
+    const record = opfsFormat.storage.volumes.index.forId({ id: volumeId });
+    await this.withVolumeIndexLock({
+      shard: record.shard,
+      operation: async () => {
+        const entry = await record.edit({ readText: this.readVolumeIndexText });
+        await entry.rename({ name, writeText: this.writeVolumeIndexText });
       },
     });
   }
 
   async deleteVolume({ volumeId }: { volumeId: VolumeId }): Promise<void> {
-    const shard = this.getVolumeShardPath({ id: volumeId });
+    const record = opfsFormat.storage.volumes.index.forId({ id: volumeId });
 
     try {
       await this.withVolumeIndexLock({
-        shard,
+        shard: record.shard,
         operation: async () => {
-          const index = await this.loadVolumeShardIndex({ shard });
-          const volume = index.volumes[idToRaw({ id: volumeId })];
+          const entry = await record.edit({ readText: this.readVolumeIndexText });
+          const volume = entry.get();
           if (volume === undefined) {
             return;
           }
           switch (volume.type) {
           case 'opfs': {
-            const shardDir = await this.getVolumeShardDir({ shard });
-            await shardDir.removeEntry(idToRaw({ id: volumeId }), { recursive: true });
+            const location = opfsFormat.storage.volumes.root({ id: volumeId });
+            const parent = await this.getEntryParent({ file: location, create: true });
+            await parent.removeEntry(location.name, { recursive: true });
             break;
           }
           case 'host':
-            await this.hostVolumeDB.delete({ id: idToRaw({ id: volumeId }) });
+            await this.hostVolumeDB.delete({ id: volumeId });
             break;
           default: {
-            const _ex: never = volume;
+            const _ex: never = volume.type;
             throw new Error(`Unhandled volume type: ${JSON.stringify(_ex)}`);
           }
           }
 
-          delete index.volumes[idToRaw({ id: volumeId })];
-          await this.saveVolumeShardIndex({ shard, index });
+          await entry.remove({ writeText: this.writeVolumeIndexText });
         },
       });
     } catch (e) {
       console.error('Failed to delete volume:', e);
     }
-  }
-}
-
-class HostVolumeDB {
-  private readonly DB_NAME = 'naidan-volumes';
-  private readonly STORE_NAME = 'handles';
-
-  async put({ id, handle }: { id: string, handle: FileSystemDirectoryHandle }): Promise<void> {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.STORE_NAME, 'readwrite');
-      const store = tx.objectStore(this.STORE_NAME);
-      const req = store.put(handle, id);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  async get({ id }: { id: string }): Promise<FileSystemDirectoryHandle | undefined> {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.STORE_NAME, 'readonly');
-      const store = tx.objectStore(this.STORE_NAME);
-      const req = store.get(id);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  async delete({ id }: { id: string }): Promise<void> {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.STORE_NAME, 'readwrite');
-      const store = tx.objectStore(this.STORE_NAME);
-      const req = store.delete(id);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  private open(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(this.DB_NAME, 1);
-      req.onupgradeneeded = (e) => {
-        const db = (e.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
-          db.createObjectStore(this.STORE_NAME);
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
   }
 }
 

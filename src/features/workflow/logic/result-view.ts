@@ -1,8 +1,7 @@
-import { z } from 'zod';
+import { opfsFormat } from '@/00-format/01-layout/layout';
 import { boundedImageDimensions } from '@/utils/image-bounds';
 import type { ChatMessage } from '@/01-models/types';
-import { idToRaw, toToolCallId } from '@/01-models/ids';
-import { parseWorkflowJson } from '@/00-storage/service/workflow-json';
+import { idToRaw } from '@/01-models/ids';
 import { materializeWorkflowConversation } from './conversation';
 import { readWorkflowBinary } from './binary';
 import { readText, serializeValue, retainValue, releaseValue, type RuntimeValue, type RuntimeMessage } from './values';
@@ -17,11 +16,8 @@ export type WorkflowResultSource = {
   id: string, label: string,
   load: ({ signal }: { signal: AbortSignal }) => Promise<WorkflowResultView>,
 };
-const textLimit = 2 * 1024 * 1024;
-const imageLimit = 16 * 1024 * 1024;
-const audioLimit = 64 * 1024 * 1024;
 
-const mediaLimits = { image: imageLimit, audio: audioLimit, text: textLimit };
+const livePreviewLimits = { text: 2 * 1024 * 1024, image: 16 * 1024 * 1024, audio: 64 * 1024 * 1024 };
 
 function mediaView({ bytes, kind }: { bytes: Uint8Array<ArrayBuffer>, kind: 'image' | 'audio' }): WorkflowResultView {
   switch (kind) {
@@ -78,17 +74,17 @@ async function viewValue({ value, signal }: { value: RuntimeValue, signal: Abort
       }
       }
     })();
-    const bytes = await readWorkflowBinary({ output: value.output, maxBytes: mediaLimits[kind], signal });
+    const bytes = await readWorkflowBinary({ output: value.output, maxBytes: livePreviewLimits[kind], signal });
     return mediaView({ bytes, kind });
   }
   case 'conversation': return { type: 'conversation', messages: (await materializeWorkflowConversation({ messages: value.messages, signal })).messages };
-  case 'text': return { type: 'text', text: await readText({ value, signal, maxBytes: textLimit }) };
+  case 'text': return { type: 'text', text: await readText({ value, signal, maxBytes: livePreviewLimits.text }) };
   case 'json': case 'array': case 'object': {
     let text = '', size = 0;
     const encoder = new TextEncoder();
     for await (const part of serializeValue({ value, signal })) {
       size += encoder.encode(part).byteLength;
-      if (size > textLimit) {
+      if (size > livePreviewLimits.text) {
         throw new Error('Result exceeds the display limit; use the file browser or archive.');
       }
       text += part;
@@ -103,28 +99,23 @@ async function viewValue({ value, signal }: { value: RuntimeValue, signal: Abort
   }
 }
 
-const historicalPart = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('text'), text: z.string() }),
-  z.object({ type: z.literal('reasoning'), text: z.string() }),
-  z.object({ type: z.literal('tool_call'), id: z.string(), name: z.string(), arguments: z.string() }),
-  z.object({ type: z.literal('tool_result'), id: z.string(), status: z.enum(['success', 'error']), code: z.enum(['invalid_arguments', 'execution_failed', 'timeout', 'other']).optional(), content: z.string() }),
-]);
-const historicalConversation = z.array(z.object({ role: z.enum(['system', 'user', 'assistant', 'tool']), parts: z.array(historicalPart).max(64) })).max(256);
-
 /** Old archives without a kind marker remain ordinary JSON, never executable input. */
 export async function readWorkflowArchivedConversation({ text, signal }: { text: string, signal: AbortSignal }): Promise<ChatMessage[]> {
   signal.throwIfAborted();
-  if (new TextEncoder().encode(text).byteLength > textLimit) {
-    throw new Error('Conversation exceeds the display limit.');
-  }
-  const messages: RuntimeMessage[] = historicalConversation.parse(parseWorkflowJson({ text })).map(message => ({
+  return materializeArchive({ archived: opfsFormat.tmp.workflowResults.readConversation({ text }), signal });
+}
+
+async function materializeArchive({ archived, signal }: {
+  archived: ReturnType<typeof opfsFormat.tmp.workflowResults.readConversation>, signal: AbortSignal,
+}): Promise<ChatMessage[]> {
+  const messages: RuntimeMessage[] = archived.map(message => ({
     role: message.role,
     parts: message.parts.map(part => {
       switch (part.type) {
       case 'text': return { type: 'json', value: part.text };
       case 'reasoning': return { type: 'reasoning', content: { type: 'json', value: part.text } };
-      case 'tool_call': return { type: 'tool_call', id: toToolCallId({ raw: part.id }), name: part.name, arguments: part.arguments };
-      case 'tool_result': return { type: 'tool_result', id: toToolCallId({ raw: part.id }), status: part.status, code: part.code, content: { type: 'json', value: part.content } };
+      case 'tool_call': return { type: 'tool_call', id: part.id, name: part.name, arguments: part.arguments };
+      case 'tool_result': return { type: 'tool_result', id: part.id, status: part.status, code: part.code, content: { type: 'json', value: part.content } };
       default: {
         const exhaustive: never = part;
         throw new Error(String(exhaustive));
@@ -135,66 +126,31 @@ export async function readWorkflowArchivedConversation({ text, signal }: { text:
   return (await materializeWorkflowConversation({ messages, signal })).messages;
 }
 
-const manifestSchema = z.object({
-  outputs: z.array(z.object({
-    stepId: z.string().max(4096),
-    output: z.string().max(4096),
-    path: z.string().regex(/^result-[0-9]{4}\.(?:txt|json|jsonl|bin|png|wav)$/).nullable(),
-    kind: z.enum(['conversation']).optional(),
-  })).max(1000),
-});
-
 export async function archivedWorkflowResultSources({ directory, signal }: { directory: FileSystemDirectoryHandle, signal: AbortSignal }): Promise<WorkflowResultSource[]> {
-  const index = await (await directory.getFileHandle('index.json')).getFile();
-  if (index.size > textLimit) {
-    throw new Error('Result index exceeds its display limit.');
-  }
-  signal.throwIfAborted();
-  const manifest = manifestSchema.parse(parseWorkflowJson({ text: new TextDecoder('utf-8', { fatal: true }).decode(await index.arrayBuffer()) }));
-  signal.throwIfAborted();
-  return manifest.outputs.flatMap((item, offset) => {
-    const path = item.path;
-    if (path === null || path.endsWith('.bin') || path.endsWith('.jsonl')) {
-      return [];
-    }
-    return [{
-      id: `${offset}:${path}`,
-      label: `${item.stepId} / ${item.output}`,
-      async load({ signal }: { signal: AbortSignal }): Promise<WorkflowResultView> {
-        signal.throwIfAborted();
-        const file = await (await directory.getFileHandle(path)).getFile();
-        const type = path.endsWith('.png') ? 'image' : path.endsWith('.wav') ? 'audio' : 'text';
-        const limit = mediaLimits[type];
-        if (file.size > limit) {
-          throw new Error('Result exceeds the display limit; use the file browser or archive.');
-        }
-        const bytes = await file.arrayBuffer();
-        signal.throwIfAborted();
-        switch (type) {
-        case 'image': case 'audio': return mediaView({ bytes: new Uint8Array(bytes), kind: type });
-        case 'text': {
-          const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-          switch (item.kind) {
-          case 'conversation': return { type: 'conversation', messages: await readWorkflowArchivedConversation({ text, signal }) };
-          case undefined: return { type: 'text', text };
-          default: {
-            const exhaustive: never = item.kind;
-            throw new Error(String(exhaustive));
-          }
-          }
-        }
-        default: {
-          const exhaustive: never = type;
-          throw new Error(String(exhaustive));
-        }
-        }
-      },
-    }];
+  const results = await opfsFormat.tmp.workflowResults.listViewableResults({
+    signal,
+    openFile: async ({ name }) => (await directory.getFileHandle(name)).getFile(),
   });
+  return results.map(result => ({
+    id: `${result.offset}:${result.name}`,
+    label: `${result.stepId} / ${result.output}`,
+    async load({ signal }) {
+      const value = await result.read({ signal });
+      switch (value.type) {
+      case 'image': case 'audio': return mediaView({ bytes: new Uint8Array(value.bytes), kind: value.type });
+      case 'conversation': return { type: 'conversation', messages: await materializeArchive({ archived: value.messages, signal }) };
+      case 'text': return { type: 'text', text: value.text };
+      default: {
+        const exhaustive: never = value;
+        throw new Error(`Unknown result: ${exhaustive}`);
+      }
+      }
+    },
+  }));
 }
 
 export const TEST_ONLY = {
-  textLimit,
-  imageLimit,
-  audioLimit,
+  textLimit: livePreviewLimits.text,
+  imageLimit: livePreviewLimits.image,
+  audioLimit: livePreviewLimits.audio,
 };

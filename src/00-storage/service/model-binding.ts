@@ -4,7 +4,6 @@ import { resolveChatModelBinding } from '@/01-models/chat-model-binding';
 import type { IStorageProvider } from './interface';
 import type { ChatContent, ChatMeta, Endpoint, MessageBranch, MessageNode } from '@/01-models/types';
 import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
-import { idToRaw } from '@/01-models/ids';
 import { promoteModelLaunchBinding } from './model-launch';
 import { chatContentFingerprint, readChatContentWrite, type ChatContentWrite } from './chat-content-binding';
 import { chatModelBindingAssistantFingerprint } from '@/01-models/chat-message';
@@ -36,11 +35,10 @@ const promotionProgress = new WeakMap<ModelBindingSnapshot, PromotionProgress>()
 
 async function ownerIsPresent({ provider, chatId, chatGroupId }: { provider: IStorageProvider, chatId: ChatId, chatGroupId: ChatGroupId | undefined }): Promise<boolean> {
   const hierarchy = await provider.loadHierarchy();
-  const rawChatId = idToRaw({ id: chatId });
   return hierarchy?.items.some(item => {
     switch (item.type) {
-    case 'chat': return chatGroupId === undefined && item.id === rawChatId;
-    case 'chat_group': return chatGroupId !== undefined && item.id === idToRaw({ id: chatGroupId }) && item.chat_ids.includes(rawChatId);
+    case 'chat': return chatGroupId === undefined && item.id === chatId;
+    case 'chat_group': return chatGroupId !== undefined && item.id === chatGroupId && item.chat_ids.includes(chatId);
     default: {
       const exhaustive: never = item;
       throw new Error(String(exhaustive));

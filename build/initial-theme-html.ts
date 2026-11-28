@@ -1,5 +1,5 @@
 import type { HtmlTagDescriptor, Plugin } from 'vite';
-import { THEME_MODE_STORAGE_KEY } from '../src/constants.ts';
+import { DEFAULT_THEME_MODE, THEME_MODE_STORAGE_KEY, THEME_MODE_VALUES, type ThemeMode } from '../src/00-format/theme-mode.ts';
 import {
   FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE,
   FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE,
@@ -9,8 +9,6 @@ import {
   INITIAL_THEME_BOOTSTRAP_ELEMENT_ID,
   RESOLVED_THEME_ATTRIBUTE_NAME,
   THEME_CONTROL_ATTRIBUTE_NAME,
-  THEME_MODE_VALUES,
-  type ThemeMode,
 } from '../src/features/theme/logic/theme.ts';
 
 function createInitialThemeValidationCases(): string {
@@ -55,6 +53,7 @@ function createInitialThemeResolutionCases(): string {
 
 export function createInitialThemeBootstrapSource(): string {
   const storageKey = JSON.stringify(THEME_MODE_STORAGE_KEY);
+  const defaultMode = JSON.stringify(DEFAULT_THEME_MODE);
   const resolvedThemeAttribute = JSON.stringify(RESOLVED_THEME_ATTRIBUTE_NAME);
   const themeControlAttribute = JSON.stringify(THEME_CONTROL_ATTRIBUTE_NAME);
   const validationCases = createInitialThemeValidationCases();
@@ -73,7 +72,7 @@ export function createInitialThemeBootstrapSource(): string {
  * independently reviewed first-paint requirement.
  */
 (function () {
-  var mode = 'system';
+  var mode = ${defaultMode};
   try {
     var rawMode = localStorage.getItem(${storageKey});
     switch (rawMode) {
@@ -84,7 +83,7 @@ ${validationCases}
       break;
     }
   } catch (_error) {
-    mode = 'system';
+    mode = ${defaultMode};
   }
 
   var systemIsDark = typeof matchMedia === 'function'

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
-import { STORAGE_KEY_PREFIX } from '@/constants';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 import { createImageGenerationStorageHarness } from './image-generation/index.test-support';
@@ -33,7 +32,7 @@ async function storageFixture({ kind }: { kind: 'local' | 'opfs' }) {
       const text = JSON.stringify(value);
       const paths = recordPaths[record];
       if (!files) {
-        localStorage.setItem(`${STORAGE_KEY_PREFIX}lsp:${paths.local}`, text);
+        localStorage.setItem(`naidan:lsp:${paths.local}`, text);
         return text;
       }
       const parts = ['naidan-storage', ...paths.opfs.split('/')];
@@ -50,7 +49,7 @@ async function storageFixture({ kind }: { kind: 'local' | 'opfs' }) {
       if (files) {
         return (await files.file({ path: `naidan-storage/${paths.opfs}` })).text;
       }
-      const text = localStorage.getItem(`${STORAGE_KEY_PREFIX}lsp:${paths.local}`);
+      const text = localStorage.getItem(`naidan:lsp:${paths.local}`);
       if (text === null) {
         throw new Error(`Missing fixture: ${record}`);
       }

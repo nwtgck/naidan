@@ -1,9 +1,9 @@
+import { modelCacheOpfsRoot } from '@/00-format/model-cache-root';
 import { z } from 'zod';
 import type { BrowserImageModelLocation } from '@/01-models/types';
 import type { TemporaryModelDirectory } from '@/01-models/temporary-model-files';
 import { hasTemporaryModelPathPrefix, temporaryRootPathSchema } from '@/01-models/temporary-model-files';
 import { toHostModelDirectoryId } from '@/01-models/ids';
-import { OPFS_MODELS_DIR } from '@/constants';
 
 /** A captured file relative to one model root, with its reader provenance. */
 export type ModelFile = { relativePath: string, file: File } & (
@@ -71,7 +71,7 @@ export function modelFileLocation({ repositoryKey, hostSource, relativePath }: {
     temporaryRootPathSchema.parse(repositoryKey);
     return { kind: 'temp', path: `${repositoryKey}/${relativePath}` };
   }
-  return { kind: 'opfs', path: `${OPFS_MODELS_DIR}/${repositoryKey}/${relativePath}` };
+  return { kind: 'opfs', path: `${modelCacheOpfsRoot.path.join('/')}/${repositoryKey}/${relativePath}` };
 }
 
 export const TEST_ONLY = {

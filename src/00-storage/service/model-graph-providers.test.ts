@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { OPFSStorageProvider } from './opfs-storage';
 import { MemoryStorageProvider } from './memory-storage';
-import type { ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
+import type { ExperimentalModelGraphRegistryDto } from '@/00-format/00-dto/experimental-model-graph.dto';
 
 const registry = { version: 1, id: 'registry-example', revision: 1, registrations: [] } satisfies ExperimentalModelGraphRegistryDto;
 const filename = 'experimental-model-graph-registry.json';
@@ -132,21 +132,21 @@ afterEach(() => vi.unstubAllGlobals());
 
 it('stores the registry in the experimental directory under the Naidan OPFS root', async () => {
   const { provider, root, storage, files } = opfsFixture();
-  expect(await provider.loadModelGraphRegistry()).toBeUndefined();
-  await provider.saveModelGraphRegistry({ registry });
+  expect(await provider.readModelGraphRegistryForTransfer()).toBeUndefined();
+  await provider.writeModelGraphRegistryForTransfer({ registry });
   expect(root.getDirectoryHandle).toHaveBeenCalledWith('naidan-storage', { create: true });
   expect(storage.getDirectoryHandle).toHaveBeenCalledWith('experimental', { create: false });
   expect(storage.getDirectoryHandle).toHaveBeenCalledWith('experimental', { create: true });
   expect(storage.files.size).toBe(0);
   expect([...files.keys()]).toEqual([filename]);
-  expect(await provider.loadModelGraphRegistry()).toEqual(registry);
+  expect(await provider.readModelGraphRegistryForTransfer()).toEqual(registry);
 });
 
 it('does not create a missing experimental directory when reading or removing the registry', async () => {
   const { provider, storage } = opfsFixture();
   await storage.removeEntry('experimental', { recursive: true });
-  expect(await provider.loadModelGraphRegistry()).toBeUndefined();
-  await provider.saveModelGraphRegistry({ registry: undefined });
+  expect(await provider.readModelGraphRegistryForTransfer()).toBeUndefined();
+  await provider.writeModelGraphRegistryForTransfer({ registry: undefined });
   expect(storage.directories.has('experimental')).toBe(false);
   expect(storage.getDirectoryHandle.mock.calls).toEqual([
     ['experimental', { create: false }],
@@ -157,9 +157,9 @@ it('does not create a missing experimental directory when reading or removing th
 it('creates the experimental directory on the first registry save', async () => {
   const { provider, storage } = opfsFixture();
   await storage.removeEntry('experimental', { recursive: true });
-  await provider.saveModelGraphRegistry({ registry });
+  await provider.writeModelGraphRegistryForTransfer({ registry });
   expect(storage.directories.get('experimental')?.files.get(filename)?.content).toBe(JSON.stringify(registry));
-  expect(await provider.loadModelGraphRegistry()).toEqual(registry);
+  expect(await provider.readModelGraphRegistryForTransfer()).toEqual(registry);
 });
 
 it('validates the declared registry version before creating its directory', async () => {
@@ -167,16 +167,16 @@ it('validates the declared registry version before creating its directory', asyn
   await storage.removeEntry('experimental', { recursive: true });
   const invalid = { ...registry };
   Reflect.set(invalid, 'version', 2);
-  await expect(provider.saveModelGraphRegistry({ registry: invalid })).rejects.toThrow();
+  await expect(provider.writeModelGraphRegistryForTransfer({ registry: invalid })).rejects.toThrow();
   expect(storage.directories.has('experimental')).toBe(false);
 });
 
 it('propagates directory access failures for reads, writes and removals', async () => {
   const { provider, failures } = opfsFixture();
   failures.directoryLookup = new DOMException('Directory denied', 'NotAllowedError');
-  await expect(provider.loadModelGraphRegistry()).rejects.toThrow('Directory denied');
-  await expect(provider.saveModelGraphRegistry({ registry })).rejects.toThrow('Directory denied');
-  await expect(provider.saveModelGraphRegistry({ registry: undefined })).rejects.toThrow('Directory denied');
+  await expect(provider.readModelGraphRegistryForTransfer()).rejects.toThrow('Directory denied');
+  await expect(provider.writeModelGraphRegistryForTransfer({ registry })).rejects.toThrow('Directory denied');
+  await expect(provider.writeModelGraphRegistryForTransfer({ registry: undefined })).rejects.toThrow('Directory denied');
 });
 
 it('leaves the old root-level registry untouched without reading or migrating it', async () => {
@@ -184,10 +184,10 @@ it('leaves the old root-level registry untouched without reading or migrating it
   const oldFilename = 'experimental-experimental-model-graph-registry.json';
   const oldContent = JSON.stringify({ version: 1, id: 'old-registry-example', connections: [] });
   storage.files.set(oldFilename, { content: oldContent });
-  expect(await provider.loadModelGraphRegistry()).toBeUndefined();
-  await provider.saveModelGraphRegistry({ registry });
+  expect(await provider.readModelGraphRegistryForTransfer()).toBeUndefined();
+  await provider.writeModelGraphRegistryForTransfer({ registry });
   expect(JSON.parse(files.get(filename)!.content)).toEqual(registry);
-  await provider.saveModelGraphRegistry({ registry: undefined });
+  await provider.writeModelGraphRegistryForTransfer({ registry: undefined });
   expect(storage.files.get(oldFilename)?.content).toBe(oldContent);
   expect(storage.getFileHandle).not.toHaveBeenCalled();
 });
@@ -196,50 +196,50 @@ it('removes only the registry and preserves the shared experimental directory an
   const { provider, storage, directory, files } = opfsFixture();
   const images = await directory.getDirectoryHandle('image-generation', { create: true });
   images.files.set('catalog.json', { content: 'image catalog' });
-  await provider.saveModelGraphRegistry({ registry });
-  await provider.saveModelGraphRegistry({ registry: undefined });
-  await provider.saveModelGraphRegistry({ registry: undefined });
+  await provider.writeModelGraphRegistryForTransfer({ registry });
+  await provider.writeModelGraphRegistryForTransfer({ registry: undefined });
+  await provider.writeModelGraphRegistryForTransfer({ registry: undefined });
   expect(files.has(filename)).toBe(false);
   expect(storage.directories.get('experimental')).toBe(directory);
   expect(directory.directories.get('image-generation')?.files.get('catalog.json')?.content).toBe('image catalog');
-  expect(await provider.loadModelGraphRegistry()).toBeUndefined();
+  expect(await provider.readModelGraphRegistryForTransfer()).toBeUndefined();
 });
 
 it('reopens the experimental directory after clearing all storage', async () => {
   const { provider, storage, directory } = opfsFixture();
-  await provider.saveModelGraphRegistry({ registry });
+  await provider.writeModelGraphRegistryForTransfer({ registry });
   await provider.clearAll();
   expect(storage.directories.size).toBe(0);
-  expect(await provider.loadModelGraphRegistry()).toBeUndefined();
+  expect(await provider.readModelGraphRegistryForTransfer()).toBeUndefined();
   expect(storage.directories.size).toBe(0);
   const replacement = { ...registry, id: 'replacement-example' };
-  await provider.saveModelGraphRegistry({ registry: replacement });
+  await provider.writeModelGraphRegistryForTransfer({ registry: replacement });
   expect(storage.directories.get('experimental')).not.toBe(directory);
-  expect(await provider.loadModelGraphRegistry()).toEqual(replacement);
+  expect(await provider.readModelGraphRegistryForTransfer()).toEqual(replacement);
 });
 
 it('does not turn access failures or failures after lookup into an empty registry', async () => {
   const { provider, failures, files } = opfsFixture();
   failures.lookup = new DOMException('Denied', 'NotAllowedError');
-  await expect(provider.loadModelGraphRegistry()).rejects.toThrow('Denied');
+  await expect(provider.readModelGraphRegistryForTransfer()).rejects.toThrow('Denied');
   failures.lookup = undefined;
   files.set(filename, { content: JSON.stringify(registry) });
   failures.read = new DOMException('Removed after lookup', 'NotFoundError');
-  await expect(provider.loadModelGraphRegistry()).rejects.toThrow('Removed after lookup');
+  await expect(provider.readModelGraphRegistryForTransfer()).rejects.toThrow('Removed after lookup');
 });
 
 it('rejects corrupted content without replacing it', async () => {
   const { provider, files } = opfsFixture();
   files.set(filename, { content: '{' });
-  await expect(provider.loadModelGraphRegistry()).rejects.toThrow();
+  await expect(provider.readModelGraphRegistryForTransfer()).rejects.toThrow();
   expect(files.get(filename)?.content).toBe('{');
 });
 
 it('aborts a failed replacement and preserves the previously committed registry', async () => {
   const { provider, failures, files, aborted } = opfsFixture();
-  await provider.saveModelGraphRegistry({ registry });
+  await provider.writeModelGraphRegistryForTransfer({ registry });
   failures.close = new Error('close failed');
-  await expect(provider.saveModelGraphRegistry({ registry: { ...registry, id: 'replacement-example' } })).rejects.toThrow('close failed');
+  await expect(provider.writeModelGraphRegistryForTransfer({ registry: { ...registry, id: 'replacement-example' } })).rejects.toThrow('close failed');
   expect(aborted).toHaveBeenCalledOnce();
   expect(JSON.parse(files.get(filename)!.content)).toEqual(registry);
 });
@@ -247,24 +247,24 @@ it('aborts a failed replacement and preserves the previously committed registry'
 it('removes a newly created empty file after the first save fails, allowing retry', async () => {
   const { provider, failures, files } = opfsFixture();
   failures.write = new Error('quota');
-  await expect(provider.saveModelGraphRegistry({ registry })).rejects.toThrow('quota');
+  await expect(provider.writeModelGraphRegistryForTransfer({ registry })).rejects.toThrow('quota');
   expect(files.has(filename)).toBe(false);
-  expect(await provider.loadModelGraphRegistry()).toBeUndefined();
+  expect(await provider.readModelGraphRegistryForTransfer()).toBeUndefined();
   failures.write = undefined;
-  await provider.saveModelGraphRegistry({ registry });
-  expect(await provider.loadModelGraphRegistry()).toEqual(registry);
+  await provider.writeModelGraphRegistryForTransfer({ registry });
+  expect(await provider.readModelGraphRegistryForTransfer()).toEqual(registry);
 });
 
 it('keeps memory registries private to a provider instance and clears them with the other data', async () => {
   const first = new MemoryStorageProvider(), other = new MemoryStorageProvider();
-  await first.saveModelGraphRegistry({ registry });
-  const loaded = await first.loadModelGraphRegistry();
+  await first.writeModelGraphRegistryForTransfer({ registry });
+  const loaded = await first.readModelGraphRegistryForTransfer();
   if (!loaded) {
     throw new Error('Registry missing');
   }
   loaded.id = 'mutated-example';
-  expect((await first.loadModelGraphRegistry())?.id).toBe(registry.id);
-  expect(await other.loadModelGraphRegistry()).toBeUndefined();
+  expect((await first.readModelGraphRegistryForTransfer())?.id).toBe(registry.id);
+  expect(await other.readModelGraphRegistryForTransfer()).toBeUndefined();
   await first.clearAll();
-  expect(await first.loadModelGraphRegistry()).toBeUndefined();
+  expect(await first.readModelGraphRegistryForTransfer()).toBeUndefined();
 });

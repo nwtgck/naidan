@@ -1,8 +1,8 @@
 import * as dtozod from '@/utils/dtozod';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { idToRaw, toImageGenerationSessionId, toHostModelDirectoryId } from '@/01-models/ids';
-import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
-import { ExperimentalImageGenerationDraftDtoSchema, ExperimentalImageGenerationRunDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-format/mapper/image-generation';
+import { ExperimentalImageGenerationDraftDtoSchema, ExperimentalImageGenerationRunDtoSchema } from '@/00-format/00-dto/experimental-image-generation.dto';
 import * as service from './image-generation';
 import { createImageGenerationStorageHarness, generationDraftFixture, generationSessionFixture } from './image-generation/index.test-support';
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;

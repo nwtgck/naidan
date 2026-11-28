@@ -188,7 +188,7 @@ it('keeps only the nonextractable identity in IndexedDB and writes registrations
   expect(db.scopes.every(scope => scope.length === 1 && scope[0] === 'identity')).toBe(true);
   expect(new Set(db.names)).toEqual(new Set(['naidan-experimental-rpc-identity']));
   expect(db.stores.get('identity')?.size).toBe(1);
-  const stored = await new LocalStorageProvider().loadNaidanRpcRegistry();
+  const stored = await new LocalStorageProvider().readNaidanRpcRegistryForTransfer();
   expect(stored?.registrations[0]?.transport).toEqual(registration.transport);
   expect(JSON.stringify(stored)).not.toContain('privateKey');
   expect(fetch).not.toHaveBeenCalled();
@@ -326,7 +326,7 @@ it('keeps local trust and transport credentials out of general JSON backups', as
 it('retains the original provider when copying its registry to a new provider fails', async () => {
   database();
   const access = await remember({ next: registration });
-  vi.spyOn(MemoryStorageProvider.prototype, 'saveNaidanRpcRegistry').mockRejectedValueOnce(new Error('registry copy failed'));
+  vi.spyOn(MemoryStorageProvider.prototype, 'writeNaidanRpcRegistryForTransfer').mockRejectedValueOnce(new Error('registry copy failed'));
   await expect(storageService.switchProvider({ type: 'memory' })).rejects.toThrow('registry copy failed');
   expect(storageService.getCurrentType()).toBe('local');
   expect((await naidanRpcStorage.list()).access).toEqual(access);
@@ -365,7 +365,7 @@ it.each([
   const db = database();
   const { access } = await naidanRpcStorage.list();
   const provider = new LocalStorageProvider();
-  await provider.saveNaidanRpcRegistry({ registry: { version: 1, id: 'known-registry', registrations: [] } });
+  await provider.writeNaidanRpcRegistryForTransfer({ registry: { version: 1, id: 'known-registry', registrations: [] } });
   const key = Object.keys(localStorage).find(key => key.endsWith('experimental-naidan-rpc-connections'));
   if (!key) {
     throw new Error('Missing stable registry location');
@@ -382,19 +382,19 @@ it.each([
 it.each(['bad-id', 'duplicate-id'])('keeps registry invariants at the use boundary and leaves stored data untouched (%s)', async mode => {
   database();
   await remember({ next: registration });
-  const provider = new LocalStorageProvider(), stored = (await provider.loadNaidanRpcRegistry())!;
+  const provider = new LocalStorageProvider(), stored = (await provider.readNaidanRpcRegistryForTransfer())!;
   const invalid = mode === 'bad-id' ? { ...stored, id: 'bad' } : { ...stored, registrations: [...stored.registrations, ...stored.registrations] };
   // The provider handles declared structure; the registry owns identity and uniqueness.
-  await provider.saveNaidanRpcRegistry({ registry: invalid });
+  await provider.writeNaidanRpcRegistryForTransfer({ registry: invalid });
   await expect(naidanRpcStorage.list()).rejects.toThrow(mode === 'bad-id' ? 'identity' : 'Duplicate');
-  expect(await provider.loadNaidanRpcRegistry()).toEqual(invalid);
+  expect(await provider.readNaidanRpcRegistryForTransfer()).toEqual(invalid);
 });
 
 it.each(['extractable', 'public-key'])('checks key-use policy at the identity boundary rather than in DTO shape (%s)', async mode => {
   const db = database();
   const pair = await crypto.subtle.generateKey({ name: 'X25519' }, mode === 'extractable', ['deriveBits']);
   const invalid = { ...identity, privateKey: mode === 'public-key' ? pair.publicKey : pair.privateKey };
-  const { ExperimentalNaidanRpcIdentityDtoSchema } = await import('@/00-storage/00-dto/experimental-naidan-rpc.dto');
+  const { ExperimentalNaidanRpcIdentityDtoSchema } = await import('@/00-format/00-dto/experimental-naidan-rpc.dto');
   expect(ExperimentalNaidanRpcIdentityDtoSchema.safeParse(invalid).success).toBe(true);
   db.stores.get('identity')!.set('self', invalid);
   await expect(naidanRpcStorage.readIdentity()).rejects.toThrow('Invalid RPC identity');
