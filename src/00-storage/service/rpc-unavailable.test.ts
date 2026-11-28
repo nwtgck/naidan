@@ -1,6 +1,6 @@
 import { beforeEach, expect, it } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
-import { SettingsSchemaDto } from '@/00-storage/00-dto/dto';
+import { SettingsDtoSchema } from '@/00-storage/00-dto/dto';
 import { settingsToDomain, settingsToDto } from '@/00-storage/mapper/mappers';
 import { cloneEndpoint } from '@/01-models/endpoint';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
@@ -31,7 +31,7 @@ it('keeps an unreadable image destination unavailable through normal provider sa
 });
 
 it('does not turn an unknown chat endpoint into local execution after saving', async () => {
-  const dto = SettingsSchemaDto.parse({
+  const dto = SettingsDtoSchema.parse({
     ...settingsToDto({ domain: defaults }),
     endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'future-rpc', secret: 'discarded' } } },
   });
@@ -71,13 +71,13 @@ it('permits explicit reselection without resurrecting unknown values', async () 
 });
 
 it('keeps absent image settings absent rather than manufacturing a block', () => {
-  const value = settingsToDomain({ dto: SettingsSchemaDto.parse(settingsToDto({ domain: defaults })) });
+  const value = settingsToDomain({ dto: SettingsDtoSchema.parse(settingsToDto({ domain: defaults })) });
   expect(value.experimental?.browserImageGeneration).toBeUndefined();
 });
 
 it('does not treat invalid reference strings as a usable image destination', () => {
   const value = settingsToDomain({
-    dto: SettingsSchemaDto.parse({
+    dto: SettingsDtoSchema.parse({
       ...settingsToDto({ domain: defaults }),
       experimental: { browserImageGeneration: { inferenceLocation: { kind: 'naidan_rpc', registration: { registrationId: '', peerPublicKey: '' } } } },
     }),

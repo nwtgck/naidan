@@ -3,7 +3,7 @@ import { readModelGraphRegistry, writeModelGraphRegistry, sameModelGraphRegistry
 export { areModelBindingSnapshotsEqual } from './model-binding';
 import { cloneOptionalEndpoint } from '@/01-models/endpoint';
 import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
-import { ExperimentalImageGenerationSchemaDto, ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationDtoSchema, ExperimentalImageGenerationDraftDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 import type { ImageGenerationOperationId, ImageGenerationSessionId } from '@/01-models/ids';
 import type { ImageGenerationResultExportSnapshot } from './image-generation-results-export';
@@ -1401,7 +1401,7 @@ export class StorageService {
     }): Promise<void> => {
         // Capture the provider before awaiting. A storage switch must not split
         // one generation's bytes between OPFS and another storage provider.
-        const snapshot = imageGenerationToDomain({ dto: ExperimentalImageGenerationSchemaDto.parse(imageGenerationToDto({ record })) });
+        const snapshot = imageGenerationToDomain({ dto: ExperimentalImageGenerationDtoSchema.parse(imageGenerationToDto({ record })) });
         const images = files.map(file => ({ ...file }));
         const { saveImageGenerationRecord } = await historyModule;
         const expectedDirectory = await target;
@@ -1481,7 +1481,7 @@ export class StorageService {
       case 'draft': return {
         ...publication,
         draft: imageGenerationDraftToDomain({
-          dto: ExperimentalImageGenerationDraftSchemaDto.parse(imageGenerationDraftToDto({ draft: publication.draft })),
+          dto: ExperimentalImageGenerationDraftDtoSchema.parse(imageGenerationDraftToDto({ draft: publication.draft })),
         }),
       };
       default: {

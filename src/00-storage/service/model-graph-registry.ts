@@ -3,7 +3,7 @@ import type { ModelGraphRegistryId } from '@/01-models/ids';
 import { idToRaw, toModelGraphRegistryId } from '@/01-models/ids';
 import type { ModelGraphRegistration } from '@/01-models/model-graph-registry';
 import { validateModelGraphRegistrations } from '@/01-models/model-graph-registry';
-import { ExperimentalModelGraphRegistrySchemaDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
+import { ExperimentalModelGraphRegistryDtoSchema } from '@/00-storage/00-dto/experimental-model-graph.dto';
 import { modelGraphRegistrationFromDto, modelGraphRegistrationToDto } from '@/00-storage/mapper/model-graph';
 import type { IStorageProvider } from './interface';
 
@@ -30,7 +30,7 @@ export async function readModelGraphRegistry({ provider, providerGeneration, per
   if (value === undefined) {
     return { access: { providerGeneration, persistence, registryId: undefined, revision: 0 }, registrations: [] };
   }
-  const { version: _version, id, revision, registrations: stored, ...rest } = ExperimentalModelGraphRegistrySchemaDto.parse(value);
+  const { version: _version, id, revision, registrations: stored, ...rest } = ExperimentalModelGraphRegistryDtoSchema.parse(value);
   rest satisfies Record<PropertyKey, never>;
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(id) || !Number.isSafeInteger(revision) || revision < 1) {
     throw new Error('Invalid model graph registry revision');
@@ -52,7 +52,7 @@ export async function writeModelGraphRegistry({ provider, current, registrations
   if (!Number.isSafeInteger(revision)) {
     throw new Error('Model graph revision exhausted');
   }
-  const registry = ExperimentalModelGraphRegistrySchemaDto.parse({ version: 1, id: idToRaw({ id }), revision, registrations: registrations.map(registration => modelGraphRegistrationToDto({ registration })) });
+  const registry = ExperimentalModelGraphRegistryDtoSchema.parse({ version: 1, id: idToRaw({ id }), revision, registrations: registrations.map(registration => modelGraphRegistrationToDto({ registration })) });
   await provider.saveModelGraphRegistry({ registry });
   return { ...current.access, registryId: id, revision };
 }

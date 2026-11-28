@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ChatSchemaDto } from '@/00-storage/00-dto/dto';
+import { ChatDtoSchema } from '@/00-storage/00-dto/dto';
 import { chatToDomain } from './mappers';
 
 describe('DTO Backward Compatibility', () => {
@@ -26,7 +26,7 @@ describe('DTO Backward Compatibility', () => {
     };
 
     // 1. Validate DTO parsing (Zod should handle defaults/optionals)
-    const dto = ChatSchemaDto.parse(v1LegacyData);
+    const dto = ChatDtoSchema.parse(v1LegacyData);
 
     // 2. Map to Domain
     const domain = chatToDomain({ dto });
@@ -55,7 +55,7 @@ describe('DTO Backward Compatibility', () => {
       debugEnabled: true,
     };
 
-    const dto = ChatSchemaDto.parse(v1_1Data);
+    const dto = ChatDtoSchema.parse(v1_1Data);
     const domain = chatToDomain({ dto });
 
     expect(domain.debugEnabled).toBe(true);
@@ -76,7 +76,7 @@ describe('DTO Backward Compatibility', () => {
       originMessageId: '660e8400-e29b-41d4-a716-446655440001',
     };
 
-    const dto = ChatSchemaDto.parse(v1_2Data);
+    const dto = ChatDtoSchema.parse(v1_2Data);
     const domain = chatToDomain({ dto });
 
     expect(domain.originChatId).toBe(v1_2Data.originChatId);

@@ -1,4 +1,4 @@
-import { ExperimentalModelGraphRegistrySchemaDto, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
+import { ExperimentalModelGraphRegistryDtoSchema, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
 import { iterateAttachmentParts } from './message-attachments';
 import { DEFAULT_SETTINGS_ENDPOINT, type Chat, type Settings, type ChatGroup, type MessageNode, type ChatMeta, type ChatContent, type SidebarItem, type StorageSnapshot, type BinaryObject } from '@/01-models/types';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
@@ -7,11 +7,11 @@ import {
   type ChatGroupDto,
   type HierarchyDto,
   type ChatContentDto,
-  ChatMetaSchemaDto,
-  ChatGroupSchemaDto,
-  SettingsSchemaDto,
-  HierarchySchemaDto,
-  ChatContentSchemaDto,
+  ChatMetaDtoSchema,
+  ChatGroupDtoSchema,
+  SettingsDtoSchema,
+  HierarchyDtoSchema,
+  ChatContentDtoSchema,
 } from '@/00-storage/00-dto/dto';
 import {
   chatToDomain,
@@ -30,7 +30,7 @@ import {
 } from '@/00-storage/mapper/mappers';
 import { IStorageProvider } from './interface';
 import { idToRaw, toBinaryObjectId, toChatGroupId } from '@/01-models/ids';
-import { ExperimentalNaidanRpcRegistrySchemaDto, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+import { ExperimentalNaidanRpcRegistryDtoSchema, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 
 /**
  * Memory Storage Implementation
@@ -51,19 +51,19 @@ export class MemoryStorageProvider extends IStorageProvider {
   private naidanRpcRegistry: ExperimentalNaidanRpcRegistryDto | undefined;
 
   async loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
-    return this.naidanRpcRegistry === undefined ? undefined : ExperimentalNaidanRpcRegistrySchemaDto.parse(this.naidanRpcRegistry);
+    return this.naidanRpcRegistry === undefined ? undefined : ExperimentalNaidanRpcRegistryDtoSchema.parse(this.naidanRpcRegistry);
   }
 
   async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
-    this.naidanRpcRegistry = registry === undefined ? undefined : ExperimentalNaidanRpcRegistrySchemaDto.parse(registry);
+    this.naidanRpcRegistry = registry === undefined ? undefined : ExperimentalNaidanRpcRegistryDtoSchema.parse(registry);
   }
 
   async loadModelGraphRegistry(): Promise<ExperimentalModelGraphRegistryDto | undefined> {
-    return this.modelGraphRegistry === undefined ? undefined : ExperimentalModelGraphRegistrySchemaDto.parse(this.modelGraphRegistry);
+    return this.modelGraphRegistry === undefined ? undefined : ExperimentalModelGraphRegistryDtoSchema.parse(this.modelGraphRegistry);
   }
 
   async saveModelGraphRegistry({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void> {
-    this.modelGraphRegistry = registry === undefined ? undefined : ExperimentalModelGraphRegistrySchemaDto.parse(registry);
+    this.modelGraphRegistry = registry === undefined ? undefined : ExperimentalModelGraphRegistryDtoSchema.parse(registry);
   }
 
   private restoreBlobs({ nodes }: { nodes: MessageNode[] }): void {
@@ -96,7 +96,7 @@ export class MemoryStorageProvider extends IStorageProvider {
 
     try {
       return chatContentToDomain({
-        dto: ChatContentSchemaDto.parse(rawContent),
+        dto: ChatContentDtoSchema.parse(rawContent),
       });
     } catch {
       return null;
@@ -124,14 +124,14 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   async saveHierarchy({ hierarchy }: { hierarchy: HierarchyDto }): Promise<void> {
-    this.hierarchy = HierarchySchemaDto.parse(hierarchy);
+    this.hierarchy = HierarchyDtoSchema.parse(hierarchy);
   }
 
   // --- Persistence Implementation ---
 
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
-    JSON.stringify(ChatMetaSchemaDto.parse(dto));
+    JSON.stringify(ChatMetaDtoSchema.parse(dto));
     this.chatMetas.set(meta.id, dto);
   }
 
@@ -155,7 +155,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     }
 
     const dto = chatContentToDto({ domain: content });
-    ChatContentSchemaDto.parse(dto);
+    ChatContentDtoSchema.parse(dto);
     this.chatContents.set(id, dto);
   }
 
@@ -166,8 +166,8 @@ export class MemoryStorageProvider extends IStorageProvider {
       return null;
     }
 
-    const meta = ChatMetaSchemaDto.parse(rawMeta);
-    const content = ChatContentSchemaDto.parse(rawContent);
+    const meta = ChatMetaDtoSchema.parse(rawMeta);
+    const content = ChatContentDtoSchema.parse(rawContent);
     const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
 
     // Resolve groupId from hierarchy
@@ -187,7 +187,7 @@ export class MemoryStorageProvider extends IStorageProvider {
       return null;
     }
     try {
-      const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(rawMeta) });
+      const meta = chatMetaToDomain({ dto: ChatMetaDtoSchema.parse(rawMeta) });
       // Resolve groupId from hierarchy
       const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
       if (group) {
@@ -220,13 +220,13 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
-    JSON.stringify(ChatGroupSchemaDto.parse(dto));
+    JSON.stringify(ChatGroupDtoSchema.parse(dto));
     this.chatGroups.set(chatGroup.id, dto);
   }
 
   async loadChatGroupConfiguration({ id }: { id: ChatGroupId }): Promise<Omit<ChatGroup, 'items'> | null> {
     const raw = this.chatGroups.get(id);
-    return raw ? chatGroupConfigurationToDomain({ dto: ChatGroupSchemaDto.parse(raw) }) : null;
+    return raw ? chatGroupConfigurationToDomain({ dto: ChatGroupDtoSchema.parse(raw) }) : null;
   }
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
@@ -235,7 +235,7 @@ export class MemoryStorageProvider extends IStorageProvider {
       return null;
     }
     const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
-    return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(raw), hierarchy: hierarchyToDomain({ dto: this.hierarchy }), chatMetas });
+    return chatGroupToDomain({ dto: ChatGroupDtoSchema.parse(raw), hierarchy: hierarchyToDomain({ dto: this.hierarchy }), chatMetas });
   }
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
@@ -252,7 +252,7 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async saveSettings({ settings }: { settings: Settings }): Promise<void> {
     const dto = settingsToDto({ domain: settings });
-    JSON.stringify(SettingsSchemaDto.parse(dto));
+    JSON.stringify(SettingsDtoSchema.parse(dto));
     this.settings = settings;
   }
 

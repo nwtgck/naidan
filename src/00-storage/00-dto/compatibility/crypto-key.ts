@@ -10,8 +10,8 @@ const nativeCryptoKeySchema = z.custom<CryptoKey>(
 );
 
 // Derive both input and output from the native signature; widening the input
-// to unknown here would silently change z.input<typeof IdentitySchemaDto>.
-export const CryptoKeySchemaDto = nativeCryptoKeySchema as unknown as DtoLeaf<typeof nativeCryptoKeySchema>;
+// to unknown here would silently change z.input<typeof IdentityDtoSchema>.
+export const CryptoKeyDtoSchema = nativeCryptoKeySchema as unknown as DtoLeaf<typeof nativeCryptoKeySchema>;
 
 export const TEST_ONLY = {
 };

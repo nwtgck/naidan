@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS, EMPTY_LM_PARAMETERS, type Settings } from '@/01-models/types';
-import { SettingsSchemaDto } from '@/00-storage/00-dto/dto';
+import { SettingsDtoSchema } from '@/00-storage/00-dto/dto';
 import { settingsToDomain, settingsToDto } from './mappers';
 
 function settings(): Settings {
@@ -12,7 +12,7 @@ describe('saved title reasoning compatibility', () => {
     const source = settings();
     source.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort } } };
     const dto = settingsToDto({ domain: source });
-    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(dto))) });
+    const restored = settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(JSON.stringify(dto))) });
     expect(restored.titleGeneration).toEqual(source.titleGeneration);
   });
 
@@ -21,7 +21,7 @@ describe('saved title reasoning compatibility', () => {
     delete serialized.titleGeneration;
     serialized.autoTitleEnabled = true;
     serialized.titleModelId = 'saved-model';
-    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(serialized) });
+    const restored = settingsToDomain({ dto: SettingsDtoSchema.parse(serialized) });
     expect(restored.titleGeneration).toMatchObject({ model: { id: 'saved-model' }, lmParameters: { reasoning: { effort: undefined } } });
   });
 

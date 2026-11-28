@@ -1,6 +1,6 @@
 import { imageGenerationOperationTable } from './operations';
 import {
-  ExperimentalImageGenerationActivityJournalSchemaDto,
+  ExperimentalImageGenerationActivityJournalDtoSchema,
   type ExperimentalImageGenerationActivityJournalDto,
   type ExperimentalImageGenerationSessionDto,
 } from '@/00-storage/00-dto/experimental-image-generation.dto';
@@ -44,7 +44,7 @@ function assertActivityJournal({ journal }: { journal: ExperimentalImageGenerati
 export async function readImageGenerationActivity({ directory }: { directory: FileSystemDirectoryHandle }): Promise<ExperimentalImageGenerationActivityJournalDto> {
   const text = await readImageGenerationText({ directory, name: journalName });
   if (text !== undefined) {
-    return ExperimentalImageGenerationActivityJournalSchemaDto.parse(JSON.parse(text));
+    return ExperimentalImageGenerationActivityJournalDtoSchema.parse(JSON.parse(text));
   }
   // Only a legacy store may start a new clock. Do not quietly restart a clock
   // after its file was deleted from an already ordered workspace.
@@ -57,7 +57,7 @@ export async function readImageGenerationActivity({ directory }: { directory: Fi
 
 async function writeActivity({ directory, journal }: { directory: FileSystemDirectoryHandle, journal: ExperimentalImageGenerationActivityJournalDto }): Promise<void> {
   assertActivityJournal({ journal });
-  const value = ExperimentalImageGenerationActivityJournalSchemaDto.parse(journal);
+  const value = ExperimentalImageGenerationActivityJournalDtoSchema.parse(journal);
   await writeImageGenerationText({ directory, name: journalName, text: JSON.stringify(value) });
 }
 
@@ -165,7 +165,7 @@ export async function recoverImageGenerationActivities({ directory }: { director
     if (text === undefined) {
       return { warnings, warningCount };
     }
-    const journal = ExperimentalImageGenerationActivityJournalSchemaDto.parse(JSON.parse(text));
+    const journal = ExperimentalImageGenerationActivityJournalDtoSchema.parse(JSON.parse(text));
     assertActivityJournal({ journal });
     pending = journal.pending;
   } catch (error) {

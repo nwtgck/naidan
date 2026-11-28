@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ExperimentalImageGenerationActivityJournalSchemaDto, ExperimentalImageGenerationSessionSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationActivityJournalDtoSchema, ExperimentalImageGenerationSessionDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { idToRaw } from '@/01-models/ids';
 import type { ImageGenerationSession } from '@/01-models/image-generation';
 import { createImageGenerationStorageHarness, generationRunFixture, generationSessionFixture } from './image-generation/index.test-support';
@@ -36,7 +36,7 @@ async function accept({ store, session, id, time }: { store: service.ImageGenera
 }
 
 async function journal() {
-  return ExperimentalImageGenerationActivityJournalSchemaDto.parse(JSON.parse((await fs.file({ path: `${root}/session-activity.json` })).text));
+  return ExperimentalImageGenerationActivityJournalDtoSchema.parse(JSON.parse((await fs.file({ path: `${root}/session-activity.json` })).text));
 }
 
 async function order({ store }: { store: service.ImageGenerationStoreAccess }) {
@@ -167,7 +167,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     for (const session of [a, b]) {
       const raw = idToRaw({ id: session.id }), shard = raw.slice(-2);
       const file = await fs.file({ path: `${root}/sessions/${shard}/${raw}/session.json` });
-      const { activityOrder: _activityOrder, ...data } = ExperimentalImageGenerationSessionSchemaDto.parse(JSON.parse(file.text));
+      const { activityOrder: _activityOrder, ...data } = ExperimentalImageGenerationSessionDtoSchema.parse(JSON.parse(file.text));
       file.text = JSON.stringify({ ...data, updatedAt: session.id === a.id ? 20 : 10 });
       await (await fs.directory({ path: `${root}/sessions/${shard}` })).removeEntry('index.json');
     }

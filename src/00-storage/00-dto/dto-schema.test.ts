@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  ChatGroupSchemaDtoV2,
-  ChatMetaSchemaDtoV2,
-  ChatSchemaDto,
-  SettingsSchemaDtoV2,
+  ChatGroupDtoV2Schema,
+  ChatMetaDtoV2Schema,
+  ChatDtoSchema,
+  SettingsDtoV2Schema,
 } from './dto';
 
 const endpoint = { type: 'openai' as const, url: 'https://example.test/v1' };
@@ -54,8 +54,8 @@ describe('DTO module initialization', () => {
       }
       }
 
-      const { SettingsSchemaDtoV2 } = await import('./dto');
-      const { ExperimentalImageGenerationTranslationOverrideSchemaDto } = await import('./experimental-image-generation.dto');
+      const { SettingsDtoV2Schema } = await import('./dto');
+      const { ExperimentalImageGenerationTranslationOverrideDtoSchema } = await import('./experimental-image-generation.dto');
       const registrationId = 'connection-1';
       const peerPublicKey = 'A'.repeat(43);
       const rpcEndpoint = {
@@ -68,7 +68,7 @@ describe('DTO module initialization', () => {
         peerPublicKey,
         editor: { primary: undefined, components: [], loras: [] },
       }];
-      const settings = SettingsSchemaDtoV2.parse({
+      const settings = SettingsDtoV2Schema.parse({
         ...settingsDtoBase,
         endpoint: rpcEndpoint,
         titleGeneration: 'disabled',
@@ -77,7 +77,7 @@ describe('DTO module initialization', () => {
       expect(settings.experimental?.browserImageGeneration?.inferenceLocation).toEqual(inferenceLocation);
       expect(settings.experimental?.browserImageGeneration?.remoteModelEditors).toEqual(remoteModelEditors);
 
-      const translation = ExperimentalImageGenerationTranslationOverrideSchemaDto.parse({
+      const translation = ExperimentalImageGenerationTranslationOverrideDtoSchema.parse({
         endpoint: rpcEndpoint,
         modelId: 'translation-model',
       });
@@ -111,15 +111,15 @@ describe('Zod Schemas', () => {
       debugEnabled: false,
     };
 
-    expect(() => ChatSchemaDto.parse(chat)).not.toThrow();
+    expect(() => ChatDtoSchema.parse(chat)).not.toThrow();
   });
 
   it('requires inline titleGeneration in V2 settings DTO', () => {
-    expect(SettingsSchemaDtoV2.safeParse(settingsDtoBase).success).toBe(false);
+    expect(SettingsDtoV2Schema.safeParse(settingsDtoBase).success).toBe(false);
   });
 
   it('accepts same_scope and explicit title generation settings in V2 settings DTO', () => {
-    expect(SettingsSchemaDtoV2.safeParse({
+    expect(SettingsDtoV2Schema.safeParse({
       ...settingsDtoBase,
       titleGeneration: {
         endpoint: 'same_scope',
@@ -128,7 +128,7 @@ describe('Zod Schemas', () => {
       },
     }).success).toBe(true);
 
-    expect(SettingsSchemaDtoV2.safeParse({
+    expect(SettingsDtoV2Schema.safeParse({
       ...settingsDtoBase,
       titleGeneration: {
         endpoint,
@@ -139,7 +139,7 @@ describe('Zod Schemas', () => {
   });
 
   it('requires title generation lmParameters in V2 titleGeneration objects', () => {
-    expect(SettingsSchemaDtoV2.safeParse({
+    expect(SettingsDtoV2Schema.safeParse({
       ...settingsDtoBase,
       titleGeneration: {
         endpoint: 'same_scope',
@@ -147,7 +147,7 @@ describe('Zod Schemas', () => {
       },
     }).success).toBe(false);
 
-    expect(SettingsSchemaDtoV2.safeParse({
+    expect(SettingsDtoV2Schema.safeParse({
       ...settingsDtoBase,
       titleGeneration: {
         endpoint: 'same_scope',
@@ -156,7 +156,7 @@ describe('Zod Schemas', () => {
       },
     }).success).toBe(true);
 
-    expect(SettingsSchemaDtoV2.safeParse({
+    expect(SettingsDtoV2Schema.safeParse({
       ...settingsDtoBase,
       titleGeneration: {
         endpoint: 'same_scope',
@@ -165,7 +165,7 @@ describe('Zod Schemas', () => {
       },
     }).success).toBe(true);
 
-    expect(SettingsSchemaDtoV2.safeParse({
+    expect(SettingsDtoV2Schema.safeParse({
       ...settingsDtoBase,
       titleGeneration: {
         endpoint,
@@ -174,7 +174,7 @@ describe('Zod Schemas', () => {
       },
     }).success).toBe(true);
 
-    expect(SettingsSchemaDtoV2.safeParse({
+    expect(SettingsDtoV2Schema.safeParse({
       ...settingsDtoBase,
       titleGeneration: {
         endpoint,
@@ -185,12 +185,12 @@ describe('Zod Schemas', () => {
   });
 
   it('does not allow inherit or explicit endpoint plus same_scope model in V2 settings DTO', () => {
-    expect(SettingsSchemaDtoV2.safeParse({
+    expect(SettingsDtoV2Schema.safeParse({
       ...settingsDtoBase,
       titleGeneration: 'inherit',
     }).success).toBe(false);
 
-    expect(SettingsSchemaDtoV2.safeParse({
+    expect(SettingsDtoV2Schema.safeParse({
       ...settingsDtoBase,
       titleGeneration: {
         endpoint,
@@ -201,7 +201,7 @@ describe('Zod Schemas', () => {
   });
 
   it('allows inherit only in scoped V2 title generation DTO fields', () => {
-    expect(ChatGroupSchemaDtoV2.safeParse({
+    expect(ChatGroupDtoV2Schema.safeParse({
       id: 'group-id',
       experimental: undefined,
       name: 'Group',
@@ -215,7 +215,7 @@ describe('Zod Schemas', () => {
       mounts: undefined,
     }).success).toBe(true);
 
-    expect(ChatMetaSchemaDtoV2.safeParse({
+    expect(ChatMetaDtoV2Schema.safeParse({
       id: 'chat-id',
       experimental: undefined,
       title: null,

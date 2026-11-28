@@ -19,7 +19,7 @@
  *
  * default is intentional for legacy missing data; exactOptional distinguishes
  * versioned structures. The missingAsUndefined/resolveMissingAsUndefined and
- * optionalExperimentalFieldSchemaDto compatibility contracts are intentional.
+ * optionalExperimentalFieldDtoSchema compatibility contracts are intentional.
  *
  * _zod's slots and the brands exist for inference, NOT runtime reads. In
  * particular, z.input/z.output/z.infer remain compatible without exposing Zod's

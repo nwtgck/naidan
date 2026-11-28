@@ -13,7 +13,7 @@ import type {
   ExperimentalToolConfigsDto,
 } from '@/00-storage/00-dto/experimental.dto';
 
-import { MessageNodeSchemaDtoV1 } from '@/00-storage/00-dto/dto';
+import { MessageNodeDtoV1Schema } from '@/00-storage/00-dto/dto';
 import type {
   RoleDto,
   MessageNodeDto,
@@ -1828,7 +1828,7 @@ function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): Messa
       throw new Error('Invalid legacy flat message');
     }
     // Validate the old payload instead of casting unknown input to a message type.
-    const dto = MessageNodeSchemaDtoV1.parse({ ...message, replies: { items: [] } });
+    const dto = MessageNodeDtoV1Schema.parse({ ...message, replies: { items: [] } });
     const node = legacyMessageNodeToDomain({ dto });
     switch (node.role) {
     case 'tool': throw new Error('Tool role migration not implemented for legacy messages');

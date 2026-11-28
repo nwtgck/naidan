@@ -1,6 +1,6 @@
 import type { ImageCompositionDraft } from '@/01-models/image-generation';
 import { imageCompositionToDto, imageCompositionToDomain } from '@/00-storage/mapper/image-generation-composition';
-import { ExperimentalImageGenerationCompositionSchemaDto, type ExperimentalImageGenerationCompositionDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationCompositionDtoSchema, type ExperimentalImageGenerationCompositionDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationRawIdSchema, readImageGenerationText, writeImageGenerationText } from './files';
 import { imageGenerationSessionDirectory } from './tables';
 import { assertImageGenerationReplacement, withImageGenerationStore, type ImageGenerationStoreAccess } from './context';
@@ -33,7 +33,7 @@ export async function loadImageGenerationComposition({ store, sessionId }: { sto
       if (text === undefined) {
         return undefined;
       }
-      const dto = ExperimentalImageGenerationCompositionSchemaDto.parse(JSON.parse(text));
+      const dto = ExperimentalImageGenerationCompositionDtoSchema.parse(JSON.parse(text));
       validateComposition({ dto, sessionId: raw });
       return imageCompositionToDomain({ dto });
     },
@@ -43,7 +43,7 @@ export async function loadImageGenerationComposition({ store, sessionId }: { sto
 /** Independent from the single-form draft. Invalid/incomplete prompts can be
  * edited and checkpointed; acceptance performs stricter domain validation. */
 export async function saveImageGenerationComposition({ store, draft, expectedRevision }: { store: ImageGenerationStoreAccess, draft: ImageCompositionDraft, expectedRevision: number | undefined }): Promise<void> {
-  const next = ExperimentalImageGenerationCompositionSchemaDto.parse(imageCompositionToDto({ draft }));
+  const next = ExperimentalImageGenerationCompositionDtoSchema.parse(imageCompositionToDto({ draft }));
   imageGenerationRawIdSchema.parse(next.sessionId);
   validateComposition({ dto: next, sessionId: next.sessionId });
   const serialized = JSON.stringify(next);
@@ -57,7 +57,7 @@ export async function saveImageGenerationComposition({ store, draft, expectedRev
         throw new Error('The composition session no longer exists.');
       }
       const text = await readImageGenerationText({ directory: session, name: 'composition-draft.json' });
-      const current = text === undefined ? undefined : ExperimentalImageGenerationCompositionSchemaDto.parse(JSON.parse(text));
+      const current = text === undefined ? undefined : ExperimentalImageGenerationCompositionDtoSchema.parse(JSON.parse(text));
       if (current) {
         validateComposition({ dto: current, sessionId: next.sessionId });
       }

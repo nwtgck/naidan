@@ -1,12 +1,12 @@
 import * as dtozod from '@/utils/dtozod';
 
-import { optionalExperimentalFieldSchemaDto } from './compatibility/experimental-field';
+import { optionalExperimentalFieldDtoSchema } from './compatibility/experimental-field';
 import { UI_LOCALES } from '@/01-models/ui-locale';
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/dtozod/missingAsUndefined';
 
-const EmptyExperimentalSchemaDto = resolveMissingAsUndefined(dtozod.object({}));
+const EmptyExperimentalDtoSchema = resolveMissingAsUndefined(dtozod.object({}));
 
-export const ExperimentalCalculatorToolConfigSchemaDto = resolveMissingAsUndefined(dtozod.object({
+export const ExperimentalCalculatorToolConfigDtoSchema = resolveMissingAsUndefined(dtozod.object({
   key: dtozod.literal('builtin.calculator'),
   status: dtozod.enum([
     'enabled',
@@ -14,7 +14,7 @@ export const ExperimentalCalculatorToolConfigSchemaDto = resolveMissingAsUndefin
   ]),
 }));
 
-export const ExperimentalChoicesToolConfigSchemaDto = resolveMissingAsUndefined(dtozod.object({
+export const ExperimentalChoicesToolConfigDtoSchema = resolveMissingAsUndefined(dtozod.object({
   key: dtozod.literal('builtin.choices'),
   status: dtozod.enum([
     'enabled',
@@ -22,7 +22,7 @@ export const ExperimentalChoicesToolConfigSchemaDto = resolveMissingAsUndefined(
   ]),
 }));
 
-export const ExperimentalWikipediaToolConfigSchemaDto = resolveMissingAsUndefined(dtozod.object({
+export const ExperimentalWikipediaToolConfigDtoSchema = resolveMissingAsUndefined(dtozod.object({
   key: dtozod.literal('builtin.wikipedia'),
   status: dtozod.enum([
     'enabled',
@@ -30,7 +30,7 @@ export const ExperimentalWikipediaToolConfigSchemaDto = resolveMissingAsUndefine
   ]),
 }));
 
-export const ExperimentalWeshNaidanSysfsAccessScopeSchemaDto = dtozod.enum([
+export const ExperimentalWeshNaidanSysfsAccessScopeDtoSchema = dtozod.enum([
   'none',
   'current_chat_only',
   'current_chat_with_chat_group',
@@ -38,31 +38,31 @@ export const ExperimentalWeshNaidanSysfsAccessScopeSchemaDto = dtozod.enum([
 ]);
 
 
-export const ExperimentalWeshToolConfigSchemaDto = resolveMissingAsUndefined(dtozod.object({
+export const ExperimentalWeshToolConfigDtoSchema = resolveMissingAsUndefined(dtozod.object({
   key: dtozod.literal('builtin.wesh'),
   status: dtozod.enum([
     'enabled',
     'disabled',
   ]),
   naidanSysfs: resolveMissingAsUndefined(dtozod.object({
-    accessScope: ExperimentalWeshNaidanSysfsAccessScopeSchemaDto,
+    accessScope: ExperimentalWeshNaidanSysfsAccessScopeDtoSchema,
   })),
 }));
 
-export const ExperimentalToolConfigSchemaDto = dtozod.discriminatedUnion('key', [
-  ExperimentalCalculatorToolConfigSchemaDto,
-  ExperimentalChoicesToolConfigSchemaDto,
-  ExperimentalWikipediaToolConfigSchemaDto,
-  ExperimentalWeshToolConfigSchemaDto,
+export const ExperimentalToolConfigDtoSchema = dtozod.discriminatedUnion('key', [
+  ExperimentalCalculatorToolConfigDtoSchema,
+  ExperimentalChoicesToolConfigDtoSchema,
+  ExperimentalWikipediaToolConfigDtoSchema,
+  ExperimentalWeshToolConfigDtoSchema,
 ]);
-export type ExperimentalToolConfigDto = dtozod.infer<typeof ExperimentalToolConfigSchemaDto>;
+export type ExperimentalToolConfigDto = dtozod.infer<typeof ExperimentalToolConfigDtoSchema>;
 
-export const ExperimentalToolConfigsSchemaDto = dtozod.array(ExperimentalToolConfigSchemaDto);
-export type ExperimentalToolConfigsDto = dtozod.infer<typeof ExperimentalToolConfigsSchemaDto>;
+export const ExperimentalToolConfigsDtoSchema = dtozod.array(ExperimentalToolConfigDtoSchema);
+export type ExperimentalToolConfigsDto = dtozod.infer<typeof ExperimentalToolConfigsDtoSchema>;
 
 
 /**
- * Experimental payload owned by ExperimentalTypeEndpointSchemaDto.
+ * Experimental payload owned by ExperimentalTypeEndpointDtoSchema.
  *
  * `experimental_type` is a DTO-only envelope for experimental endpoint types
  * and legacy llama_cpp_browser records. Its concrete endpoint identity is
@@ -72,7 +72,7 @@ export type ExperimentalToolConfigsDto = dtozod.infer<typeof ExperimentalToolCon
  * The shared experimental reader isolates unreadable endpoint settings while
  * allowing the containing settings to load with an unsupported endpoint.
  */
-export const ExperimentalExperimentalTypeEndpointSchemaDto =
+export const ExperimentalExperimentalTypeEndpointDtoSchema =
   resolveMissingAsUndefined(dtozod.object({
     endpoint: missingAsUndefined(dtozod.union([
       resolveMissingAsUndefined(dtozod.object({ type: dtozod.literal('naidan_rpc'), registrationId: missingAsUndefined(dtozod.string()) })),
@@ -85,63 +85,63 @@ export const ExperimentalExperimentalTypeEndpointSchemaDto =
     ])),
   }));
 
-export const ExperimentalHttpEndpointSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalTransformersJsEndpointSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalLlamaCppBrowserEndpointSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalReasoningSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalLmParametersSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalSystemPromptOverrideSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalSystemPromptAppendSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalVolumeBaseSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalVolumeIndexSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMountVolumeSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalChatGroupSchemaDto = resolveMissingAsUndefined(dtozod.object({
-  toolConfigs: missingAsUndefined(ExperimentalToolConfigsSchemaDto),
+export const ExperimentalHttpEndpointDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalTransformersJsEndpointDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalLlamaCppBrowserEndpointDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalReasoningDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalLmParametersDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalSystemPromptOverrideDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalSystemPromptAppendDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalVolumeBaseDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalVolumeIndexDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMountVolumeDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalChatGroupDtoSchema = resolveMissingAsUndefined(dtozod.object({
+  toolConfigs: missingAsUndefined(ExperimentalToolConfigsDtoSchema),
 }));
-export const ExperimentalHierarchyChatNodeSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalHierarchyChatGroupNodeSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalHierarchySchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalBinaryObjectSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalBinaryShardIndexSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalAttachmentSchemaDtoV1 = EmptyExperimentalSchemaDto;
-export const ExperimentalAttachmentSchemaDtoV2 = EmptyExperimentalSchemaDto;
-export const ExperimentalToolCallSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalToolCallFunctionSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalTextOrBinaryObjectTextSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalTextOrBinaryObjectBinaryObjectSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalToolExecutionResultExecutingSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalToolExecutionResultSuccessSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalToolExecutionResultErrorSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalToolExecutionResultErrorObjectSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMessageTextPartSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMessageReasoningPartSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMessageAttachmentPartSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMessageToolCallPartSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMessageToolResultPartSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMessageInterruptionCancelledSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMessageInterruptionErrorSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMessageNodeUserSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMessageNodeAssistantSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMessageNodeSystemSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMessageNodeToolSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMessageBranchSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalChatMetaSchemaDto = resolveMissingAsUndefined(dtozod.object({
-  toolConfigs: missingAsUndefined(ExperimentalToolConfigsSchemaDto),
+export const ExperimentalHierarchyChatNodeDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalHierarchyChatGroupNodeDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalHierarchyDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalBinaryObjectDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalBinaryShardIndexDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalAttachmentDtoV1Schema = EmptyExperimentalDtoSchema;
+export const ExperimentalAttachmentDtoV2Schema = EmptyExperimentalDtoSchema;
+export const ExperimentalToolCallDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalToolCallFunctionDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalTextOrBinaryObjectTextDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalTextOrBinaryObjectBinaryObjectDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalToolExecutionResultExecutingDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalToolExecutionResultSuccessDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalToolExecutionResultErrorDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalToolExecutionResultErrorObjectDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMessageTextPartDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMessageReasoningPartDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMessageAttachmentPartDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMessageToolCallPartDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMessageToolResultPartDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMessageInterruptionCancelledDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMessageInterruptionErrorDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMessageNodeUserDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMessageNodeAssistantDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMessageNodeSystemDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMessageNodeToolDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMessageBranchDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalChatMetaDtoSchema = resolveMissingAsUndefined(dtozod.object({
+  toolConfigs: missingAsUndefined(ExperimentalToolConfigsDtoSchema),
 }));
-export const ExperimentalChatMetaIndexSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalChatContentSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalProviderProfileSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalCompletedMigrationSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalMigrationStateSchemaDto = EmptyExperimentalSchemaDto;
+export const ExperimentalChatMetaIndexDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalChatContentDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalProviderProfileDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalCompletedMigrationDtoSchema = EmptyExperimentalDtoSchema;
+export const ExperimentalMigrationStateDtoSchema = EmptyExperimentalDtoSchema;
 
-export const ExperimentalSettingsLocaleSchemaDto = dtozod.enum(UI_LOCALES);
+export const ExperimentalSettingsLocaleDtoSchema = dtozod.enum(UI_LOCALES);
 
 // Shared image settings stay here so the image records can import Endpoint
-// from dto.ts without introducing a cycle through ExperimentalSettingsSchemaDto.
+// from dto.ts without introducing a cycle through ExperimentalSettingsDtoSchema.
 // Storage validates structure independently from the peer wire contract. The
 // caller adapter must validate these values again before making a remote call.
 const pathSchema = dtozod.string();
-export const ExperimentalRemoteImageModelFileSchemaDto = dtozod.object({
+export const ExperimentalRemoteImageModelFileDtoSchema = dtozod.object({
   location: dtozod.discriminatedUnion('kind', [
     dtozod.object({ kind: dtozod.literal('opfs'), path: pathSchema }),
     dtozod.object({ kind: dtozod.literal('temp'), path: pathSchema }),
@@ -151,26 +151,26 @@ export const ExperimentalRemoteImageModelFileSchemaDto = dtozod.object({
 });
 
 
-export const ExperimentalRemoteImageModelEditorSchemaDto = resolveMissingAsUndefined(dtozod.object({
+export const ExperimentalRemoteImageModelEditorDtoSchema = resolveMissingAsUndefined(dtozod.object({
   automaticSlots: dtozod.array(dtozod.enum(['vae', 'clipL', 'clipG', 't5', 'lm'])).optional(),
   primary: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
     slot: dtozod.enum(['model', 'diffusion']),
-    file: ExperimentalRemoteImageModelFileSchemaDto,
+    file: ExperimentalRemoteImageModelFileDtoSchema,
     family: missingAsUndefined(dtozod.string()),
   }))),
   components: dtozod.array(dtozod.object({
     slot: dtozod.enum(['vae', 'clipL', 'clipG', 't5', 'lm']),
-    file: ExperimentalRemoteImageModelFileSchemaDto,
+    file: ExperimentalRemoteImageModelFileDtoSchema,
   })),
   loras: dtozod.array(dtozod.object({
-    file: ExperimentalRemoteImageModelFileSchemaDto,
+    file: ExperimentalRemoteImageModelFileDtoSchema,
     strength: dtozod.number(),
     enabled: dtozod.enum(['enabled', 'disabled']),
   })),
 }));
-export type ExperimentalRemoteImageModelEditorDto = dtozod.infer<typeof ExperimentalRemoteImageModelEditorSchemaDto>;
+export type ExperimentalRemoteImageModelEditorDto = dtozod.infer<typeof ExperimentalRemoteImageModelEditorDtoSchema>;
 
-export const ExperimentalImageInferenceLocationPreferenceSchemaDto = dtozod.union([
+export const ExperimentalImageInferenceLocationPreferenceDtoSchema = dtozod.union([
   dtozod.object({ kind: dtozod.literal('local') }),
   dtozod.object({ kind: dtozod.literal('unavailable') }),
   resolveMissingAsUndefined(dtozod.object({
@@ -178,40 +178,40 @@ export const ExperimentalImageInferenceLocationPreferenceSchemaDto = dtozod.unio
     registration: missingAsUndefined(dtozod.object({ registrationId: dtozod.string(), peerPublicKey: dtozod.string() })),
   })),
 ]);
-export type ExperimentalImageInferenceLocationPreferenceDto = dtozod.infer<typeof ExperimentalImageInferenceLocationPreferenceSchemaDto>;
+export type ExperimentalImageInferenceLocationPreferenceDto = dtozod.infer<typeof ExperimentalImageInferenceLocationPreferenceDtoSchema>;
 
-export const ExperimentalRemoteImageModelEditorPreferencesSchemaDto = dtozod.array(dtozod.object({
+export const ExperimentalRemoteImageModelEditorPreferencesDtoSchema = dtozod.array(dtozod.object({
   registrationId: dtozod.string(),
   peerPublicKey: dtozod.string(),
-  editor: ExperimentalRemoteImageModelEditorSchemaDto,
+  editor: ExperimentalRemoteImageModelEditorDtoSchema,
 }));
-export type ExperimentalRemoteImageModelEditorPreferenceDto = dtozod.infer<typeof ExperimentalRemoteImageModelEditorPreferencesSchemaDto>[number];
+export type ExperimentalRemoteImageModelEditorPreferenceDto = dtozod.infer<typeof ExperimentalRemoteImageModelEditorPreferencesDtoSchema>[number];
 
-export const ExperimentalImageGenerationPathSchemaDto = dtozod.string();
-const BrowserImageModelLocationSchemaDto = dtozod.discriminatedUnion('kind', [
-  dtozod.object({ kind: dtozod.literal('opfs'), path: ExperimentalImageGenerationPathSchemaDto }),
-  dtozod.object({ kind: dtozod.literal('temp'), path: ExperimentalImageGenerationPathSchemaDto }),
-  dtozod.object({ kind: dtozod.literal('host'), directoryId: dtozod.string(), path: ExperimentalImageGenerationPathSchemaDto }),
+export const ExperimentalImageGenerationPathDtoSchema = dtozod.string();
+const BrowserImageModelLocationDtoSchema = dtozod.discriminatedUnion('kind', [
+  dtozod.object({ kind: dtozod.literal('opfs'), path: ExperimentalImageGenerationPathDtoSchema }),
+  dtozod.object({ kind: dtozod.literal('temp'), path: ExperimentalImageGenerationPathDtoSchema }),
+  dtozod.object({ kind: dtozod.literal('host'), directoryId: dtozod.string(), path: ExperimentalImageGenerationPathDtoSchema }),
 ]);
-export const ExperimentalBrowserImageModelSelectionSchemaDto = dtozod.object({
+export const ExperimentalBrowserImageModelSelectionDtoSchema = dtozod.object({
   primary: dtozod.object({
     slot: dtozod.enum(['model', 'diffusion']),
-    location: BrowserImageModelLocationSchemaDto,
+    location: BrowserImageModelLocationDtoSchema,
   }),
   components: dtozod.array(dtozod.object({
     slot: dtozod.enum(['vae', 'clipL', 'clipG', 't5', 'lm']),
     choice: dtozod.discriminatedUnion('kind', [
-      dtozod.object({ kind: dtozod.literal('file'), location: BrowserImageModelLocationSchemaDto }),
+      dtozod.object({ kind: dtozod.literal('file'), location: BrowserImageModelLocationDtoSchema }),
       dtozod.object({ kind: dtozod.literal('none') }),
     ]),
   })),
   loras: dtozod.array(dtozod.object({
-    location: BrowserImageModelLocationSchemaDto,
+    location: BrowserImageModelLocationDtoSchema,
     enabled: dtozod.enum(['enabled', 'disabled']),
     strength: dtozod.number(),
   })),
 });
-export const ExperimentalLlamaCppBrowserSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
+export const ExperimentalLlamaCppBrowserSettingsDtoSchema = resolveMissingAsUndefined(dtozod.object({
   visionBf16Storage: missingAsUndefined(dtozod.enum(['legacy-expand', 'retain-checked'])),
   contextTokens: missingAsUndefined(dtozod.number()),
   modelDownloadDestination: missingAsUndefined(dtozod.discriminatedUnion('kind', [
@@ -220,7 +220,7 @@ export const ExperimentalLlamaCppBrowserSettingsSchemaDto = resolveMissingAsUnde
   ])),
 }));
 
-export const ExperimentalBrowserImageGenerationSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
+export const ExperimentalBrowserImageGenerationSettingsDtoSchema = resolveMissingAsUndefined(dtozod.object({
   width: missingAsUndefined(dtozod.number()),
   height: missingAsUndefined(dtozod.number()),
   seedMode: missingAsUndefined(dtozod.enum(['random', 'fixed'])),
@@ -235,9 +235,9 @@ export const ExperimentalBrowserImageGenerationSettingsSchemaDto = resolveMissin
     format: missingAsUndefined(dtozod.enum(['png', 'webp', 'jpeg'])),
     metadata: missingAsUndefined(dtozod.enum(['include', 'omit'])),
   }))),
-  modelSelection: missingAsUndefined(ExperimentalBrowserImageModelSelectionSchemaDto),
-  inferenceLocation: missingAsUndefined(ExperimentalImageInferenceLocationPreferenceSchemaDto),
-  remoteModelEditors: missingAsUndefined(ExperimentalRemoteImageModelEditorPreferencesSchemaDto),
+  modelSelection: missingAsUndefined(ExperimentalBrowserImageModelSelectionDtoSchema),
+  inferenceLocation: missingAsUndefined(ExperimentalImageInferenceLocationPreferenceDtoSchema),
+  remoteModelEditors: missingAsUndefined(ExperimentalRemoteImageModelEditorPreferencesDtoSchema),
   preview: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
     enabled: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
     mode: missingAsUndefined(dtozod.enum(['projection', 'vae'])),
@@ -251,34 +251,34 @@ export const ExperimentalBrowserImageGenerationSettingsSchemaDto = resolveMissin
   bf16WeightType: missingAsUndefined(dtozod.enum(['f32', 'f16', 'bf16'])),
 }));
 
-export const ExperimentalTranslationAutoTranslateSchemaDto = resolveMissingAsUndefined(dtozod.object({
+export const ExperimentalTranslationAutoTranslateDtoSchema = resolveMissingAsUndefined(dtozod.object({
   enabled: missingAsUndefined(dtozod.boolean()),
   debounceMs: missingAsUndefined(dtozod.number()),
 }));
 
-export const ExperimentalTranslationSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
+export const ExperimentalTranslationSettingsDtoSchema = resolveMissingAsUndefined(dtozod.object({
   modelId: missingAsUndefined(dtozod.string()),
-  autoTranslate: missingAsUndefined(ExperimentalTranslationAutoTranslateSchemaDto),
+  autoTranslate: missingAsUndefined(ExperimentalTranslationAutoTranslateDtoSchema),
 }));
-export type ExperimentalTranslationSettingsDto = dtozod.infer<typeof ExperimentalTranslationSettingsSchemaDto>;
+export type ExperimentalTranslationSettingsDto = dtozod.infer<typeof ExperimentalTranslationSettingsDtoSchema>;
 
-const FileExplorerPaneVisibilitySchemaDto = dtozod.enum(['visible', 'hidden']);
+const FileExplorerPaneVisibilityDtoSchema = dtozod.enum(['visible', 'hidden']);
 
-export const ExperimentalFileExplorerSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
+export const ExperimentalFileExplorerSettingsDtoSchema = resolveMissingAsUndefined(dtozod.object({
   viewMode: missingAsUndefined(dtozod.enum(['icon', 'list', 'column', 'tree'])),
-  previewVisibility: missingAsUndefined(FileExplorerPaneVisibilitySchemaDto),
+  previewVisibility: missingAsUndefined(FileExplorerPaneVisibilityDtoSchema),
   previewWidthPx: missingAsUndefined(dtozod.number()),
-  treeVisibility: missingAsUndefined(FileExplorerPaneVisibilitySchemaDto),
+  treeVisibility: missingAsUndefined(FileExplorerPaneVisibilityDtoSchema),
   treeWidthPx: missingAsUndefined(dtozod.number()),
-  fileInformationVisibility: missingAsUndefined(FileExplorerPaneVisibilitySchemaDto),
+  fileInformationVisibility: missingAsUndefined(FileExplorerPaneVisibilityDtoSchema),
   sortField: missingAsUndefined(dtozod.enum(['name', 'size', 'dateModified', 'type'])),
   sortDirection: missingAsUndefined(dtozod.enum(['ascending', 'descending'])),
   wordWrap: missingAsUndefined(dtozod.enum(['wrap', 'no_wrap'])),
   editorLineNumbers: missingAsUndefined(dtozod.enum(['shown', 'hidden'])),
 }));
 
-export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
-  locale: missingAsUndefined(ExperimentalSettingsLocaleSchemaDto),
+export const ExperimentalSettingsDtoSchema = resolveMissingAsUndefined(dtozod.object({
+  locale: missingAsUndefined(ExperimentalSettingsLocaleDtoSchema),
   /**
    * Development convenience only. This does not improve security and MUST NOT
    * be used for security. A late-applied CSP meta cannot prevent loads that
@@ -296,7 +296,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
     dtozod.literal('monolithic_html'),
   ])),
   toolConfigPersistence: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
-  toolConfigs: missingAsUndefined(ExperimentalToolConfigsSchemaDto),
+  toolConfigs: missingAsUndefined(ExperimentalToolConfigsDtoSchema),
   fakeLm: missingAsUndefined(dtozod.literal('enabled')),
   naidanRpc: missingAsUndefined(dtozod.literal('enabled')),
   unimplementedLauncherEntries: missingAsUndefined(dtozod.enum(['show', 'hide'])),
@@ -325,19 +325,19 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
       dtozod.literal('full'),
     ])),
   }))),
-  fileExplorer: missingAsUndefined(optionalExperimentalFieldSchemaDto({ schema: ExperimentalFileExplorerSettingsSchemaDto })),
+  fileExplorer: missingAsUndefined(optionalExperimentalFieldDtoSchema({ schema: ExperimentalFileExplorerSettingsDtoSchema })),
   liveConversationModelId: missingAsUndefined(dtozod.string()),
   // Isolate the deliberately removed Boolean autoTranslate without losing the model.
-  translation: missingAsUndefined(optionalExperimentalFieldSchemaDto({ schema: ExperimentalTranslationSettingsSchemaDto })),
-  llamaCppBrowser: missingAsUndefined(ExperimentalLlamaCppBrowserSettingsSchemaDto),
-  browserImageGeneration: missingAsUndefined(ExperimentalBrowserImageGenerationSettingsSchemaDto),
+  translation: missingAsUndefined(optionalExperimentalFieldDtoSchema({ schema: ExperimentalTranslationSettingsDtoSchema })),
+  llamaCppBrowser: missingAsUndefined(ExperimentalLlamaCppBrowserSettingsDtoSchema),
+  browserImageGeneration: missingAsUndefined(ExperimentalBrowserImageGenerationSettingsDtoSchema),
   hostModelDirectories: missingAsUndefined(dtozod.array(dtozod.object({
     id: dtozod.string(),
     name: dtozod.string(),
   }))),
 }));
 
-export { optionalExperimentalFieldSchemaDto } from './compatibility/experimental-field';
+export { optionalExperimentalFieldDtoSchema } from './compatibility/experimental-field';
 
 export const TEST_ONLY = {
 };

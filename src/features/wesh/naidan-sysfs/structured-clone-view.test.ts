@@ -3,8 +3,8 @@ import type { NaidanSysfsRemoteChatMetaValue } from "./remote-reader-schema";
 
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- This test verifies the existing persistence DTO descriptor contract at the Worker transport boundary.
 import {
-  ExperimentalChatMetaSchemaDto,
-  optionalExperimentalFieldSchemaDto,
+  ExperimentalChatMetaDtoSchema,
+  optionalExperimentalFieldDtoSchema,
 } from "@/00-storage/00-dto/experimental.dto";
 
 type RemoteExperimentalValue = NonNullable<NaidanSysfsRemoteChatMetaValue["experimental"]>;
@@ -14,8 +14,8 @@ const remoteExperimentalHasUnreadable: RemoteExperimentalHasUnreadable = false;
 describe("Naidan sysfs structured-clone view", () => {
   it("omits non-enumerable unreadable persistence metadata before the remote realm observes the value", () => {
     expect(remoteExperimentalHasUnreadable).toBe(false);
-    const schema = optionalExperimentalFieldSchemaDto({
-      schema: ExperimentalChatMetaSchemaDto,
+    const schema = optionalExperimentalFieldDtoSchema({
+      schema: ExperimentalChatMetaDtoSchema,
     });
     const parsed = schema.parse({
       futureField: {

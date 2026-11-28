@@ -1,5 +1,5 @@
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
-import { ExperimentalImageGenerationRuntimeSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationRuntimeDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import type { ImageGenerationModelFile, ImageGenerationRecord, ImageGenerationSummary } from '@/01-models/image-generation-history';
 import { idToRaw, toBinaryObjectId, toHostModelDirectoryId, toImageGenerationId } from '@/01-models/ids';
 import { exactObject } from '@/utils/exact-object';
@@ -76,7 +76,7 @@ export function imageGenerationRequestBodyToDto({ request }: { request: Omit<Ima
 export function imageGenerationRuntimeToDomain({ runtime }: { runtime: ExperimentalImageGenerationDto['request']['runtime'] }): ImageGenerationRecord['request']['runtime'] {
   switch (runtime.profile) {
   case 'naidan-rpc': validateRemoteRuntime({ runtime });
-    return { ...ExperimentalImageGenerationRuntimeSchemaDto.options[1].parse(runtime), registrationId: toNaidanRpcRegistrationId({ raw: runtime.registrationId }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: runtime.peerPublicKey }) };
+    return { ...ExperimentalImageGenerationRuntimeDtoSchema.options[1].parse(runtime), registrationId: toNaidanRpcRegistrationId({ raw: runtime.registrationId }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: runtime.peerPublicKey }) };
   case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return { ...runtime };
   default: {
     const exhaustive: never = runtime;
@@ -86,7 +86,7 @@ export function imageGenerationRuntimeToDomain({ runtime }: { runtime: Experimen
 }
 
 export function imageGenerationRuntimeToDto({ runtime }: { runtime: ImageGenerationRecord['request']['runtime'] }): ExperimentalImageGenerationDto['request']['runtime'] {
-  const dto = ExperimentalImageGenerationRuntimeSchemaDto.parse(runtime);
+  const dto = ExperimentalImageGenerationRuntimeDtoSchema.parse(runtime);
   switch (dto.profile) {
   case 'naidan-rpc': validateRemoteRuntime({ runtime: dto });
     break;

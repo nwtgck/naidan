@@ -1,19 +1,19 @@
 import { idToRaw, toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
 import type { ImageInferenceLocationPreference, RemoteImageModelEditor, RemoteImageModelEditorPreference } from '@/01-models/image-generation-preferences';
 import { exactObject } from '@/utils/exact-object';
-import { ExperimentalRemoteImageModelEditorSchemaDto } from '@/00-storage/00-dto/experimental.dto';
+import { ExperimentalRemoteImageModelEditorDtoSchema } from '@/00-storage/00-dto/experimental.dto';
 import type { ExperimentalImageInferenceLocationPreferenceDto, ExperimentalRemoteImageModelEditorPreferenceDto, ExperimentalRemoteImageModelEditorDto } from '@/00-storage/00-dto/experimental.dto';
 
 export function remoteImageModelEditorToDto({ editor }: { editor: RemoteImageModelEditor }): ExperimentalRemoteImageModelEditorDto {
   const { primary, components, loras, automaticSlots, ...unhandled } = editor;
   unhandled satisfies Record<PropertyKey, never>;
-  return ExperimentalRemoteImageModelEditorSchemaDto.parse(exactObject<ExperimentalRemoteImageModelEditorDto>()({ primary, components, loras, automaticSlots }));
+  return ExperimentalRemoteImageModelEditorDtoSchema.parse(exactObject<ExperimentalRemoteImageModelEditorDto>()({ primary, components, loras, automaticSlots }));
 }
 
 export function remoteImageModelEditorToDomain({ dto }: { dto: ExperimentalRemoteImageModelEditorDto }): RemoteImageModelEditor {
   const { primary, components, loras, automaticSlots, ...unhandled } = dto;
   unhandled satisfies Record<PropertyKey, never>;
-  const parsed = ExperimentalRemoteImageModelEditorSchemaDto.parse({ primary, components, loras, automaticSlots });
+  const parsed = ExperimentalRemoteImageModelEditorDtoSchema.parse({ primary, components, loras, automaticSlots });
   return exactObject<RemoteImageModelEditor>()({ ...parsed, automaticSlots: parsed.automaticSlots ?? [] });
 }
 

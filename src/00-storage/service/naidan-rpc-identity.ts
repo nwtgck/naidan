@@ -1,9 +1,9 @@
-import { ExperimentalNaidanRpcIdentitySchemaDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+import { ExperimentalNaidanRpcIdentityDtoSchema } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 import type { NaidanRpcIdentity } from '@/01-models/naidan-rpc';
 
 /** Identity policy belongs to the owner of the key, not the DTO shape. */
 function validateIdentity({ value }: { value: unknown }): NaidanRpcIdentity {
-  const identity = ExperimentalNaidanRpcIdentitySchemaDto.parse(value), key = identity.privateKey;
+  const identity = ExperimentalNaidanRpcIdentityDtoSchema.parse(value), key = identity.privateKey;
   if (key.type !== 'private' || key.extractable || key.algorithm.name !== 'X25519' || key.usages.length !== 1 || key.usages[0] !== 'deriveBits'
     || !/^[A-Za-z0-9_-]{43}$/.test(identity.publicKey)) {
     throw new Error('Invalid RPC identity');

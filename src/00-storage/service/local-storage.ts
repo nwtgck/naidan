@@ -1,4 +1,4 @@
-import { ExperimentalModelGraphRegistrySchemaDto, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
+import { ExperimentalModelGraphRegistryDtoSchema, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
 import { iterateAttachmentParts } from './message-attachments';
 import { DEFAULT_SETTINGS_ENDPOINT, type Chat, type Settings, type ChatGroup, type MessageNode, type ChatMeta, type ChatContent, type SidebarItem, type StorageSnapshot, type BinaryObject } from '@/01-models/types';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
@@ -6,11 +6,11 @@ import {
   type ChatMetaDto,
   type ChatGroupDto,
   type HierarchyDto,
-  ChatMetaSchemaDto,
-  ChatGroupSchemaDto,
-  SettingsSchemaDto,
-  HierarchySchemaDto,
-  ChatContentSchemaDto,
+  ChatMetaDtoSchema,
+  ChatGroupDtoSchema,
+  SettingsDtoSchema,
+  HierarchyDtoSchema,
+  ChatContentDtoSchema,
 } from '@/00-storage/00-dto/dto';
 import {
   chatToDomain,
@@ -33,7 +33,7 @@ import { IStorageProvider } from './interface';
 import { STORAGE_KEY_PREFIX } from '@/constants';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 import { promiseAllKeyed } from '@/utils/promise';
-import { ExperimentalNaidanRpcRegistrySchemaDto, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+import { ExperimentalNaidanRpcRegistryDtoSchema, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 
 const LSP_STORAGE_PREFIX = `${STORAGE_KEY_PREFIX}lsp:`;
 const KEY_HIERARCHY = `${LSP_STORAGE_PREFIX}hierarchy`;
@@ -55,27 +55,27 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
     const raw = localStorage.getItem(KEY_NAIDAN_RPC_REGISTRY);
-    return raw === null ? undefined : ExperimentalNaidanRpcRegistrySchemaDto.parse(JSON.parse(raw));
+    return raw === null ? undefined : ExperimentalNaidanRpcRegistryDtoSchema.parse(JSON.parse(raw));
   }
 
   async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
     if (registry === undefined) {
       localStorage.removeItem(KEY_NAIDAN_RPC_REGISTRY);
     } else {
-      localStorage.setItem(KEY_NAIDAN_RPC_REGISTRY, JSON.stringify(ExperimentalNaidanRpcRegistrySchemaDto.parse(registry)));
+      localStorage.setItem(KEY_NAIDAN_RPC_REGISTRY, JSON.stringify(ExperimentalNaidanRpcRegistryDtoSchema.parse(registry)));
     }
   }
 
   async loadModelGraphRegistry(): Promise<ExperimentalModelGraphRegistryDto | undefined> {
     const raw = localStorage.getItem(KEY_MODEL_GRAPH_REGISTRY);
-    return raw === null ? undefined : ExperimentalModelGraphRegistrySchemaDto.parse(JSON.parse(raw));
+    return raw === null ? undefined : ExperimentalModelGraphRegistryDtoSchema.parse(JSON.parse(raw));
   }
 
   async saveModelGraphRegistry({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void> {
     if (registry === undefined) {
       localStorage.removeItem(KEY_MODEL_GRAPH_REGISTRY);
     } else {
-      localStorage.setItem(KEY_MODEL_GRAPH_REGISTRY, JSON.stringify(ExperimentalModelGraphRegistrySchemaDto.parse(registry)));
+      localStorage.setItem(KEY_MODEL_GRAPH_REGISTRY, JSON.stringify(ExperimentalModelGraphRegistryDtoSchema.parse(registry)));
     }
   }
 
@@ -110,7 +110,7 @@ export class LocalStorageProvider extends IStorageProvider {
     // A stored but unreadable record must not become a new, empty conversation
     // when a caller performs a read-update-write operation.
     return chatContentToDomain({
-      dto: ChatContentSchemaDto.parse(JSON.parse(rawContent)),
+      dto: ChatContentDtoSchema.parse(JSON.parse(rawContent)),
     });
   }
 
@@ -127,7 +127,7 @@ export class LocalStorageProvider extends IStorageProvider {
       if (key?.startsWith(KEY_META_PREFIX)) {
         const raw = localStorage.getItem(key);
         if (raw !== null) {
-          metas.push(ChatMetaSchemaDto.parse(JSON.parse(raw)));
+          metas.push(ChatMetaDtoSchema.parse(JSON.parse(raw)));
         }
       }
     }
@@ -141,7 +141,7 @@ export class LocalStorageProvider extends IStorageProvider {
       if (key?.startsWith(KEY_GROUP_PREFIX)) {
         const raw = localStorage.getItem(key);
         if (raw !== null) {
-          groups.push(ChatGroupSchemaDto.parse(JSON.parse(raw)));
+          groups.push(ChatGroupDtoSchema.parse(JSON.parse(raw)));
         }
       }
     }
@@ -155,7 +155,7 @@ export class LocalStorageProvider extends IStorageProvider {
     if (raw === null) {
       return { items: [] };
     }
-    return HierarchySchemaDto.parse(JSON.parse(raw));
+    return HierarchyDtoSchema.parse(JSON.parse(raw));
   }
 
   async saveHierarchy({ hierarchy }: { hierarchy: HierarchyDto }): Promise<void> {
@@ -166,7 +166,7 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
-    const serialized = JSON.stringify(ChatMetaSchemaDto.parse(dto));
+    const serialized = JSON.stringify(ChatMetaDtoSchema.parse(dto));
     localStorage.setItem(`${KEY_META_PREFIX}${idToRaw({ id: meta.id })}`, serialized);
   }
 
@@ -190,15 +190,15 @@ export class LocalStorageProvider extends IStorageProvider {
     }
 
     const dto = chatContentToDto({ domain: content });
-    ChatContentSchemaDto.parse(dto);
+    ChatContentDtoSchema.parse(dto);
     localStorage.setItem(`${KEY_CONTENT_PREFIX}${idToRaw({ id })}`, JSON.stringify(dto));
   }
 
   async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
     const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${idToRaw({ id })}`);
     const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${idToRaw({ id })}`);
-    const meta = rawMeta === null ? null : ChatMetaSchemaDto.parse(JSON.parse(rawMeta));
-    const content = rawContent === null ? null : ChatContentSchemaDto.parse(JSON.parse(rawContent));
+    const meta = rawMeta === null ? null : ChatMetaDtoSchema.parse(JSON.parse(rawMeta));
+    const content = rawContent === null ? null : ChatContentDtoSchema.parse(JSON.parse(rawContent));
     if (meta === null || content === null) {
       return null;
     }
@@ -223,7 +223,7 @@ export class LocalStorageProvider extends IStorageProvider {
     if (rawMeta === null) {
       return null;
     }
-    const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(JSON.parse(rawMeta)) });
+    const meta = chatMetaToDomain({ dto: ChatMetaDtoSchema.parse(JSON.parse(rawMeta)) });
     // Resolve groupId from hierarchy
     const hierarchy = await this.loadHierarchy();
     if (hierarchy) {
@@ -256,13 +256,13 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
-    const serialized = JSON.stringify(ChatGroupSchemaDto.parse(dto));
+    const serialized = JSON.stringify(ChatGroupDtoSchema.parse(dto));
     localStorage.setItem(`${KEY_GROUP_PREFIX}${idToRaw({ id: chatGroup.id })}`, serialized);
   }
 
   async loadChatGroupConfiguration({ id }: { id: ChatGroupId }): Promise<Omit<ChatGroup, 'items'> | null> {
     const raw = localStorage.getItem(`${KEY_GROUP_PREFIX}${idToRaw({ id })}`);
-    return raw === null ? null : chatGroupConfigurationToDomain({ dto: ChatGroupSchemaDto.parse(JSON.parse(raw)) });
+    return raw === null ? null : chatGroupConfigurationToDomain({ dto: ChatGroupDtoSchema.parse(JSON.parse(raw)) });
   }
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
@@ -276,7 +276,7 @@ export class LocalStorageProvider extends IStorageProvider {
     });
     const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
     const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
-    return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(JSON.parse(raw)), hierarchy: h, chatMetas });
+    return chatGroupToDomain({ dto: ChatGroupDtoSchema.parse(JSON.parse(raw)), hierarchy: h, chatMetas });
   }
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
@@ -299,7 +299,7 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async saveSettings({ settings }: { settings: Settings }): Promise<void> {
     const dto = settingsToDto({ domain: settings });
-    localStorage.setItem(KEY_SETTINGS, JSON.stringify(SettingsSchemaDto.parse(dto)));
+    localStorage.setItem(KEY_SETTINGS, JSON.stringify(SettingsDtoSchema.parse(dto)));
   }
 
   async loadSettings(): Promise<Settings | null> {
@@ -308,7 +308,7 @@ export class LocalStorageProvider extends IStorageProvider {
       return null;
     }
     try {
-      return settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(raw)) });
+      return settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(raw)) });
     } catch (error) {
       // Unavailable RPC bytes must not masquerade as absent settings.
       return null;

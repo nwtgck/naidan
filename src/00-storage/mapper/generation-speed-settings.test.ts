@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
-import { SettingsSchemaDto } from '@/00-storage/00-dto/dto';
+import { SettingsDtoSchema } from '@/00-storage/00-dto/dto';
 import { settingsToDomain, settingsToDto } from './mappers';
 
 type DisplaySettings = NonNullable<NonNullable<Settings['experimental']>['generationSpeed']>;
@@ -12,7 +12,7 @@ function roundTrip({ value }: { value: DisplaySettings | undefined }) {
     endpoint: { type: 'openai', url: 'https://example.invalid' },
     experimental: { locale: 'ja', generationSpeed: value },
   };
-  const dto = SettingsSchemaDto.parse(JSON.parse(JSON.stringify(settingsToDto({ domain }))));
+  const dto = SettingsDtoSchema.parse(JSON.parse(JSON.stringify(settingsToDto({ domain }))));
   return { dto, domain: settingsToDomain({ dto }) };
 }
 
@@ -39,7 +39,7 @@ describe('experimental generation speed preferences', () => {
 
   it('isolates an unreadable display option without losing other experimental settings', () => {
     const initial = roundTrip({ value: undefined }).dto;
-    const dto = SettingsSchemaDto.parse({ ...initial, experimental: { locale: 'ja', generationSpeed: { status: 'future_status', inlineStats: 'always' } } });
+    const dto = SettingsDtoSchema.parse({ ...initial, experimental: { locale: 'ja', generationSpeed: { status: 'future_status', inlineStats: 'always' } } });
     const domain = settingsToDomain({ dto });
     expect(domain.experimental?.locale).toBe('ja');
     expect(domain.experimental?.generationSpeed).toBeUndefined();
@@ -56,7 +56,7 @@ describe('experimental generation speed preferences', () => {
   it('isolates an unknown future timing mode as unreadable data', () => {
     const initial = roundTrip({ value: undefined }).dto;
     const value = { llamaCppServerTimings: 'future', status: 'enabled' };
-    const dto = SettingsSchemaDto.parse({ ...initial, experimental: { locale: 'ja', generationSpeed: value } });
+    const dto = SettingsDtoSchema.parse({ ...initial, experimental: { locale: 'ja', generationSpeed: value } });
     const domain = settingsToDomain({ dto });
     expect(domain.experimental?.generationSpeed).toBeUndefined();
     expect(domain.experimental?.unreadable?.generationSpeed).toEqual(value);

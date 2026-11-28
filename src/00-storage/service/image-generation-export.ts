@@ -1,6 +1,6 @@
 import { imageGenerationOperationTable } from './image-generation/operations';
 import { idToRaw, toBinaryObjectId, type BinaryObjectId, type ImageGenerationSessionId } from '@/01-models/ids';
-import { ExperimentalImageGenerationCompositionSchemaDto, ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationCompositionDtoSchema, ExperimentalImageGenerationDraftDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { readImageGenerationBinaryDeletion } from './image-generation/deletions';
 import { withImageGenerationStore, type ImageGenerationStoreAccess } from './image-generation/context';
 import { imageGenerationRawIdSchema, readImageGenerationText } from './image-generation/files';
@@ -51,7 +51,7 @@ export async function collectImageGenerationSessionMetadata({ store, sessionId }
       metadata.push({ path: 'session.json', blob: new Blob([JSON.stringify({ ...session, translation: undefined }, undefined, 2)], { type: 'application/json' }) });
       const draftText = await readImageGenerationText({ directory: location, name: 'draft.json' });
       if (draftText !== undefined) {
-        const draft = ExperimentalImageGenerationDraftSchemaDto.parse(JSON.parse(draftText));
+        const draft = ExperimentalImageGenerationDraftDtoSchema.parse(JSON.parse(draftText));
         if (draft.sessionId !== id) {
           throw new Error('The draft belongs to another session.');
         }
@@ -60,7 +60,7 @@ export async function collectImageGenerationSessionMetadata({ store, sessionId }
       }
       const compositionText = await readImageGenerationText({ directory: location, name: 'composition-draft.json' });
       if (compositionText !== undefined) {
-        const composition = ExperimentalImageGenerationCompositionSchemaDto.parse(JSON.parse(compositionText));
+        const composition = ExperimentalImageGenerationCompositionDtoSchema.parse(JSON.parse(compositionText));
         if (composition.sessionId !== id) {
           throw new Error('The composition belongs to another session.');
         }

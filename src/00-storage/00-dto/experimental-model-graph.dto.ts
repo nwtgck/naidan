@@ -3,24 +3,24 @@ import * as dtozod from '@/utils/dtozod';
 // Experimental declarations intentionally have no backward execution guarantee.
 // The envelope keeps source text intact so unsupported declarations are visible
 // and recoverable, rather than silently disappearing on an application update.
-export const ExperimentalModelGraphRuleSchemaDto = dtozod.union([
+export const ExperimentalModelGraphRuleDtoSchema = dtozod.union([
   dtozod.object({ mode: dtozod.literal('disabled') }),
   dtozod.object({ mode: dtozod.enum(['when_architecture_unknown', 'replace_native']), architecture: dtozod.string(), approvedSha256: dtozod.string() }),
 ]);
-export const ExperimentalModelGraphRegistrationSchemaDto = dtozod.object({
+export const ExperimentalModelGraphRegistrationDtoSchema = dtozod.object({
   id: dtozod.string(),
   label: dtozod.string(),
   source: dtozod.string(),
   sourceSha256: dtozod.string(),
-  rule: ExperimentalModelGraphRuleSchemaDto,
+  rule: ExperimentalModelGraphRuleDtoSchema,
 });
-export const ExperimentalModelGraphRegistrySchemaDto = dtozod.object({
+export const ExperimentalModelGraphRegistryDtoSchema = dtozod.object({
   version: dtozod.literal(1),
   id: dtozod.string(),
   revision: dtozod.number(),
-  registrations: dtozod.array(ExperimentalModelGraphRegistrationSchemaDto),
+  registrations: dtozod.array(ExperimentalModelGraphRegistrationDtoSchema),
 });
-export type ExperimentalModelGraphRegistrationDto = dtozod.infer<typeof ExperimentalModelGraphRegistrationSchemaDto>;
-export type ExperimentalModelGraphRegistryDto = dtozod.infer<typeof ExperimentalModelGraphRegistrySchemaDto>;
+export type ExperimentalModelGraphRegistrationDto = dtozod.infer<typeof ExperimentalModelGraphRegistrationDtoSchema>;
+export type ExperimentalModelGraphRegistryDto = dtozod.infer<typeof ExperimentalModelGraphRegistryDtoSchema>;
 export const TEST_ONLY = {
 };

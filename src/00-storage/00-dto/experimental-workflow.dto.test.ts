@@ -1,21 +1,21 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import * as dtozod from '@/utils/dtozod';
 import {
-  ExperimentalWorkflowValueSchemaDto,
+  ExperimentalWorkflowValueDtoSchema,
   type ExperimentalWorkflowValueSchemaTypeDto,
 } from './experimental-workflow.dto';
 
-const nestedValueSchema = dtozod.object({ value: ExperimentalWorkflowValueSchemaDto });
+const nestedValueSchema = dtozod.object({ value: ExperimentalWorkflowValueDtoSchema });
 
 describe('Recursive workflow DTO schema contract', () => {
   it('tracks DTO optionality metadata without making a nested value optional', () => {
     expectTypeOf<ExperimentalWorkflowValueSchemaTypeDto['_zod']['optin']>().toEqualTypeOf<dtozod.DtoSchema['_zod']['optin']>();
     expectTypeOf<ExperimentalWorkflowValueSchemaTypeDto['_zod']['optout']>().toEqualTypeOf<dtozod.DtoSchema['_zod']['optout']>();
     expectTypeOf<dtozod.input<typeof nestedValueSchema>>().toEqualTypeOf<{
-      value: dtozod.input<typeof ExperimentalWorkflowValueSchemaDto>,
+      value: dtozod.input<typeof ExperimentalWorkflowValueDtoSchema>,
     }>();
     expectTypeOf<dtozod.output<typeof nestedValueSchema>>().toEqualTypeOf<{
-      value: dtozod.output<typeof ExperimentalWorkflowValueSchemaDto>,
+      value: dtozod.output<typeof ExperimentalWorkflowValueDtoSchema>,
     }>();
     expect(nestedValueSchema.safeParse({}).success).toBe(false);
     expect(nestedValueSchema.safeParse({ value: undefined }).success).toBe(false);
@@ -27,14 +27,14 @@ describe('Recursive workflow DTO schema contract', () => {
       const invalid: ExperimentalWorkflowValueSchemaTypeDto = dtozod.discriminatedUnion('type', [
         dtozod.object({
           type: dtozod.literal('format_number'),
-          value: ExperimentalWorkflowValueSchemaDto,
+          value: ExperimentalWorkflowValueDtoSchema,
           minDigits: dtozod.string(),
         }),
       ]);
       // @ts-expect-error A nested value is required in the input contract.
       const missing: dtozod.input<typeof nestedValueSchema> = {};
       // @ts-expect-error Recursive values cannot be replaced by plain strings.
-      const malformed: dtozod.output<typeof ExperimentalWorkflowValueSchemaDto> = { type: 'array', items: ['wrong'] };
+      const malformed: dtozod.output<typeof ExperimentalWorkflowValueDtoSchema> = { type: 'array', items: ['wrong'] };
       return { invalid, missing, malformed };
     };
     expect(invalidContracts).toBeTypeOf('function');
@@ -57,7 +57,7 @@ describe('Recursive workflow DTO schema contract', () => {
         }],
       }],
     };
-    const parsed = ExperimentalWorkflowValueSchemaDto.parse(legacy);
+    const parsed = ExperimentalWorkflowValueDtoSchema.parse(legacy);
     if (parsed.type !== 'conversation') {
       throw new Error('Expected conversation');
     }
@@ -69,14 +69,14 @@ describe('Recursive workflow DTO schema contract', () => {
     expect(part.code).toBeUndefined();
     expect(Object.hasOwn(part.content, 'end')).toBe(true);
     expect(part.content.end).toBeUndefined();
-    expect(ExperimentalWorkflowValueSchemaDto.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
+    expect(ExperimentalWorkflowValueDtoSchema.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
   });
 
   it('keeps arbitrary literal data while dropping only unknown structural fields', () => {
     const value = { type: 'future-data', nested: { unknown: [1, null, 'kept'] } };
-    const parsed = ExperimentalWorkflowValueSchemaDto.parse({ type: 'literal', value, futureField: true });
+    const parsed = ExperimentalWorkflowValueDtoSchema.parse({ type: 'literal', value, futureField: true });
     expect(parsed).toEqual({ type: 'literal', value });
-    expect(ExperimentalWorkflowValueSchemaDto.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
+    expect(ExperimentalWorkflowValueDtoSchema.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
   });
 
   it.each([
@@ -86,6 +86,6 @@ describe('Recursive workflow DTO schema contract', () => {
     { type: 'format_number', value: { type: 'literal', value: 1 }, minDigits: '2' },
     { type: 'array', items: ['invalid'] },
   ])('rejects malformed recursive input %j', value => {
-    expect(ExperimentalWorkflowValueSchemaDto.safeParse(value).success).toBe(false);
+    expect(ExperimentalWorkflowValueDtoSchema.safeParse(value).success).toBe(false);
   });
 });

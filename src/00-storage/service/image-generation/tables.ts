@@ -1,9 +1,9 @@
 import { exactObject } from '@/utils/exact-object';
 import {
-  ExperimentalImageGenerationSessionSchemaDto, ExperimentalImageGenerationSessionIndexSchemaDto,
-  ExperimentalImageGenerationRunSchemaDto, ExperimentalImageGenerationRunIndexSchemaDto, unavailableRunRpcRecord,
-  ExperimentalImageGenerationAssetSchemaDto, ExperimentalImageGenerationAssetIndexSchemaDto,
-  ExperimentalImageGenerationAssetAnnotationsSchemaDto, ExperimentalImageGenerationAnnotationsIndexSchemaDto,
+  ExperimentalImageGenerationSessionDtoSchema, ExperimentalImageGenerationSessionIndexDtoSchema,
+  ExperimentalImageGenerationRunDtoSchema, ExperimentalImageGenerationRunIndexDtoSchema, unavailableRunRpcRecord,
+  ExperimentalImageGenerationAssetDtoSchema, ExperimentalImageGenerationAssetIndexDtoSchema,
+  ExperimentalImageGenerationAssetAnnotationsDtoSchema, ExperimentalImageGenerationAnnotationsIndexDtoSchema,
   type ExperimentalImageGenerationRunDto, type ExperimentalImageGenerationRunSummaryDto,
   type ExperimentalImageGenerationAssetDto, type ExperimentalImageGenerationAssetSummaryDto,
 } from '@/00-storage/00-dto/experimental-image-generation.dto';
@@ -69,8 +69,8 @@ export async function imageGenerationSessionTable({ directory, create }: { direc
   return createImageGenerationTable({
     directory: sessions,
     layout: 'session-directories',
-    recordSchema: ExperimentalImageGenerationSessionSchemaDto,
-    indexSchema: ExperimentalImageGenerationSessionIndexSchemaDto,
+    recordSchema: ExperimentalImageGenerationSessionDtoSchema,
+    indexSchema: ExperimentalImageGenerationSessionIndexDtoSchema,
     recordId: ({ record }) => record.id,
     summaryId: ({ summary }) => summary.id,
     summarize: ({ record }) => ({ ...record }),
@@ -100,8 +100,8 @@ export async function imageGenerationRunTable({ directory, sessionId, create }: 
   return createImageGenerationTable({
     directory: records,
     layout: 'files',
-    recordSchema: ExperimentalImageGenerationRunSchemaDto,
-    indexSchema: ExperimentalImageGenerationRunIndexSchemaDto,
+    recordSchema: ExperimentalImageGenerationRunDtoSchema,
+    indexSchema: ExperimentalImageGenerationRunIndexDtoSchema,
     recordId: ({ record }) => record.id,
     summaryId: ({ summary }) => summary.id,
     summarize: summarizeRun,
@@ -122,8 +122,8 @@ export async function imageGenerationAssetTable({ directory, sessionId, create }
   return createImageGenerationTable({
     directory: records,
     layout: 'files',
-    recordSchema: ExperimentalImageGenerationAssetSchemaDto,
-    indexSchema: ExperimentalImageGenerationAssetIndexSchemaDto,
+    recordSchema: ExperimentalImageGenerationAssetDtoSchema,
+    indexSchema: ExperimentalImageGenerationAssetIndexDtoSchema,
     recordId: ({ record }) => record.id,
     summaryId: ({ summary }) => summary.id,
     summarize: summarizeAsset,
@@ -138,8 +138,8 @@ export async function imageGenerationAnnotationsTable({ directory, sessionId, cr
   return createImageGenerationTable({
     directory: records,
     layout: 'files',
-    recordSchema: ExperimentalImageGenerationAssetAnnotationsSchemaDto,
-    indexSchema: ExperimentalImageGenerationAnnotationsIndexSchemaDto,
+    recordSchema: ExperimentalImageGenerationAssetAnnotationsDtoSchema,
+    indexSchema: ExperimentalImageGenerationAnnotationsIndexDtoSchema,
     recordId: ({ record }) => record.assetId,
     summaryId: ({ summary }) => summary.assetId,
     summarize: ({ record }) => ({ ...record }),

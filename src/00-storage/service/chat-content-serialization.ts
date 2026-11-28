@@ -1,5 +1,5 @@
 import type { ChatContent } from '@/01-models/types';
-import { ChatContentSchemaDto } from '@/00-storage/00-dto/dto';
+import { ChatContentDtoSchema } from '@/00-storage/00-dto/dto';
 import { chatContentToDomain, chatContentToDto } from '@/00-storage/mapper/mappers';
 
 /**
@@ -17,10 +17,10 @@ export function roundTripChatContentPersistenceSerialization({
   const dto = chatContentToDto({ domain: content });
   // Production storage validates the DTO before writing the JSON payload. Keep
   // the investigation round trip on the same serialization boundary.
-  ChatContentSchemaDto.parse(dto);
+  ChatContentDtoSchema.parse(dto);
   const serialized = JSON.stringify(dto);
   const restored = chatContentToDomain({
-    dto: ChatContentSchemaDto.parse(JSON.parse(serialized) as unknown),
+    dto: ChatContentDtoSchema.parse(JSON.parse(serialized) as unknown),
   });
   return { restored, serialized };
 }

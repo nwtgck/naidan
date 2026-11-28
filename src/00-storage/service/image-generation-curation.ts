@@ -1,6 +1,6 @@
 import { idToRaw, toBinaryObjectId, type BinaryObjectId, type ImageGenerationAssetId, type ImageGenerationRunId, type ImageGenerationSessionId } from '@/01-models/ids';
 import type { ImageGenerationAssetAnnotations } from '@/01-models/image-generation';
-import { ExperimentalImageGenerationAssetAnnotationsSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationAssetAnnotationsDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationAnnotationsToDomain, imageGenerationAssetSummaryToDomain } from '@/00-storage/mapper/image-generation';
 import { assertImageGenerationReplacement, withImageGenerationStore, type ImageGenerationStoreAccess } from './image-generation/context';
 import { imageGenerationAnnotationsTable, imageGenerationAssetTable, imageGenerationRunTable, imageGenerationSessionDirectory } from './image-generation/tables';
@@ -56,7 +56,7 @@ export async function setImageGenerationAssetState({ store, sessionId, assetId, 
       if (current.state === 'deleting' || current.state === 'deleted') {
         throw new Error('A deleted image cannot be restored.');
       }
-      const next = ExperimentalImageGenerationAssetAnnotationsSchemaDto.parse({ ...current, revision: expectedRevision + 1, state });
+      const next = ExperimentalImageGenerationAssetAnnotationsDtoSchema.parse({ ...current, revision: expectedRevision + 1, state });
       assertImageGenerationReplacement({ current, next, expectedRevision });
       await table.write({ record: next, assertCurrent() {}, async beforeCommit() {} });
       return imageGenerationAnnotationsToDomain({ dto: next });
@@ -90,7 +90,7 @@ export async function deleteImageGenerationAsset({ store, sessionId, assetId, ex
       case 'deleted': return;
       case 'deleting': break;
       case 'active': case 'archived': {
-        const next = ExperimentalImageGenerationAssetAnnotationsSchemaDto.parse({ ...current, state: 'deleting', revision: expectedRevision + 1 });
+        const next = ExperimentalImageGenerationAssetAnnotationsDtoSchema.parse({ ...current, state: 'deleting', revision: expectedRevision + 1 });
         assertImageGenerationReplacement({ current, next, expectedRevision });
         await table.write({ record: next, assertCurrent() {}, async beforeCommit() {} });
         current = next;
@@ -106,7 +106,7 @@ export async function deleteImageGenerationAsset({ store, sessionId, assetId, ex
       for (const raw of ids) {
         await removeBinary({ binaryObjectId: toBinaryObjectId({ raw }) });
       }
-      const next = ExperimentalImageGenerationAssetAnnotationsSchemaDto.parse({ ...current, state: 'deleted', tags: [], revision: current.revision + 1 });
+      const next = ExperimentalImageGenerationAssetAnnotationsDtoSchema.parse({ ...current, state: 'deleted', tags: [], revision: current.revision + 1 });
       await table.write({ record: next, assertCurrent() {}, async beforeCommit() {} });
     },
   });

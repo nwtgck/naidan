@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SettingsSchemaDto } from '@/00-storage/00-dto/dto';
-import { ExperimentalLlamaCppBrowserSettingsSchemaDto } from '@/00-storage/00-dto/experimental.dto';
+import { SettingsDtoSchema } from '@/00-storage/00-dto/dto';
+import { ExperimentalLlamaCppBrowserSettingsDtoSchema } from '@/00-storage/00-dto/experimental.dto';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { DEFAULT_SETTINGS, type LlamaCppBrowserSettings, type Settings } from '@/01-models/types';
 import { settingsToDomain, settingsToDto } from './mappers';
@@ -10,15 +10,15 @@ const base: Settings = { ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: '
 describe('llama.cpp browser model download destination settings', () => {
   it('keeps legacy settings without the llama.cpp group readable and absent on disk', () => {
     const saved = settingsToDto({ domain: base });
-    const read = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(saved))) });
+    const read = settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(JSON.stringify(saved))) });
 
     expect(read.experimental?.llamaCppBrowser).toBeUndefined();
     expect(JSON.stringify(saved)).not.toContain('llamaCppBrowser');
   });
 
   it('materializes a missing nested destination as undefined without selecting a default', () => {
-    expect(ExperimentalLlamaCppBrowserSettingsSchemaDto.parse({})).toStrictEqual({ modelDownloadDestination: undefined, contextTokens: undefined, visionBf16Storage: undefined });
-    const dto = SettingsSchemaDto.parse({ ...settingsToDto({ domain: base }), experimental: { llamaCppBrowser: {} } });
+    expect(ExperimentalLlamaCppBrowserSettingsDtoSchema.parse({})).toStrictEqual({ modelDownloadDestination: undefined, contextTokens: undefined, visionBf16Storage: undefined });
+    const dto = SettingsDtoSchema.parse({ ...settingsToDto({ domain: base }), experimental: { llamaCppBrowser: {} } });
     const read = settingsToDomain({ dto });
 
     expect(read.experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination: undefined, contextTokens: undefined, visionBf16Storage: undefined });
@@ -44,7 +44,7 @@ describe('llama.cpp browser model download destination settings', () => {
         },
       },
     });
-    const parsed = SettingsSchemaDto.parse(JSON.parse(JSON.stringify(saved)));
+    const parsed = SettingsDtoSchema.parse(JSON.parse(JSON.stringify(saved)));
     const restored = settingsToDomain({ dto: parsed });
 
     expect(saved.experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination, contextTokens: undefined, visionBf16Storage: undefined });
@@ -75,7 +75,7 @@ describe('llama.cpp browser model download destination settings', () => {
   });
 
   it('drops unrecognized nested metadata while keeping a valid registration ID', () => {
-    const dto = SettingsSchemaDto.parse({
+    const dto = SettingsDtoSchema.parse({
       ...settingsToDto({ domain: base }),
       experimental: {
         llamaCppBrowser: {
@@ -104,7 +104,7 @@ describe('llama.cpp browser model download destination settings', () => {
     { modelDownloadDestination: { kind: 'host' } },
     { modelDownloadDestination: { kind: 'host', directoryId: 42 } },
   ])('isolates an unreadable llama.cpp group without discarding unrelated settings: %j', invalid => {
-    const dto = SettingsSchemaDto.parse({
+    const dto = SettingsDtoSchema.parse({
       ...settingsToDto({ domain: base }),
       experimental: {
         locale: 'ja',
@@ -127,7 +127,7 @@ describe('llama.cpp browser model download destination settings', () => {
 describe('experimental chat context persistence', () => {
   it.each([65536, 131072, 0, -1, 1.5])('roundtrips numeric target %s structurally, independently from runtime validation', contextTokens => {
     const saved = settingsToDto({ domain: { ...base, experimental: { llamaCppBrowser: { contextTokens, modelDownloadDestination: { kind: 'opfs' } }, locale: 'ja' } } });
-    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(saved))) });
+    const restored = settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(JSON.stringify(saved))) });
     expect(restored.experimental?.llamaCppBrowser).toStrictEqual({ contextTokens, visionBf16Storage: undefined, modelDownloadDestination: { kind: 'opfs' } });
     expect(restored.experimental?.locale).toBe('ja');
     expect(settingsToDto({ domain: restored })).toStrictEqual(saved);
@@ -135,7 +135,7 @@ describe('experimental chat context persistence', () => {
 
   it('isolates an unreadable context field without discarding unrelated preferences', () => {
     const invalid = { contextTokens: '65536', modelDownloadDestination: { kind: 'opfs' } };
-    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse({ ...settingsToDto({ domain: base }), experimental: { llamaCppBrowser: invalid, locale: 'ja' } }) });
+    const restored = settingsToDomain({ dto: SettingsDtoSchema.parse({ ...settingsToDto({ domain: base }), experimental: { llamaCppBrowser: invalid, locale: 'ja' } }) });
     expect(restored.experimental?.llamaCppBrowser).toBeUndefined();
     expect(restored.experimental?.unreadable).toStrictEqual({ llamaCppBrowser: invalid });
     expect(restored.experimental?.locale).toBe('ja');
@@ -145,7 +145,7 @@ describe('experimental chat context persistence', () => {
 it.each(['legacy-expand', 'retain-checked'] as const)('roundtrips the explicit BF16 vision preference %s without materializing defaults', visionBf16Storage => {
   const saved = settingsToDto({ domain: { ...base, experimental: { llamaCppBrowser: { visionBf16Storage } } } });
   expect(saved.experimental?.llamaCppBrowser?.visionBf16Storage).toBe(visionBf16Storage);
-  const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(saved))) });
+  const restored = settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(JSON.stringify(saved))) });
   expect(restored.experimental?.llamaCppBrowser?.visionBf16Storage).toBe(visionBf16Storage);
   expect(JSON.stringify(saved)).not.toContain('retain-only');
 });

@@ -2,7 +2,7 @@ import { nanoid } from 'nanoid';
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
 import type { NaidanRpcRegistryId } from '@/01-models/ids';
 import { idToRaw, toNaidanRpcRegistryId } from '@/01-models/ids';
-import { ExperimentalNaidanRpcRegistrySchemaDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+import { ExperimentalNaidanRpcRegistryDtoSchema } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 import { rpcRegistrationFromDto, rpcRegistrationToDto } from '@/00-storage/mapper/naidan-rpc';
 import type { IStorageProvider } from './interface';
 
@@ -33,7 +33,7 @@ export async function readNaidanRpcRegistry({ provider, providerGeneration, pers
   if (value === undefined) {
     return { access: { providerGeneration, persistence, registryId: undefined }, registrations: [] };
   }
-  const { version: _version, id, registrations, ...rest } = ExperimentalNaidanRpcRegistrySchemaDto.parse(value);
+  const { version: _version, id, registrations, ...rest } = ExperimentalNaidanRpcRegistryDtoSchema.parse(value);
   rest satisfies Record<PropertyKey, never>;
   validateRegistry({ id, registrations });
   return {
@@ -48,7 +48,7 @@ export async function writeNaidanRpcRegistry({ provider, current, registrations 
   provider: IStorageProvider, current: NaidanRpcRegistrySnapshot, registrations: readonly NaidanRpcRegistration[],
 }): Promise<NaidanRpcRegistryAccess> {
   const id = current.access.registryId ?? toNaidanRpcRegistryId({ raw: nanoid() });
-  const registry = ExperimentalNaidanRpcRegistrySchemaDto.parse({ version: 1, id: idToRaw({ id }), registrations: registrations.map(registration => rpcRegistrationToDto({ registration })) });
+  const registry = ExperimentalNaidanRpcRegistryDtoSchema.parse({ version: 1, id: idToRaw({ id }), registrations: registrations.map(registration => rpcRegistrationToDto({ registration })) });
   validateRegistry({ id: registry.id, registrations: registry.registrations });
   await provider.saveNaidanRpcRegistry({ registry });
   // Retain the registry ID when its last registration is removed. A recreated

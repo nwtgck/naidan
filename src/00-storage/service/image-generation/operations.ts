@@ -1,4 +1,4 @@
-import { ExperimentalImageGenerationOperationSchemaDto, ExperimentalImageGenerationOperationIndexSchemaDto, type ExperimentalImageGenerationOperationDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationOperationDtoSchema, ExperimentalImageGenerationOperationIndexDtoSchema, type ExperimentalImageGenerationOperationDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import type { ImageGenerationOperation, ImageGenerationReadResult } from '@/01-models/image-generation';
 import { idToRaw, toImageGenerationOperationId, toImageGenerationRunId, toImageGenerationSessionId, type ImageGenerationOperationId, type ImageGenerationSessionId } from '@/01-models/ids';
 import { withImageGenerationStore, type ImageGenerationStoreAccess } from './context';
@@ -19,8 +19,8 @@ export async function imageGenerationOperationTable({ directory, sessionId, crea
   return createImageGenerationTable({
     directory: await imageGenerationDirectory({ parent: directory, name: 'operations', create }),
     layout: 'files',
-    recordSchema: ExperimentalImageGenerationOperationSchemaDto,
-    indexSchema: ExperimentalImageGenerationOperationIndexSchemaDto,
+    recordSchema: ExperimentalImageGenerationOperationDtoSchema,
+    indexSchema: ExperimentalImageGenerationOperationIndexDtoSchema,
     recordId: ({ record }) => record.id,
     summaryId: ({ summary }) => summary.id,
     summarize: ({ record }) => ({ ...record, runIds: [...record.runIds] }),
@@ -38,7 +38,7 @@ function toDomain({ dto }: { dto: ExperimentalImageGenerationOperationDto }): Im
 /** Parent last is the acceptance marker. No inference begins until this write
  * succeeds. A lost acknowledgement retries identical IDs and membership. */
 export async function saveImageGenerationOperation({ store, operation }: { store: ImageGenerationStoreAccess, operation: ImageGenerationOperation }): Promise<void> {
-  const record = ExperimentalImageGenerationOperationSchemaDto.parse({ ...operation, version: 1, id: idToRaw({ id: operation.id }), sessionId: idToRaw({ id: operation.sessionId }), runIds: operation.runIds.map(id => idToRaw({ id })) });
+  const record = ExperimentalImageGenerationOperationDtoSchema.parse({ ...operation, version: 1, id: idToRaw({ id: operation.id }), sessionId: idToRaw({ id: operation.sessionId }), runIds: operation.runIds.map(id => idToRaw({ id })) });
   imageGenerationRawIdSchema.parse(record.sessionId);
   validateOperation({ record, sessionId: record.sessionId });
   await withImageGenerationStore({

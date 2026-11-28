@@ -5,7 +5,7 @@ import { installSecretEqualityTester } from '@/utils/secret.test-support';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import { toProviderProfileId } from '@/01-models/ids';
 import { endpointToDomain, endpointToDto, settingsToDomain, settingsToDto } from './mappers';
-import { SettingsSchemaDto } from '@/00-storage/00-dto/dto';
+import { SettingsDtoSchema } from '@/00-storage/00-dto/dto';
 
 installSecretEqualityTester();
 
@@ -29,7 +29,7 @@ describe('credential persistence boundary', () => {
     settings.providerProfiles = [{ id: toProviderProfileId({ raw: 'profile-test' }), name: 'Profile', endpoint: { type: 'openai', url: 'https://profile.invalid', httpHeaders: [['X-Profile', Secret.from({ value: 'profile-original' })]] } }];
     const copy = clonePlainData({ value: settings });
     const raw = JSON.stringify(settingsToDto({ domain: copy }));
-    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(raw)) });
+    const restored = settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(raw)) });
     for (const value of ['global-original', 'title-original', 'profile-original']) {
       expect(raw).toContain(value);
       expect(JSON.stringify(copy)).not.toContain(value);

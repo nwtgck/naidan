@@ -1,4 +1,4 @@
-import { ChatContentSchemaDto, type MessageNodeDto } from '@/00-storage/00-dto/dto';
+import { ChatContentDtoSchema, type MessageNodeDto } from '@/00-storage/00-dto/dto';
 
 // Validate with Zod, but retain the parsed JSON itself: even a loose object
 // schema can omit reserved keys from its returned object. Only the two known
@@ -27,7 +27,7 @@ export function remapLegacyUploadedFileReferences({ serialized, binaryObjectIds 
   binaryObjectIds: ReadonlyMap<string, ReadonlyMap<string, string>>,
 }): { serialized: string | undefined, unresolvedReferences: number } {
   const original: unknown = JSON.parse(serialized);
-  const validated = ChatContentSchemaDto.parse(original);
+  const validated = ChatContentDtoSchema.parse(original);
   const document = readRecord({ value: original });
   const root = readRecord({ value: document.root });
   const pending: { nodes: MessageNodeDto[], originals: unknown[] }[] = [
@@ -77,7 +77,7 @@ export function remapLegacyUploadedFileReferences({ serialized, binaryObjectIds 
     return { serialized: undefined, unresolvedReferences };
   }
   // Validate the deliberate reference edits without using stripped parse output.
-  ChatContentSchemaDto.parse(document);
+  ChatContentDtoSchema.parse(document);
   return { serialized: JSON.stringify(document), unresolvedReferences };
 }
 
@@ -88,7 +88,7 @@ export function readLegacyUploadedFileMetadata({ serialized }: { serialized: str
   mimeType: string,
   createdAt: number,
 }[] {
-  const content = ChatContentSchemaDto.parse(JSON.parse(serialized) as unknown);
+  const content = ChatContentDtoSchema.parse(JSON.parse(serialized) as unknown);
   const pending = [...content.root.items];
   const metadata: ReturnType<typeof readLegacyUploadedFileMetadata> = [];
   while (pending.length > 0) {

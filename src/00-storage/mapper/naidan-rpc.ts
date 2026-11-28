@@ -2,7 +2,7 @@ import { Secret } from '@/utils/secret';
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
 import { normalizeNaidanRpcLabel, normalizeNaidanRpcTransport } from '@/01-models/naidan-rpc';
 import { idToRaw, toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
-import { ExperimentalNaidanRpcRegistrationSchemaDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+import { ExperimentalNaidanRpcRegistrationDtoSchema } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 import type { ExperimentalNaidanRpcRegistrationDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 
 export function rpcRegistrationToDto({ registration }: { registration: NaidanRpcRegistration }): ExperimentalNaidanRpcRegistrationDto {
@@ -13,7 +13,7 @@ export function rpcRegistrationToDto({ registration }: { registration: NaidanRpc
   validateRegistrationIdentity({ id: idToRaw({ id }), peerPublicKey: idToRaw({ id: peerPublicKey }), localPublicKey, revision });
   // Explicit projection also accepts Vue's nested reactive forms. Never pass
   // their proxies to persistence or structuredClone.
-  return ExperimentalNaidanRpcRegistrationSchemaDto.parse({
+  return ExperimentalNaidanRpcRegistrationDtoSchema.parse({
     id: idToRaw({ id }),
     peerPublicKey: idToRaw({ id: peerPublicKey }),
     localPublicKey,
@@ -26,7 +26,7 @@ export function rpcRegistrationToDto({ registration }: { registration: NaidanRpc
 }
 
 export function rpcRegistrationFromDto({ value }: { value: unknown }): NaidanRpcRegistration {
-  const { id, peerPublicKey, localPublicKey, label, transport, inboundAllowedMethods, connectOnStartup, revision, ...rest } = ExperimentalNaidanRpcRegistrationSchemaDto.parse(value);
+  const { id, peerPublicKey, localPublicKey, label, transport, inboundAllowedMethods, connectOnStartup, revision, ...rest } = ExperimentalNaidanRpcRegistrationDtoSchema.parse(value);
   rest satisfies Record<PropertyKey, never>;
   validateRegistrationIdentity({ id, peerPublicKey, localPublicKey, revision });
   return {

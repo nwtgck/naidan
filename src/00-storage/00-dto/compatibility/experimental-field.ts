@@ -26,7 +26,7 @@ const attachUnreadable = <T extends object>({
   return value;
 };
 
-const nativeOptionalExperimentalFieldSchemaDto = <TSchema extends z.ZodObject>({
+const nativeOptionalExperimentalFieldDtoSchema = <TSchema extends z.ZodObject>({
   schema,
 }: {
   schema: TSchema,
@@ -88,7 +88,7 @@ const nativeOptionalExperimentalFieldSchemaDto = <TSchema extends z.ZodObject>({
  * Keep missing experimental fields absent and isolate unreadable fields instead
  * of refusing the containing DTO. Do not expose arbitrary transforms in dtozod.
  */
-export const optionalExperimentalFieldSchemaDto = nativeOptionalExperimentalFieldSchemaDto as unknown as <
+export const optionalExperimentalFieldDtoSchema = nativeOptionalExperimentalFieldDtoSchema as unknown as <
   TSchema extends dtozod.DtoObject<dtozod.DtoShape>,
 >({ schema }: { schema: TSchema }) => dtozod.DtoLeaf<
   z.ZodOptional<z.ZodType<ExperimentalOutput<TSchema>, unknown>>

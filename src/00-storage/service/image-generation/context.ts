@@ -3,7 +3,7 @@ import { generateId } from '@/01-models/id';
 import { idToRaw, type ImageGenerationStoreId } from '@/01-models/ids';
 import type { StorageType } from '@/01-models/types';
 import { SYNC_LOCK_KEY } from '@/constants';
-import { ExperimentalImageGenerationCatalogSchemaDto, type ExperimentalImageGenerationCatalogDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationCatalogDtoSchema, type ExperimentalImageGenerationCatalogDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationDirectory, imageGenerationRawIdSchema, readImageGenerationText, writeImageGenerationText } from './files';
 
 export type ImageGenerationStoreAccess = { storageType: StorageType, storeId: ImageGenerationStoreId };
@@ -44,7 +44,7 @@ export async function imageGenerationRoot({ create }: { create: boolean }): Prom
 export async function readImageGenerationCatalogDto({ directory }: { directory: FileSystemDirectoryHandle }): Promise<ExperimentalImageGenerationCatalogDto | undefined> {
   const text = await readImageGenerationText({ directory, name: 'catalog.json' });
   if (text !== undefined) {
-    return ExperimentalImageGenerationCatalogSchemaDto.parse(JSON.parse(text));
+    return ExperimentalImageGenerationCatalogDtoSchema.parse(JSON.parse(text));
   }
   // An empty newly created directory can be retried. Existing metadata without
   // its catalog is not an empty Workspace and must never be silently initialized.
@@ -77,7 +77,7 @@ export async function openImageGenerationCatalogDto({ storageType, creation }: {
       if (!directory) {
         throw new Error('Image Generation directory is unavailable.');
       }
-      const catalog = ExperimentalImageGenerationCatalogSchemaDto.parse({ version: 1, id: idToRaw({ id: generateId<ImageGenerationStoreId>() }), revision: 0, createdAt: Date.now(), tags: [], preferences: { generationMonitorPresentation: 'visual', experimentalNoticeDismissedAt: undefined, assistantLayout: 'floating', assistantVisibility: 'closed', translation: undefined } });
+      const catalog = ExperimentalImageGenerationCatalogDtoSchema.parse({ version: 1, id: idToRaw({ id: generateId<ImageGenerationStoreId>() }), revision: 0, createdAt: Date.now(), tags: [], preferences: { generationMonitorPresentation: 'visual', experimentalNoticeDismissedAt: undefined, assistantLayout: 'floating', assistantVisibility: 'closed', translation: undefined } });
       await writeImageGenerationText({ directory, name: 'catalog.json', text: JSON.stringify(catalog) });
       return catalog;
     },

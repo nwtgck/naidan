@@ -32,7 +32,7 @@ import {
   WESH_EFFICIENT_FILE_WRITE_FALLBACK_REQUIRED,
 } from './types';
 import {
-  WeshRegistryEntrySchemaDto,
+  WeshRegistryEntryDtoSchema,
   type WeshRegistryEntryDto,
   WESH_SYSTEM_DIR,
   METADATA_DIR,
@@ -4249,7 +4249,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }): Promise<RegistryEntry | undefined> {
     try {
       const file = await fileHandle.getFile();
-      const dto = WeshRegistryEntrySchemaDto.parse(JSON.parse(await file.text()));
+      const dto = WeshRegistryEntryDtoSchema.parse(JSON.parse(await file.text()));
       return mapDtoToDomain({ dto });
     } catch (error: unknown) {
       if (strict) {

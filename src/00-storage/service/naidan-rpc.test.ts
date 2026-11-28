@@ -394,8 +394,8 @@ it.each(['extractable', 'public-key'])('checks key-use policy at the identity bo
   const db = database();
   const pair = await crypto.subtle.generateKey({ name: 'X25519' }, mode === 'extractable', ['deriveBits']);
   const invalid = { ...identity, privateKey: mode === 'public-key' ? pair.publicKey : pair.privateKey };
-  const { ExperimentalNaidanRpcIdentitySchemaDto } = await import('@/00-storage/00-dto/experimental-naidan-rpc.dto');
-  expect(ExperimentalNaidanRpcIdentitySchemaDto.safeParse(invalid).success).toBe(true);
+  const { ExperimentalNaidanRpcIdentityDtoSchema } = await import('@/00-storage/00-dto/experimental-naidan-rpc.dto');
+  expect(ExperimentalNaidanRpcIdentityDtoSchema.safeParse(invalid).success).toBe(true);
   db.stores.get('identity')!.set('self', invalid);
   await expect(naidanRpcStorage.readIdentity()).rejects.toThrow('Invalid RPC identity');
   expect(db.stores.get('identity')!.get('self')).toEqual(invalid);

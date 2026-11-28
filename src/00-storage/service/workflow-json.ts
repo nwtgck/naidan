@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { JsonValue } from '@/01-models/lm';
 import type { WorkflowDefinition, WorkflowStep, WorkflowValue, WorkflowMessage, WorkflowModelConfiguration } from '@/01-models/workflow';
-import { ExperimentalWorkflowDefinitionSchemaDto, ExperimentalWorkflowStepSchemaDto, ExperimentalWorkflowValueSchemaDto, ExperimentalWorkflowModelConfigurationSchemaDto } from '@/00-storage/00-dto/experimental-workflow.dto';
+import { ExperimentalWorkflowDefinitionDtoSchema, ExperimentalWorkflowStepDtoSchema, ExperimentalWorkflowValueDtoSchema, ExperimentalWorkflowModelConfigurationDtoSchema } from '@/00-storage/00-dto/experimental-workflow.dto';
 import { workflowDefinitionToDomain, workflowDefinitionToDto, workflowStepToDomain, workflowStepToDto, workflowValueToDomain, workflowValueToDto, workflowModelConfigurationToDomain } from '@/00-storage/mapper/workflow';
 
 export const WORKFLOW_DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;
@@ -110,7 +110,7 @@ function assertNoRemovedFields({ input, parsed, path }: { input: unknown, parsed
 
 export function parseWorkflowDefinition({ text }: { text: string }): WorkflowDefinition {
   const input = parseWorkflowJson({ text });
-  const dto = ExperimentalWorkflowDefinitionSchemaDto.parse(input);
+  const dto = ExperimentalWorkflowDefinitionDtoSchema.parse(input);
   assertNoRemovedFields({ input, parsed: dto, path: '$' });
   return workflowDefinitionToDomain({ dto });
 }
@@ -294,14 +294,14 @@ export function applyWorkflowStepJson({ step, text }: { step: WorkflowStep, text
       ? merge({ base: base[key], update: update[key], path: [...path, key] }) : base[key]]));
   }
   const input = merge({ base: current, update: patch, path: [] });
-  const dto = ExperimentalWorkflowStepSchemaDto.parse(input);
+  const dto = ExperimentalWorkflowStepDtoSchema.parse(input);
   assertNoRemovedFields({ input, parsed: dto, path: '$' });
   return workflowStepToDomain({ dto });
 }
 
 export function parseWorkflowValue({ text }: { text: string }): WorkflowValue {
   const input = parseWorkflowJson({ text });
-  const parsed = ExperimentalWorkflowValueSchemaDto.parse(input);
+  const parsed = ExperimentalWorkflowValueDtoSchema.parse(input);
   assertNoRemovedFields({ input, parsed, path: '$' });
   return workflowValueToDomain({ dto: parsed });
 }
@@ -312,7 +312,7 @@ export function formatWorkflowValue({ value }: { value: WorkflowValue }): string
 
 /** A generic JSON value becomes a model configuration only at this checked boundary. */
 export function parseWorkflowModelConfiguration({ value }: { value: JsonValue }): WorkflowModelConfiguration {
-  const dto = ExperimentalWorkflowModelConfigurationSchemaDto.parse(value);
+  const dto = ExperimentalWorkflowModelConfigurationDtoSchema.parse(value);
   assertNoRemovedFields({ input: value, parsed: dto, path: '$' });
   const model = workflowModelConfigurationToDomain({ dto });
   if (!model.modelId.trim() || model.endpoint.type === 'unsupported_experimental_endpoint') {

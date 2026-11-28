@@ -5,7 +5,7 @@ import { StorageService, ChatContentBindingChangedError } from './index';
 import { LocalStorageProvider } from './local-storage';
 import { DEFAULT_SETTINGS, type ChatMeta, type ChatGroup, type ChatContent, type MessageNode } from '@/01-models/types';
 import { toChatId, toChatGroupId, toMessageId } from '@/01-models/ids';
-import { ChatContentSchemaDto, ChatMetaSchemaDto } from '@/00-storage/00-dto/dto';
+import { ChatContentDtoSchema, ChatMetaDtoSchema } from '@/00-storage/00-dto/dto';
 import { chatContentToDomain, chatContentToDto } from '@/00-storage/mapper/mappers';
 import { chatModelBindingAssistantFingerprint } from '@/01-models/chat-message';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Observe real persistence without application notifications.
@@ -122,11 +122,11 @@ describe('conditional owner model promotion', () => {
   });
 
   it('keeps launch receipts and write authority out of ordinary DTOs', () => {
-    const parsed = ChatContentSchemaDto.parse({ root: { items: [] } });
+    const parsed = ChatContentDtoSchema.parse({ root: { items: [] } });
     expect(parsed).not.toHaveProperty('modelBindingEpoch');
     const domain = chatContentToDomain({ dto: parsed });
     expect(chatContentToDto({ domain })).not.toHaveProperty('modelBindingEpoch');
-    expect(ChatMetaSchemaDto.parse({ id: 'legacy', title: null, updatedAt: 1, createdAt: 1 })).not.toHaveProperty('modelLaunch');
+    expect(ChatMetaDtoSchema.parse({ id: 'legacy', title: null, updatedAt: 1, createdAt: 1 })).not.toHaveProperty('modelLaunch');
   });
 
   it('promotes only known exact-source answers and rejects a foreign stale tree before calling its updater', async () => {

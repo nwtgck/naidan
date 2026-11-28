@@ -11,11 +11,11 @@ import type {
 } from './types';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the DTO dependency with the storage service API.
 import {
-  ChatGroupSchemaDto,
-  ChatMetaSchemaDto,
-  ChatContentSchemaDto,
-  SettingsSchemaDto,
-  HierarchySchemaDto,
+  ChatGroupDtoSchema,
+  ChatMetaDtoSchema,
+  ChatContentDtoSchema,
+  SettingsDtoSchema,
+  HierarchyDtoSchema,
   type ChatMetaDto,
   type MigrationChunkDto,
   type SettingsDto,
@@ -26,7 +26,7 @@ import {
   type ChatGroupDto,
   type BinaryObjectDto,
   type BinaryShardIndexDto,
-  BinaryShardIndexSchemaDto,
+  BinaryShardIndexDtoSchema,
 } from '@/00-storage/00-dto/dto';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
 import {
@@ -595,7 +595,7 @@ export class ImportExportService {
         });
         await addTextFile({
           path: `${rootPath}settings.json`,
-          text: JSON.stringify(SettingsSchemaDto.parse(settingsToDto({ domain: snapshot.structure.settings })), undefined, 2),
+          text: JSON.stringify(SettingsDtoSchema.parse(settingsToDto({ domain: snapshot.structure.settings })), undefined, 2),
         });
 
         if (excludeFlags.chat) {
@@ -619,7 +619,7 @@ export class ImportExportService {
         for (const group of snapshot.structure.chatGroups) {
           await addTextFile({
             path: `${rootPath}chat-groups/${idToRaw({ id: group.id })}.json`,
-            text: JSON.stringify(ChatGroupSchemaDto.parse(chatGroupToDto({ domain: group })), undefined, 2),
+            text: JSON.stringify(ChatGroupDtoSchema.parse(chatGroupToDto({ domain: group })), undefined, 2),
           });
         }
 
@@ -627,7 +627,7 @@ export class ImportExportService {
           const metasDto = snapshot.structure.chatMetas.map(domain => chatMetaToDto({ domain }));
           await addTextFile({
             path: `${rootPath}chat-metas.json`,
-            text: JSON.stringify({ entries: metasDto.map(dto => ChatMetaSchemaDto.parse(dto)) }, undefined, 2),
+            text: JSON.stringify({ entries: metasDto.map(dto => ChatMetaDtoSchema.parse(dto)) }, undefined, 2),
           });
         }
 
@@ -779,7 +779,7 @@ export class ImportExportService {
       if (settingsFile) {
         stats.hasSettings = true;
         try {
-          const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
+          const result = SettingsDtoSchema.safeParse(JSON.parse(await settingsFile.readText()));
           if (result.success) {
             stats.providerProfilesCount = result.data.providerProfiles?.length ?? 0;
             previewSettings = settingsToDomain({ dto: result.data });
@@ -802,7 +802,7 @@ export class ImportExportService {
           continue;
         }
         try {
-          const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file({ name: filename })!.readText()));
+          const result = ChatGroupDtoSchema.safeParse(JSON.parse(await zip.file({ name: filename })!.readText()));
           if (result.success) {
             const dto = result.data;
             stats.chatGroupsCount++;
@@ -819,7 +819,7 @@ export class ImportExportService {
           const metasJson = JSON.parse(metasContent) as { entries: unknown[] };
           if (metasJson.entries && Array.isArray(metasJson.entries)) {
             for (const meta of metasJson.entries) {
-              const result = ChatMetaSchemaDto.safeParse(meta);
+              const result = ChatMetaDtoSchema.safeParse(meta);
               if (result.success) {
                 const dto = result.data;
                 stats.chatsCount++;
@@ -849,7 +849,7 @@ export class ImportExportService {
       const hierarchyFile = zip.file({ name: rootPath + 'hierarchy.json' });
       if (hierarchyFile) {
         try {
-          const hDto = HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.readText()));
+          const hDto = HierarchyDtoSchema.parse(JSON.parse(await hierarchyFile.readText()));
           hDto.items.forEach((node, nodeIdx) => {
             switch (node.type) {
             case 'chat': {
@@ -936,7 +936,7 @@ export class ImportExportService {
       return;
     }
     try {
-      SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
+      SettingsDtoSchema.safeParse(JSON.parse(await settingsFile.readText()));
     } catch (error) {
       // Retained RPC values cannot be silently skipped by a destructive import.
       // Keep the legacy policy for unrelated malformed settings unchanged.
@@ -1003,7 +1003,7 @@ export class ImportExportService {
         await this.storage.clearAll();
         if (settingsFile) {
           try {
-            const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
+            const result = SettingsDtoSchema.safeParse(JSON.parse(await settingsFile.readText()));
             if (result.success) {
               await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
             }
@@ -1018,7 +1018,7 @@ export class ImportExportService {
       case 'append': {
         if (settingsFile) {
           try {
-            const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
+            const result = SettingsDtoSchema.safeParse(JSON.parse(await settingsFile.readText()));
             if (result.success) {
               await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
             }
@@ -1118,7 +1118,7 @@ export class ImportExportService {
   private async createRestoreSnapshot({ zip, rootPath }: { zip: IndexedZipArchive, rootPath: string }): Promise<StorageSnapshot> {
     const hierarchyFile = zip.file({ name: rootPath + 'hierarchy.json' });
     const hierarchyDto: HierarchyDto = hierarchyFile
-      ? HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.readText()))
+      ? HierarchyDtoSchema.parse(JSON.parse(await hierarchyFile.readText()))
       : { items: [] };
 
     const metasFile = zip.file({ name: rootPath + 'chat-metas.json' });
@@ -1128,7 +1128,7 @@ export class ImportExportService {
         const json = JSON.parse(await metasFile.readText());
         if (json.entries) {
           for (const m of json.entries) {
-            const res = ChatMetaSchemaDto.safeParse(m);
+            const res = ChatMetaDtoSchema.safeParse(m);
             if (res.success) {
               metasDto.push(res.data);
             }
@@ -1144,7 +1144,7 @@ export class ImportExportService {
     for (const filename of zip.fileNames) {
       if (filename.startsWith(groupsPrefix) && !filename.endsWith('/') && filename !== groupsPrefix) {
         try {
-          const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file({ name: filename })!.readText()));
+          const result = ChatGroupDtoSchema.safeParse(JSON.parse(await zip.file({ name: filename })!.readText()));
           if (result.success) {
             groupsDto.push(result.data);
           }
@@ -1155,7 +1155,7 @@ export class ImportExportService {
     }
 
     const settingsFile = zip.file({ name: rootPath + 'settings.json' });
-    const settingsDto = settingsFile ? SettingsSchemaDto.parse(JSON.parse(await settingsFile.readText())) : null;
+    const settingsDto = settingsFile ? SettingsDtoSchema.parse(JSON.parse(await settingsFile.readText())) : null;
 
     // Load all shard indices from the ZIP
     const binPrefix = rootPath + 'binary-objects/';
@@ -1163,7 +1163,7 @@ export class ImportExportService {
     for (const filename of zip.fileNames) {
       if (filename.startsWith(binPrefix) && filename.endsWith('index.json')) {
         try {
-          const shardIndex = BinaryShardIndexSchemaDto.parse(JSON.parse(await zip.file({ name: filename })!.readText()));
+          const shardIndex = BinaryShardIndexDtoSchema.parse(JSON.parse(await zip.file({ name: filename })!.readText()));
           for (const [id, object] of Object.entries(shardIndex.objects)) {
             unifiedBinIndex.set(id, object);
           }
@@ -1180,7 +1180,7 @@ export class ImportExportService {
         const contentFile = zip.file({ name: `${rootPath}chat-contents/${meta.id}.json` });
         if (contentFile) {
           try {
-            const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.readText()));
+            const content = ChatContentDtoSchema.parse(JSON.parse(await contentFile.readText()));
             yield { type: 'chat' as const, data: normalizeChatDtoTree({ chatDto: { ...meta, ...content, experimental: meta.experimental, currentLeafId: content.currentLeafId ?? meta.currentLeafId, messages: undefined } }) };
           } catch (error) {
             throw new Error(`Cannot restore chat content: ${meta.id}`, { cause: error });
@@ -1239,7 +1239,7 @@ export class ImportExportService {
     for (const filename of zip.fileNames) {
       if (filename.startsWith(groupsPrefix) && !filename.endsWith('/') && filename !== groupsPrefix) {
         try {
-          const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file({ name: filename })!.readText()));
+          const result = ChatGroupDtoSchema.safeParse(JSON.parse(await zip.file({ name: filename })!.readText()));
           if (result.success) {
             const dto = result.data;
             const newId = idToRaw({ id: generateId<ChatGroupId>() });
@@ -1263,7 +1263,7 @@ export class ImportExportService {
       try {
         const json = JSON.parse(await metasFile.readText());
         for (const meta of (json.entries || [])) {
-          const res = ChatMetaSchemaDto.safeParse(meta);
+          const res = ChatMetaDtoSchema.safeParse(meta);
           if (res.success) {
             const dto = res.data;
             const originalId = dto.id;
@@ -1303,7 +1303,7 @@ export class ImportExportService {
         continue;
       }
       try {
-        const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.readText()));
+        const content = ChatContentDtoSchema.parse(JSON.parse(await contentFile.readText()));
         const visit = ({ node }: { node: MessageNodeDto }): void => {
           if (messageIds.has(node.id) && messageIds.get(node.id) === undefined) {
             messageIds.set(node.id, idToRaw({ id: generateId<MessageId>() }));
@@ -1322,7 +1322,7 @@ export class ImportExportService {
     let importedHierarchyItems: HierarchyNode[] = [];
     if (hierarchyFile) {
       try {
-        const hDto = HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.readText()));
+        const hDto = HierarchyDtoSchema.parse(JSON.parse(await hierarchyFile.readText()));
         importedHierarchyItems = hDto.items.map(node => {
           switch (node.type) {
           case 'chat':
@@ -1368,7 +1368,7 @@ export class ImportExportService {
       for (const filename of zip.fileNames) {
         if (filename.startsWith(binPrefix) && filename.endsWith('index.json')) {
           try {
-            const shardIndex = BinaryShardIndexSchemaDto.parse(JSON.parse(await zip.file({ name: filename })!.readText()));
+            const shardIndex = BinaryShardIndexDtoSchema.parse(JSON.parse(await zip.file({ name: filename })!.readText()));
             for (const [id, object] of Object.entries(shardIndex.objects)) {
               unifiedBinIndex.set(id, object);
             }
@@ -1383,13 +1383,13 @@ export class ImportExportService {
         const contentFile = zip.file({ name: `${rootPath}chat-contents/${originalId}.json` });
         if (contentFile) {
           try {
-            const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.readText()));
+            const content = ChatContentDtoSchema.parse(JSON.parse(await contentFile.readText()));
             const dto = normalizeChatDtoTree({
               chatDto: {
                 ...meta,
                 ...content,
                 experimental: meta.experimental,
-                // ChatContentSchemaDto materializes missing currentLeafId as undefined.
+                // ChatContentDtoSchema materializes missing currentLeafId as undefined.
                 currentLeafId: content.currentLeafId ?? meta.currentLeafId,
                 messages: undefined,
               },

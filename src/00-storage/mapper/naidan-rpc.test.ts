@@ -6,7 +6,7 @@ import { rpcRegistrationFromDto, rpcRegistrationToDto } from './naidan-rpc';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
 import { cloneEndpoint, areEndpointsEqual, isConfiguredEndpoint } from '@/01-models/endpoint';
-import { ExperimentalNaidanRpcRegistrationSchemaDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+import { ExperimentalNaidanRpcRegistrationDtoSchema } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 
 installSecretEqualityTester();
 const registration: NaidanRpcRegistration = {
@@ -55,13 +55,13 @@ it('RPC endpoints clone only a registration reference, never a live proxy transp
 
 it('keeps method strings structural and normalizes duplicate names', () => {
   const dto = rpcRegistrationToDto({ registration });
-  expect(ExperimentalNaidanRpcRegistrationSchemaDto.parse({ ...dto, inboundAllowedMethods: ['*'] }).inboundAllowedMethods).toEqual(['*']);
+  expect(ExperimentalNaidanRpcRegistrationDtoSchema.parse({ ...dto, inboundAllowedMethods: ['*'] }).inboundAllowedMethods).toEqual(['*']);
   expect(rpcRegistrationFromDto({ value: { ...dto, inboundAllowedMethods: ['generateChat', 'generateChat'] } }).inboundAllowedMethods).toEqual(['generateChat']);
 });
 
 it.each([-1, 0.5, Number.MAX_SAFE_INTEGER])('keeps numeric DTO shape separate from safe revision arithmetic (%s)', revision => {
   const dto = { ...rpcRegistrationToDto({ registration }), revision };
-  expect(ExperimentalNaidanRpcRegistrationSchemaDto.parse(dto).revision).toBe(revision);
+  expect(ExperimentalNaidanRpcRegistrationDtoSchema.parse(dto).revision).toBe(revision);
   expect(() => rpcRegistrationFromDto({ value: dto })).toThrow('revision');
   expect(() => rpcRegistrationToDto({ registration: { ...registration, revision } })).toThrow('revision');
 });
@@ -75,10 +75,10 @@ it('rejects credential-bearing, remote HTTP and path-bearing relay URLs', () => 
 it('keeps DTO parsing free of URL and label normalization, then validates the domain boundary', () => {
   const dto = rpcRegistrationToDto({ registration });
   const value = { ...dto, label: ' Peer ', transport: { ...dto.transport, serverUrl: 'https://RELAY.example:443/' } };
-  expect(ExperimentalNaidanRpcRegistrationSchemaDto.parse(value)).toEqual(value);
+  expect(ExperimentalNaidanRpcRegistrationDtoSchema.parse(value)).toEqual(value);
   expect(rpcRegistrationFromDto({ value })).toEqual(registration);
   const invalid = { ...dto, transport: { ...dto.transport, serverUrl: 'http://relay.example/path' } };
-  expect(ExperimentalNaidanRpcRegistrationSchemaDto.parse(invalid)).toEqual(invalid);
+  expect(ExperimentalNaidanRpcRegistrationDtoSchema.parse(invalid)).toEqual(invalid);
   expect(() => rpcRegistrationFromDto({ value: invalid })).toThrow();
 });
 
@@ -86,7 +86,7 @@ it('validates outgoing headers outside the DTO on both read and write', () => {
   const dto = rpcRegistrationToDto({ registration });
   const transport = { ...dto.transport, headers: [{ name: 'Host', value: 'other.example' }] };
   const value = { ...dto, transport };
-  expect(ExperimentalNaidanRpcRegistrationSchemaDto.parse(value)).toEqual(value);
+  expect(ExperimentalNaidanRpcRegistrationDtoSchema.parse(value)).toEqual(value);
   expect(() => rpcRegistrationFromDto({ value })).toThrow();
   expect(() => rpcRegistrationToDto({ registration: { ...registration, transport: { ...transport, headers: transport.headers.map(({ name, value }) => ({ name, value: Secret.from({ value }) })) } } })).toThrow();
 });

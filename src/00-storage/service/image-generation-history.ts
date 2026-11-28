@@ -6,7 +6,7 @@ import type { ImageGenerationHistoryPage, ImageGenerationHistoryQuery, ImageGene
 import { idToRaw, type ImageGenerationId } from '@/01-models/ids';
 import type { StorageType } from '@/01-models/types';
 import { SYNC_LOCK_KEY } from '@/constants';
-import { ExperimentalImageGenerationSchemaDto, ExperimentalImageGenerationIndexSchemaDto, unavailableDirectRpcRecord } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationDtoSchema, ExperimentalImageGenerationIndexDtoSchema, unavailableDirectRpcRecord } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { type ExperimentalImageGenerationDto, type ExperimentalImageGenerationIndexDto, type ExperimentalImageGenerationSummaryDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationSummaryToDomain, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 
@@ -136,7 +136,7 @@ async function readRecord({ directory, rawId }: { directory: FileSystemDirectory
     }
     throw new UnavailableRpcRecordError({ id: rawId });
   }
-  const record = ExperimentalImageGenerationSchemaDto.parse(raw);
+  const record = ExperimentalImageGenerationDtoSchema.parse(raw);
   if (record.id !== rawId) {
     throw new Error('Image generation record identity does not match its filename');
   }
@@ -147,7 +147,7 @@ async function readIndex({ directory, shard }: { directory: FileSystemDirectoryH
   const text = await readText({ directory, name: 'index.json' });
   // A corrupt index remains an explicit error. It is never replaced with an
   // empty index, even when individual records could otherwise be read.
-  const index = text === undefined ? { generations: {} } : ExperimentalImageGenerationIndexSchemaDto.parse(JSON.parse(text));
+  const index = text === undefined ? { generations: {} } : ExperimentalImageGenerationIndexDtoSchema.parse(JSON.parse(text));
   const files = new Set<string>();
   for await (const [name, handle] of directory.entries()) {
     if (handle.kind !== 'file' || name === 'index.json' || !name.endsWith('.json')) {
@@ -233,7 +233,7 @@ export async function saveImageGenerationRecord({ storageType, record, writeImag
   expectedDirectory?: FileSystemDirectoryHandle,
 }): Promise<void> {
   assertStorage({ storageType });
-  const dto = ExperimentalImageGenerationSchemaDto.parse(imageGenerationToDto({ record }));
+  const dto = ExperimentalImageGenerationDtoSchema.parse(imageGenerationToDto({ record }));
   await withHistoryLock({
     operation: async () => {
       const parent = await getDirectory({ create: expectedDirectory === undefined });

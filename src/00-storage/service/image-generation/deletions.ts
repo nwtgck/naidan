@@ -1,4 +1,4 @@
-import { ExperimentalImageGenerationBinaryDeletionSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationBinaryDeletionDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationDirectory, imageGenerationRawIdSchema, readImageGenerationText, writeImageGenerationText } from './files';
 
 async function markerDirectory({ directory, id, create }: { directory: FileSystemDirectoryHandle, id: string, create: boolean }): Promise<FileSystemDirectoryHandle | undefined> {
@@ -12,7 +12,7 @@ async function readMarker({ directory, id }: { directory: FileSystemDirectoryHan
   if (text === undefined) {
     return false;
   }
-  const record = ExperimentalImageGenerationBinaryDeletionSchemaDto.parse(JSON.parse(text));
+  const record = ExperimentalImageGenerationBinaryDeletionDtoSchema.parse(JSON.parse(text));
   if (record.binaryObjectId !== id) {
     throw new Error('Image Generation binary deletion identity mismatch.');
   }
@@ -45,7 +45,7 @@ export async function markImageGenerationBinariesDeleted({ directory, ids }: { d
       throw new Error('Image Generation deletion directory is unavailable.');
     }
     if (!await readMarker({ directory: shard, id })) {
-      await writeImageGenerationText({ directory: shard, name: `${id}.json`, text: JSON.stringify(ExperimentalImageGenerationBinaryDeletionSchemaDto.parse({ binaryObjectId: id })) });
+      await writeImageGenerationText({ directory: shard, name: `${id}.json`, text: JSON.stringify(ExperimentalImageGenerationBinaryDeletionDtoSchema.parse({ binaryObjectId: id })) });
     }
   }
 }

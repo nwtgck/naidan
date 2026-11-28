@@ -3,7 +3,7 @@ import { Secret } from '@/utils/secret';
 import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toImageGenerationRunId, toImageGenerationSessionId } from '@/01-models/ids';
-import { ExperimentalImageGenerationCatalogSchemaDto, ExperimentalImageGenerationSessionSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationCatalogDtoSchema, ExperimentalImageGenerationSessionDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationCatalogToDomain, imageGenerationCatalogToDto, imageGenerationSessionToDomain, imageGenerationSessionToDto } from '@/00-storage/mapper/image-generation';
 import { createImageGenerationStorageHarness, generationSessionFixture, generationRunFixture, generationDraftFixture } from './image-generation/index.test-support';
 import * as service from './image-generation';
@@ -101,12 +101,12 @@ describe('experimental translation and visibility persistence', () => {
     const h = await setup();
     const translation = { endpoint: { type: 'openai' as const, url: 'https://translator.test/v1', httpHeaders: [['Authorization', Secret.from({ value: 'secret' })]] as [name: string, value: Secret<string>][] }, modelId: 'model-a', lmParameters: undefined };
     const next = { ...h.catalog, revision: 1, preferences: { ...h.catalog.preferences, assistantVisibility: 'open' as const, translation } };
-    const dto = ExperimentalImageGenerationCatalogSchemaDto.parse(imageGenerationCatalogToDto({ catalog: next }));
+    const dto = ExperimentalImageGenerationCatalogDtoSchema.parse(imageGenerationCatalogToDto({ catalog: next }));
     expect(imageGenerationCatalogToDomain({ dto })).toEqual(next);
     await service.saveImageGenerationCatalog({ store: h.store, catalog: next, expectedRevision: 0 });
     expect(await service.loadImageGenerationCatalog({ store: h.store })).toEqual(next);
     const session = { ...h.session, revision: 1, translation: { endpoint: undefined, modelId: 'session-model', lmParameters: undefined } };
-    expect(imageGenerationSessionToDomain({ dto: ExperimentalImageGenerationSessionSchemaDto.parse(imageGenerationSessionToDto({ session })) })).toEqual(session);
+    expect(imageGenerationSessionToDomain({ dto: ExperimentalImageGenerationSessionDtoSchema.parse(imageGenerationSessionToDto({ session })) })).toEqual(session);
     await service.saveImageGenerationSession({ store: h.store, session, expectedRevision: 0 });
     expect((await service.loadImageGenerationSession({ store: h.store, sessionId: session.id }))?.translation?.modelId).toBe('session-model');
   });
@@ -115,7 +115,7 @@ describe('experimental translation and visibility persistence', () => {
     const h = await setup();
     const encoded = imageGenerationCatalogToDto({ catalog: h.catalog });
     const raw = { ...encoded, preferences: { assistantLayout: 'docked', experimentalNoticeDismissedAt: undefined } };
-    const decoded = imageGenerationCatalogToDomain({ dto: ExperimentalImageGenerationCatalogSchemaDto.parse(raw) });
+    const decoded = imageGenerationCatalogToDomain({ dto: ExperimentalImageGenerationCatalogDtoSchema.parse(raw) });
     expect(decoded.preferences.assistantVisibility).toBe('closed');
     expect(decoded.preferences.translation).toBeUndefined();
   });
@@ -123,10 +123,10 @@ describe('experimental translation and visibility persistence', () => {
   it('accepts future override fields and preserves known preferences when editing', async () => {
     const h = await setup();
     const dto = imageGenerationCatalogToDto({ catalog: h.catalog });
-    const parsed = ExperimentalImageGenerationCatalogSchemaDto.parse({ ...dto, preferences: { ...dto.preferences, translation: { modelId: 'x', future: true } } });
+    const parsed = ExperimentalImageGenerationCatalogDtoSchema.parse({ ...dto, preferences: { ...dto.preferences, translation: { modelId: 'x', future: true } } });
     expect(parsed.preferences.translation?.modelId).toBe('x');
     expect(parsed.preferences.translation).not.toHaveProperty('future');
-    expect(ExperimentalImageGenerationCatalogSchemaDto.parse(parsed)).toEqual(parsed);
+    expect(ExperimentalImageGenerationCatalogDtoSchema.parse(parsed)).toEqual(parsed);
   });
 });
 
@@ -155,15 +155,15 @@ describe('accepted session activity and translation parameters', () => {
     const h = await setup();
     const dto = imageGenerationCatalogToDto({ catalog: h.catalog });
     const preferences = { ...dto.preferences, translation: { lmParameters: { temperature: 0, stop: [], reasoning: { effort: 'none' } } }, generationMonitorPresentation: 'compact-progress' };
-    const decoded = imageGenerationCatalogToDomain({ dto: ExperimentalImageGenerationCatalogSchemaDto.parse({ ...dto, preferences }) });
+    const decoded = imageGenerationCatalogToDomain({ dto: ExperimentalImageGenerationCatalogDtoSchema.parse({ ...dto, preferences }) });
     expect(decoded.preferences.translation?.lmParameters).toMatchObject({ temperature: 0, stop: [], reasoning: { effort: 'none' } });
     expect(decoded.preferences.generationMonitorPresentation).toBe('compact-progress');
     for (const lmParameters of [{ future: 1 }, { reasoning: { future: true } }, { experimental: { future: 1 } }]) {
-      const parsed = ExperimentalImageGenerationCatalogSchemaDto.parse({ ...dto, preferences: { ...preferences, translation: { lmParameters } } });
-      expect(ExperimentalImageGenerationCatalogSchemaDto.parse(parsed)).toEqual(parsed);
+      const parsed = ExperimentalImageGenerationCatalogDtoSchema.parse({ ...dto, preferences: { ...preferences, translation: { lmParameters } } });
+      expect(ExperimentalImageGenerationCatalogDtoSchema.parse(parsed)).toEqual(parsed);
     }
-    expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse({ ...dto, preferences: { ...preferences, translation: { lmParameters: { reasoning: { effort: 'future' } } } } }).success).toBe(false);
-    expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse({ ...dto, preferences: { ...preferences, generationMonitorPresentation: 'future' } }).success).toBe(false);
+    expect(ExperimentalImageGenerationCatalogDtoSchema.safeParse({ ...dto, preferences: { ...preferences, translation: { lmParameters: { reasoning: { effort: 'future' } } } } }).success).toBe(false);
+    expect(ExperimentalImageGenerationCatalogDtoSchema.safeParse({ ...dto, preferences: { ...preferences, generationMonitorPresentation: 'future' } }).success).toBe(false);
   });
 });
 
@@ -290,7 +290,7 @@ it.each(['wrong-id', 'wrong-session', 'wrong-width-type', 'wrong-seed-type'] as 
 it('keeps unsupported translation endpoints non-executable and preserves revisions for actual model changes', async () => {
   const h = await setup(), catalogDto = imageGenerationCatalogToDto({ catalog: h.catalog });
   const translation = ({ marker }: { marker: string }) => imageGenerationCatalogToDomain({
-    dto: ExperimentalImageGenerationCatalogSchemaDto.parse({
+    dto: ExperimentalImageGenerationCatalogDtoSchema.parse({
       ...catalogDto,
       preferences: {
         ...catalogDto.preferences,

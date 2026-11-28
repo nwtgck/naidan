@@ -2,7 +2,7 @@ import * as dtozod from '@/utils/dtozod';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { idToRaw, toImageGenerationSessionId, toHostModelDirectoryId } from '@/01-models/ids';
 import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
-import { ExperimentalImageGenerationDraftSchemaDto, ExperimentalImageGenerationRunSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationDraftDtoSchema, ExperimentalImageGenerationRunDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import * as service from './image-generation';
 import { createImageGenerationStorageHarness, generationDraftFixture, generationSessionFixture } from './image-generation/index.test-support';
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
@@ -38,7 +38,7 @@ describe('session draft checkpoints', () => {
     const h = await setup();
     h.draft.vaeTileSizePreference = vaeTileSizePreference;
     h.draft.request.parameters.vaeTileSize = 32;
-    const dto = ExperimentalImageGenerationDraftSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
+    const dto = ExperimentalImageGenerationDraftDtoSchema.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
     expect(dto.vaeTileSizePreference).toBe(vaeTileSizePreference);
     expect(dto.request.parameters.vaeTileSize).toBe(32);
     expect(imageGenerationDraftToDomain({ dto })).toEqual(h.draft);
@@ -59,7 +59,7 @@ describe('session draft checkpoints', () => {
     h.draft.request.parameters.steps = 20;
     h.draft.request.parameters.guidance = 7;
     const json = JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft })));
-    const dto = ExperimentalImageGenerationDraftSchemaDto.parse(json);
+    const dto = ExperimentalImageGenerationDraftDtoSchema.parse(json);
     expect(dto).toMatchObject({ ...preferences, vaeTileSizePreference: 'auto', request: { parameters: { steps: 20, guidance: 7 } } });
     expect(imageGenerationDraftToDomain({ dto })).toEqual(h.draft);
     await service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs: async () => {} });
@@ -67,7 +67,7 @@ describe('session draft checkpoints', () => {
     expect(loaded).toEqual(h.draft);
     // Readers predating the optional intent fields still retain the numeric
     // request they understand instead of rejecting the whole checkpoint.
-    const { stepsPreference: _stepsPreference, guidancePreference: _guidancePreference, ...legacyShape } = ExperimentalImageGenerationDraftSchemaDto.shape;
+    const { stepsPreference: _stepsPreference, guidancePreference: _guidancePreference, ...legacyShape } = ExperimentalImageGenerationDraftDtoSchema.shape;
     const legacy = dtozod.object(legacyShape).parse(json);
     expect(legacy).not.toHaveProperty('stepsPreference');
     expect(legacy).not.toHaveProperty('guidancePreference');
@@ -78,7 +78,7 @@ describe('session draft checkpoints', () => {
     const h = await setup();
     h.draft.request.parameters.steps = 20;
     h.draft.request.parameters.guidance = 7;
-    const dto = ExperimentalImageGenerationDraftSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
+    const dto = ExperimentalImageGenerationDraftDtoSchema.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
     const restored = imageGenerationDraftToDomain({ dto });
     for (const value of [dto, restored]) {
       expect(Object.hasOwn(value, 'stepsPreference')).toBe(false);
@@ -89,22 +89,22 @@ describe('session draft checkpoints', () => {
     expect(loaded).not.toHaveProperty('stepsPreference');
     expect(loaded).not.toHaveProperty('guidancePreference');
     expect(loaded?.request.parameters).toMatchObject({ steps: 20, guidance: 7 });
-    expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...dto, stepsPreference: 'recommended' }).success).toBe(false);
-    expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...dto, guidancePreference: 'recommended' }).success).toBe(false);
+    expect(ExperimentalImageGenerationDraftDtoSchema.safeParse({ ...dto, stepsPreference: 'recommended' }).success).toBe(false);
+    expect(ExperimentalImageGenerationDraftDtoSchema.safeParse({ ...dto, guidancePreference: 'recommended' }).success).toBe(false);
   });
 
   it('leaves legacy numeric 32 without preference metadata instead of inferring auto', async () => {
     const h = await setup();
     h.draft.request.parameters.vaeTileSize = 32;
-    const dto = ExperimentalImageGenerationDraftSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
+    const dto = ExperimentalImageGenerationDraftDtoSchema.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
     expect(Object.hasOwn(dto, 'vaeTileSizePreference')).toBe(false);
     expect(Object.hasOwn(imageGenerationDraftToDomain({ dto }), 'vaeTileSizePreference')).toBe(false);
     await service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs: async () => {} });
     const loaded = await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id });
     expect(loaded?.vaeTileSizePreference).toBeUndefined();
     expect(loaded?.request.parameters.vaeTileSize).toBe(32);
-    expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...dto, vaeTileSizePreference: 'recommended' }).success).toBe(false);
-    expect(ExperimentalImageGenerationDraftSchemaDto.parse({ ...dto, futurePreference: 'future' })).not.toHaveProperty('futurePreference');
+    expect(ExperimentalImageGenerationDraftDtoSchema.safeParse({ ...dto, vaeTileSizePreference: 'recommended' }).success).toBe(false);
+    expect(ExperimentalImageGenerationDraftDtoSchema.parse({ ...dto, futurePreference: 'future' })).not.toHaveProperty('futurePreference');
   });
 
   it('stores a pending inference location without relaxing the accepted run contract', async () => {
@@ -117,8 +117,8 @@ describe('session draft checkpoints', () => {
     await service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs: async () => {} });
     expect(await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id })).toEqual(h.draft);
     const request = imageGenerationDraftToDto({ draft: h.draft }).request;
-    expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ id: 'run-aa', sessionId: h.session.id, revision: 0, createdAt: 1, request: { ...request, parameters: { ...request.parameters, prompt: 'ready', seed: '42' } }, seeds: ['42'], sources: [], execution: { type: 'queued' } }).success).toBe(false);
-    expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...imageGenerationDraftToDto({ draft: h.draft }), inferenceLocation: undefined }).success).toBe(true);
+    expect(ExperimentalImageGenerationRunDtoSchema.safeParse({ id: 'run-aa', sessionId: h.session.id, revision: 0, createdAt: 1, request: { ...request, parameters: { ...request.parameters, prompt: 'ready', seed: '42' } }, seeds: ['42'], sources: [], execution: { type: 'queued' } }).success).toBe(false);
+    expect(ExperimentalImageGenerationDraftDtoSchema.safeParse({ ...imageGenerationDraftToDto({ draft: h.draft }), inferenceLocation: undefined }).success).toBe(true);
   });
 
   it('preserves user-selected components, explicit none and disabled adapter strength', async () => {
@@ -128,7 +128,7 @@ describe('session draft checkpoints', () => {
       components: [{ slot: 'vae', choice: { kind: 'none' } }, { slot: 'lm', choice: { kind: 'file', location: { kind: 'host', directoryId: toHostModelDirectoryId({ raw: 'host-aa' }), path: 'lm.gguf' } } }],
       loras: [{ enabled: 'disabled', strength: -0.75, location: { kind: 'opfs', path: 'models/custom/adapter.gguf' } }],
     };
-    const dto = ExperimentalImageGenerationDraftSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
+    const dto = ExperimentalImageGenerationDraftDtoSchema.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
     expect(imageGenerationDraftToDomain({ dto })).toEqual(h.draft);
     const value = dto.modelSelection!;
     const futureSelections = [
@@ -142,11 +142,11 @@ describe('session draft checkpoints', () => {
       { ...value, loras: [{ ...value.loras[0], location: { kind: 'opfs', path: 'models/adapter.gguf', future: 1 } }] },
     ];
     for (const modelSelection of futureSelections) {
-      const parsed = ExperimentalImageGenerationDraftSchemaDto.parse({ ...dto, modelSelection });
+      const parsed = ExperimentalImageGenerationDraftDtoSchema.parse({ ...dto, modelSelection });
       expect(JSON.stringify(parsed.modelSelection)).not.toContain('future');
-      expect(ExperimentalImageGenerationDraftSchemaDto.parse(parsed)).toEqual(parsed);
+      expect(ExperimentalImageGenerationDraftDtoSchema.parse(parsed)).toEqual(parsed);
     }
-    expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...dto, modelSelection: { ...value, primary: { ...value.primary, slot: 'future' } } }).success).toBe(false);
+    expect(ExperimentalImageGenerationDraftDtoSchema.safeParse({ ...dto, modelSelection: { ...value, primary: { ...value.primary, slot: 'future' } } }).success).toBe(false);
   });
 
   it('retries the identical revision after a lost acknowledgement but rejects stale different edits', async () => {

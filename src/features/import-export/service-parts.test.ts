@@ -4,7 +4,7 @@ import { ImportExportService, type IImportExportStorage } from './service';
 import type { ImportConfig } from './types';
 import { EMPTY_LM_PARAMETERS, type Settings, type StorageSnapshot } from '@/01-models/types';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Exercise the existing archive DTO boundary until it is moved behind the storage service.
-import { ChatSchemaDto, ChatContentSchemaDto, ChatGroupSchemaDto, type ChatDto, type MigrationChunkDto } from '@/00-storage/00-dto/dto';
+import { ChatDtoSchema, ChatContentDtoSchema, ChatGroupDtoSchema, type ChatDto, type MigrationChunkDto } from '@/00-storage/00-dto/dto';
 import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn() }) }));
@@ -26,7 +26,7 @@ const settings: Settings = {
   lmParameters: undefined,
 };
 
-const chat = ({ root }: { root: unknown }): ChatDto => ChatSchemaDto.parse({
+const chat = ({ root }: { root: unknown }): ChatDto => ChatDtoSchema.parse({
   id: 'chat',
   title: 'Parts',
   createdAt: 1,
@@ -99,7 +99,7 @@ async function exportedContent({ zip }: { zip: JSZip }) {
   if (!name) {
     throw new Error('Missing exported chat.');
   }
-  return ChatContentSchemaDto.parse(JSON.parse(await zip.file(name)!.async('string')));
+  return ChatContentDtoSchema.parse(JSON.parse(await zip.file(name)!.async('string')));
 }
 
 function dump({ storage, content, binaries }: { storage: ReturnType<typeof fixture>['storage']; content: ChatDto; binaries: string[] }): void {
@@ -133,11 +133,11 @@ describe('parts archive boundaries', () => {
     const content = chat({ root: { items: [] } });
     const modelId = 'hf.co/owner/Model-GGUF:Q4_K_M';
     const zip = await archive({ content });
-    const chatGroup = ChatGroupSchemaDto.parse({ id: 'source-group', name: 'Source', updatedAt: 1, isCollapsed: false, endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'llama_cpp_browser' } } }, modelId, titleGeneration: 'inherit' });
+    const chatGroup = ChatGroupDtoSchema.parse({ id: 'source-group', name: 'Source', updatedAt: 1, isCollapsed: false, endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'llama_cpp_browser' } } }, modelId, titleGeneration: 'inherit' });
     zip.file('chat-groups/source-group.json', JSON.stringify(chatGroup));
     zip.file('hierarchy.json', JSON.stringify({ items: [{ type: 'chat_group', id: 'source-group', chat_ids: ['chat'] }] }));
     await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode }) });
-    const imported = ChatSchemaDto.safeParse(f.received.find(chunk => chunk.type === 'chat')?.data);
+    const imported = ChatDtoSchema.safeParse(f.received.find(chunk => chunk.type === 'chat')?.data);
     expect(imported.success).toBe(true);
     if (!imported.success) {
       throw new Error('Missing imported chat');

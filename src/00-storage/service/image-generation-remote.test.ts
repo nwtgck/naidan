@@ -5,8 +5,8 @@ import { reactive } from 'vue';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey, toImageGenerationId, toImageGenerationSessionId, toBinaryObjectId } from '@/01-models/ids';
 import { generationRunFixture } from '@/00-storage/service/image-generation/index.test-support';
 import { imageGenerationRequestToDomain, imageGenerationRequestToDto, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
-import { ExperimentalImageGenerationSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
-import { ExperimentalImageGenerationRunSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationRunDtoSchema } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
 
 function remote() {
@@ -33,7 +33,7 @@ it('roundtrips remote provenance without claiming local files or native settings
   expect(imageGenerationRequestToDomain({ request: dto })).toEqual(run.request);
   expect(dto.models).toEqual([]);
   expect(dto.parameters).not.toHaveProperty('modelArguments');
-  expect(ExperimentalImageGenerationRunSchemaDto.parse({ ...run, request: dto }).request).toEqual(dto);
+  expect(ExperimentalImageGenerationRunDtoSchema.parse({ ...run, request: dto }).request).toEqual(dto);
 });
 
 it('preserves unknown recovery facts while retaining a valid image asset', () => {
@@ -53,12 +53,12 @@ it('preserves unknown recovery facts while retaining a valid image asset', () =>
     },
     previews: [],
   };
-  const dto = ExperimentalImageGenerationSchemaDto.parse(imageGenerationToDto({ record }));
+  const dto = ExperimentalImageGenerationDtoSchema.parse(imageGenerationToDto({ record }));
   expect(imageGenerationToDomain({ dto })).toEqual(record);
-  const extended = ExperimentalImageGenerationSchemaDto.parse({ ...dto, result: { ...dto.result, future: true } });
+  const extended = ExperimentalImageGenerationDtoSchema.parse({ ...dto, result: { ...dto.result, future: true } });
   expect(imageGenerationToDomain({ dto: extended })).toEqual(record);
   expect(dto.result).toMatchObject({ confirmation: 'unconfirmed', modelVersion: undefined });
-  expect(ExperimentalImageGenerationSchemaDto.safeParse({ ...dto, result: { ...dto.result, confirmation: 'confirmed' } }).success).toBe(false);
+  expect(ExperimentalImageGenerationDtoSchema.safeParse({ ...dto, result: { ...dto.result, confirmation: 'confirmed' } }).success).toBe(false);
 });
 
 it('rejects unknown profiles but retains remote provenance with an unfamiliar peer ID', () => {

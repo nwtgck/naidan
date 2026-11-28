@@ -20,8 +20,8 @@ describe('remote reader recursive schema declarations', () => {
     // module: checking only the DTO's own declarations misses private type leaks.
     const source = `\
 import { z } from 'zod';
-import { MessageBranchSchemaDtoV1, MessageBranchSchemaDtoV2 } from '@/00-storage/00-dto/dto';
-export const branches = z.object({ v1: MessageBranchSchemaDtoV1, v2: MessageBranchSchemaDtoV2 });
+import { MessageBranchDtoV1Schema, MessageBranchDtoV2Schema } from '@/00-storage/00-dto/dto';
+export const branches = z.object({ v1: MessageBranchDtoV1Schema, v2: MessageBranchDtoV2Schema });
 export const nested = z.array(branches).optional();
 `;
     const host = ts.createCompilerHost(parsed.options);

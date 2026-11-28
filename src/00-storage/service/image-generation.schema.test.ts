@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ExperimentalImageGenerationAssetAnnotationsSchemaDto, ExperimentalImageGenerationCatalogSchemaDto, ExperimentalImageGenerationRunSchemaDto, ExperimentalImageGenerationSchemaDto, ExperimentalImageGenerationAssetSchemaDto, type ExperimentalImageGenerationRunDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationAssetAnnotationsDtoSchema, ExperimentalImageGenerationCatalogDtoSchema, ExperimentalImageGenerationRunDtoSchema, ExperimentalImageGenerationDtoSchema, ExperimentalImageGenerationAssetDtoSchema, type ExperimentalImageGenerationRunDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationRunToDomain, imageGenerationRunToDto, imageGenerationAssetToDomain, imageGenerationAssetToDto } from '@/00-storage/mapper/image-generation';
 import { imageGenerationRequestToDomain, imageGenerationRequestToDto, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 import { toImageGenerationId, toImageGenerationSessionId } from '@/01-models/ids';
@@ -18,7 +18,7 @@ describe('Image Generation persistence contracts', () => {
       run.request.parameters.bf16WeightType = bf16WeightType;
     }
     const json = JSON.parse(JSON.stringify(imageGenerationRunToDto({ run })));
-    const restored = imageGenerationRunToDomain({ dto: ExperimentalImageGenerationRunSchemaDto.parse(json) });
+    const restored = imageGenerationRunToDomain({ dto: ExperimentalImageGenerationRunDtoSchema.parse(json) });
     expect(restored).toEqual(run);
     expect(restored.request.parameters.bf16WeightType).toBe(bf16WeightType);
     if (bf16WeightType === undefined) {
@@ -28,9 +28,9 @@ describe('Image Generation persistence contracts', () => {
 
   it.each(['steps', 'guidance'] as const)('keeps accepted history %s numeric rather than persisting authoring auto in the request', field => {
     const dto = imageGenerationRunToDto({ run: runFixture() });
-    const parsed = ExperimentalImageGenerationRunSchemaDto.parse(dto);
+    const parsed = ExperimentalImageGenerationRunDtoSchema.parse(dto);
     expect(typeof parsed.request.parameters[field]).toBe('number');
-    expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ ...dto, request: { ...dto.request, parameters: { ...dto.request.parameters, [field]: 'auto' } } }).success).toBe(false);
+    expect(ExperimentalImageGenerationRunDtoSchema.safeParse({ ...dto, request: { ...dto.request, parameters: { ...dto.request.parameters, [field]: 'auto' } } }).success).toBe(false);
   });
 
   it.each(['confirmed', 'unconfirmed'] as const)('round-trips optional execution receipts including names outside UI choices: %s', confirmation => {
@@ -40,25 +40,25 @@ describe('Image Generation persistence contracts', () => {
     record.request.parameters.sampler = 'auto';
     record.request.parameters.scheduler = 'auto';
     record.result.confirmation = confirmation;
-    const legacyDto = ExperimentalImageGenerationSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationToDto({ record }))));
+    const legacyDto = ExperimentalImageGenerationDtoSchema.parse(JSON.parse(JSON.stringify(imageGenerationToDto({ record }))));
     expect(imageGenerationToDomain({ dto: legacyDto }).result).not.toHaveProperty('sampling');
     expect(imageGenerationToDomain({ dto: legacyDto }).result).not.toHaveProperty('resolvedParameters');
     record.result.sampling = { sampler: { id: 9, name: 'flux' }, scheduler: { id: 7 } };
     record.result.resolvedParameters = { steps: 6, guidance: 1, vaeTileSize: 16 };
-    const dto = ExperimentalImageGenerationSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationToDto({ record }))));
+    const dto = ExperimentalImageGenerationDtoSchema.parse(JSON.parse(JSON.stringify(imageGenerationToDto({ record }))));
     const restored = imageGenerationToDomain({ dto });
     expect(restored).toEqual(record);
     expect(restored.request.parameters).toMatchObject({ sampler: 'auto', scheduler: 'auto' });
     expect(restored.result.sampling).toEqual({ sampler: { id: 9, name: 'flux' }, scheduler: { id: 7 } });
-    const assetDto = ExperimentalImageGenerationAssetSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationAssetToDto({ asset }))));
+    const assetDto = ExperimentalImageGenerationAssetDtoSchema.parse(JSON.parse(JSON.stringify(imageGenerationAssetToDto({ asset }))));
     expect(imageGenerationAssetToDomain({ dto: assetDto }).result.sampling).toEqual(record.result.sampling);
     expect(imageGenerationAssetToDomain({ dto: assetDto }).result.resolvedParameters).toEqual(record.result.resolvedParameters);
-    expect(ExperimentalImageGenerationAssetSchemaDto.safeParse({ ...assetDto, result: { ...assetDto.result, resolvedParameters: { steps: 'auto', guidance: 1, vaeTileSize: 16 } } }).success).toBe(false);
+    expect(ExperimentalImageGenerationAssetDtoSchema.safeParse({ ...assetDto, result: { ...assetDto.result, resolvedParameters: { steps: 'auto', guidance: 1, vaeTileSize: 16 } } }).success).toBe(false);
   });
 
   it('round-trips exact large seeds and the complete request through JSON serialization', () => {
     const run = runFixture();
-    const parsed = ExperimentalImageGenerationRunSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationRunToDto({ run }))));
+    const parsed = ExperimentalImageGenerationRunDtoSchema.parse(JSON.parse(JSON.stringify(imageGenerationRunToDto({ run }))));
     expect(imageGenerationRunToDomain({ dto: parsed })).toEqual(run);
     expect(parsed.seeds).toEqual(['9007199254740993', '9007199254740994', '9007199254740995', '9007199254740996']);
   });
@@ -83,23 +83,23 @@ describe('Image Generation persistence contracts', () => {
 
   it.each(futureShapes)('loads and resaves known fields while stripping future $name fields', ({ extend }) => {
     const original = imageGenerationRunToDto({ run: runFixture() });
-    const parsed = ExperimentalImageGenerationRunSchemaDto.parse(extend({ dto: original }));
+    const parsed = ExperimentalImageGenerationRunDtoSchema.parse(extend({ dto: original }));
     expect(JSON.stringify(parsed)).not.toContain('"future"');
     expect(parsed.request).toEqual(original.request);
-    expect(ExperimentalImageGenerationRunSchemaDto.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
+    expect(ExperimentalImageGenerationRunDtoSchema.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
   });
 
   it('reads runtime records with additional fields without changing known generation settings', () => {
     const run = runFixture();
     const dto = imageGenerationRunToDto({ run });
-    const parsed = ExperimentalImageGenerationRunSchemaDto.parse({ ...dto, request: { ...dto.request, runtime: { ...dto.request.runtime, future: true } } });
+    const parsed = ExperimentalImageGenerationRunDtoSchema.parse({ ...dto, request: { ...dto.request, runtime: { ...dto.request.runtime, future: true } } });
     expect(imageGenerationRunToDomain({ dto: parsed })).toEqual(run);
   });
 
   it('loads stored seed plans without recomputing or enforcing the current planner', () => {
     const dto = imageGenerationRunToDto({ run: runFixture() });
-    expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ ...dto, seeds: ['1', '2', '3', '4'] }).success).toBe(true);
-    expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ ...dto, request: { ...dto.request, parameters: { ...dto.request.parameters, seed: '-1' } } }).success).toBe(true);
+    expect(ExperimentalImageGenerationRunDtoSchema.safeParse({ ...dto, seeds: ['1', '2', '3', '4'] }).success).toBe(true);
+    expect(ExperimentalImageGenerationRunDtoSchema.safeParse({ ...dto, request: { ...dto.request, parameters: { ...dto.request.parameters, seed: '-1' } } }).success).toBe(true);
   });
 
   it.each(['候補', 'CANDIDATE', 'ガ'])('retains duplicate or unnormalized catalog labels as saved data: %s', name => {
@@ -115,7 +115,7 @@ describe('Image Generation persistence contracts', () => {
         { id: 'tag-bb', name: sameKeyName, createdAt: 1, updatedAt: 1, state: 'archived' },
       ],
     };
-    expect(ExperimentalImageGenerationCatalogSchemaDto.parse(catalog).tags).toEqual(catalog.tags);
+    expect(ExperimentalImageGenerationCatalogDtoSchema.parse(catalog).tags).toEqual(catalog.tags);
   });
 
   it('keeps reserved system tags structurally distinct from user identifiers', () => {
@@ -129,8 +129,8 @@ describe('Image Generation persistence contracts', () => {
         { tag: { type: 'user', tagId: 'favorite' }, assignedAt: 2 },
       ],
     };
-    expect(ExperimentalImageGenerationAssetAnnotationsSchemaDto.parse(annotations).tags).toHaveLength(2);
-    expect(ExperimentalImageGenerationAssetAnnotationsSchemaDto.safeParse({ ...annotations, tags: [{ tag: { type: 'system', key: 'custom' }, assignedAt: 1 }] }).success).toBe(false);
+    expect(ExperimentalImageGenerationAssetAnnotationsDtoSchema.parse(annotations).tags).toHaveLength(2);
+    expect(ExperimentalImageGenerationAssetAnnotationsDtoSchema.safeParse({ ...annotations, tags: [{ tag: { type: 'system', key: 'custom' }, assignedAt: 1 }] }).success).toBe(false);
   });
 });
 
@@ -158,7 +158,7 @@ describe('experimental presentation preferences', () => {
         unrecognizedPreference: true,
       },
     };
-    const parsed = ExperimentalImageGenerationCatalogSchemaDto.parse(raw);
+    const parsed = ExperimentalImageGenerationCatalogDtoSchema.parse(raw);
     expect(parsed.preferences.assistantLayout).toBe('docked');
     expect(parsed.preferences.experimentalNoticeDismissedAt).toBe(-1);
     expect(parsed.preferences).not.toHaveProperty('unrecognizedPreference');
@@ -166,13 +166,13 @@ describe('experimental presentation preferences', () => {
 
   it('keeps the acknowledgement and dock choice in the global catalog, not individual sessions', () => {
     const raw = { version: 1, id: 'catalog-aa', revision: 1, createdAt: 1, tags: [], preferences: { assistantLayout: 'docked', experimentalNoticeDismissedAt: 2 } };
-    const dto = ExperimentalImageGenerationCatalogSchemaDto.parse(JSON.parse(JSON.stringify(raw)));
+    const dto = ExperimentalImageGenerationCatalogDtoSchema.parse(JSON.parse(JSON.stringify(raw)));
     expect(dto.preferences).toEqual({ assistantLayout: 'docked', experimentalNoticeDismissedAt: 2 });
   });
 
   it('accepts an unacknowledged fresh catalog', () => {
     const raw = { version: 1, id: 'catalog-aa', revision: 0, createdAt: 1, tags: [], preferences: { assistantLayout: 'floating' } };
-    expect(ExperimentalImageGenerationCatalogSchemaDto.parse(raw).preferences.experimentalNoticeDismissedAt).toBeUndefined();
+    expect(ExperimentalImageGenerationCatalogDtoSchema.parse(raw).preferences.experimentalNoticeDismissedAt).toBeUndefined();
   });
 
   it.each([
@@ -180,6 +180,6 @@ describe('experimental presentation preferences', () => {
     { assistantLayout: 'docked', experimentalNoticeDismissedAt: '2' },
     { assistantLayout: 'docked', experimentalNoticeDismissedAt: Number.POSITIVE_INFINITY },
   ])('rejects wrong field types and unknown discriminators: %j', preferences => {
-    expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse({ version: 1, id: 'catalog-aa', revision: 1, createdAt: 1, tags: [], preferences }).success).toBe(false);
+    expect(ExperimentalImageGenerationCatalogDtoSchema.safeParse({ version: 1, id: 'catalog-aa', revision: 1, createdAt: 1, tags: [], preferences }).success).toBe(false);
   });
 });

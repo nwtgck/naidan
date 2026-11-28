@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SettingsSchemaDto } from '@/00-storage/00-dto/dto';
+import { SettingsDtoSchema } from '@/00-storage/00-dto/dto';
 import { DEFAULT_SETTINGS, DEFAULT_SETTINGS_ENDPOINT, type Settings } from '@/01-models/types';
 import { settingsToDomain, settingsToDto } from './mappers';
 
@@ -20,7 +20,7 @@ describe('experimental File Explorer settings persistence', () => {
       editorLineNumbers: 'shown',
     } as const;
     const stored = JSON.stringify(settingsToDto({ domain: { ...base, experimental: { locale: 'ja', fileExplorer } } }));
-    const domain = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(stored)) });
+    const domain = settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(stored)) });
 
     expect(domain.experimental?.fileExplorer).toStrictEqual(fileExplorer);
     expect(domain.experimental?.locale).toBe('ja');
@@ -28,7 +28,7 @@ describe('experimental File Explorer settings persistence', () => {
 
   it.each([undefined, {}])('omits legacy and empty preferences from saved JSON: %j', fileExplorer => {
     const existing = settingsToDto({ domain: base });
-    const dto = SettingsSchemaDto.parse({ ...existing, experimental: { locale: 'ja', fileExplorer } });
+    const dto = SettingsDtoSchema.parse({ ...existing, experimental: { locale: 'ja', fileExplorer } });
     const domain = settingsToDomain({ dto });
 
     expect(domain.experimental?.fileExplorer).toBeUndefined();
@@ -38,7 +38,7 @@ describe('experimental File Explorer settings persistence', () => {
 
   it('isolates unreadable preferences and serializes the remaining fields', () => {
     const existing = settingsToDto({ domain: base });
-    const dto = SettingsSchemaDto.parse({
+    const dto = SettingsDtoSchema.parse({
       ...existing,
       experimental: {
         locale: 'ja',

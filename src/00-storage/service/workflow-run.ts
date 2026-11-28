@@ -2,7 +2,7 @@ import { generateId } from '@/01-models/id';
 import { idToRaw, type WorkflowRunId, type WorkflowId } from '@/01-models/ids';
 import type { StorageType } from '@/01-models/types';
 import type { WorkflowDefinition, WorkflowRunRecord, WorkflowRunEntry } from '@/01-models/workflow';
-import { ExperimentalWorkflowRunSchemaDto } from '@/00-storage/00-dto/experimental-workflow.dto';
+import { ExperimentalWorkflowRunDtoSchema } from '@/00-storage/00-dto/experimental-workflow.dto';
 import { workflowRunToDomain, workflowRunToDto } from '@/00-storage/mapper/workflow';
 import { OPFS_TMP_DIR, SYNC_LOCK_KEY } from '@/constants';
 import { parseWorkflowJson } from './workflow-json';
@@ -92,7 +92,7 @@ function decode({ source, name }: { source: string, name: string }): WorkflowRun
     throw new Error('Workflow history definition is missing.');
   }
   parseWorkflowJson({ text: JSON.stringify(value.definition) });
-  const record = workflowRunToDomain({ dto: ExperimentalWorkflowRunSchemaDto.parse(value) });
+  const record = workflowRunToDomain({ dto: ExperimentalWorkflowRunDtoSchema.parse(value) });
   if (fileName({ id: record.id }) !== name) {
     throw new Error('Workflow run identity does not match its file.');
   }

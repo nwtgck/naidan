@@ -2,7 +2,7 @@ import { generateId } from '@/01-models/id';
 import { idToRaw, toWorkflowId, type WorkflowId } from '@/01-models/ids';
 import type { StorageType } from '@/01-models/types';
 import type { WorkflowDefinition, WorkflowDocument } from '@/01-models/workflow';
-import { ExperimentalWorkflowSchemaDto } from '@/00-storage/00-dto/experimental-workflow.dto';
+import { ExperimentalWorkflowDtoSchema } from '@/00-storage/00-dto/experimental-workflow.dto';
 import { workflowDocumentToDomain, workflowDocumentToDto } from '@/00-storage/mapper/workflow';
 import { parseWorkflowJson, WORKFLOW_DOCUMENT_MAX_BYTES } from './workflow-json';
 import { SYNC_LOCK_KEY } from '@/constants';
@@ -50,7 +50,7 @@ async function read({ directory, name }: { directory: FileSystemDirectoryHandle,
 }
 
 function decode({ source, name }: { source: string, name: string }): WorkflowSnapshot {
-  const dto = ExperimentalWorkflowSchemaDto.parse(parseWorkflowJson({ text: source }));
+  const dto = ExperimentalWorkflowDtoSchema.parse(parseWorkflowJson({ text: source }));
   if (fileName({ id: toWorkflowId({ raw: dto.id }) }) !== name) {
     throw new Error('Workflow document identity does not match its file.');
   }
@@ -106,7 +106,7 @@ function createStore({ access }: { access: Access }): WorkflowDocumentStore {
         updatedAt: now,
         definition,
       };
-      const dto = ExperimentalWorkflowSchemaDto.parse(workflowDocumentToDto({ domain: document }));
+      const dto = ExperimentalWorkflowDtoSchema.parse(workflowDocumentToDto({ domain: document }));
       const source = JSON.stringify(dto);
       parseWorkflowJson({ text: source });
       const expected = previous?.source;

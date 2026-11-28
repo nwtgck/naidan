@@ -1,7 +1,7 @@
 import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImageModelEditorToDomain, remoteImageModelEditorToDto } from './image-generation-editor';
 import { endpointToDomain, endpointToDto, lmParametersToDomain, lmParametersToDto } from './mappers';
 import type { ImageGenerationTranslationOverride } from '@/01-models/image-generation';
-import { ExperimentalImageGenerationTranslationOverrideSchemaDto, type ExperimentalImageGenerationTranslationOverrideDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationTranslationOverrideDtoSchema, type ExperimentalImageGenerationTranslationOverrideDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
 import type { ImageGenerationSessionDraft } from '@/01-models/image-generation';
 import type { ExperimentalImageGenerationDraftDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
@@ -29,7 +29,7 @@ export function imageGenerationTranslationToDto({ value }: { value: ImageGenerat
   }
   const { endpoint, modelId, lmParameters, ...unhandled } = value;
   unhandled satisfies Record<PropertyKey, never>;
-  return ExperimentalImageGenerationTranslationOverrideSchemaDto.parse({ endpoint: endpoint && endpointToDto({ endpoint }), modelId, lmParameters: lmParametersToDto({ domain: lmParameters }) });
+  return ExperimentalImageGenerationTranslationOverrideDtoSchema.parse({ endpoint: endpoint && endpointToDto({ endpoint }), modelId, lmParameters: lmParametersToDto({ domain: lmParameters }) });
 }
 
 export function imageGenerationTranslationToDomain({ value }: { value: ExperimentalImageGenerationTranslationOverrideDto | undefined }): ImageGenerationTranslationOverride | undefined {

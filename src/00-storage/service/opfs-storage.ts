@@ -1,4 +1,4 @@
-import { ExperimentalModelGraphRegistrySchemaDto, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
+import { ExperimentalModelGraphRegistryDtoSchema, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
 import { iterateAttachmentParts } from './message-attachments';
 import { readLegacyUploadedFileMetadata, remapLegacyUploadedFileReferences } from './legacy-uploaded-file-content';
 import { createLegacyUploadedFileId } from './legacy-uploaded-file-id';
@@ -11,14 +11,14 @@ import {
   type ChatGroupDto,
   type HierarchyDto,
   type MigrationChunkDto,
-  ChatMetaSchemaDto,
-  ChatGroupSchemaDto,
-  SettingsSchemaDto,
-  HierarchySchemaDto,
-  ChatContentSchemaDto,
+  ChatMetaDtoSchema,
+  ChatGroupDtoSchema,
+  SettingsDtoSchema,
+  HierarchyDtoSchema,
+  ChatContentDtoSchema,
   type VolumeDto,
   type VolumeIndexDto,
-  VolumeIndexSchemaDto,
+  VolumeIndexDtoSchema,
 } from '@/00-storage/00-dto/dto';
 import {
   chatToDomain,
@@ -44,12 +44,12 @@ import { IStorageProvider } from './interface';
 import {
   type MigrationStateDto,
   type BinaryShardIndexDto,
-  MigrationStateSchemaDto,
-  BinaryShardIndexSchemaDto,
+  MigrationStateDtoSchema,
+  BinaryShardIndexDtoSchema,
 } from '@/00-storage/00-dto/dto';
 import { toBinaryObjectId, toChatGroupId, toChatId } from '@/01-models/ids';
 import { promiseAllKeyed } from '@/utils/promise';
-import { ExperimentalNaidanRpcRegistrySchemaDto, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+import { ExperimentalNaidanRpcRegistryDtoSchema, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 import type { StoredVolumeAccess } from '@/01-models/volume-access';
 import type { StorageSynchronizer } from './synchronizer';
 
@@ -94,7 +94,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
       throw error;
     }
-    return ExperimentalNaidanRpcRegistrySchemaDto.parse(JSON.parse(await (await handle.getFile()).text()));
+    return ExperimentalNaidanRpcRegistryDtoSchema.parse(JSON.parse(await (await handle.getFile()).text()));
   }
 
   async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
@@ -112,7 +112,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
       return;
     }
-    const text = JSON.stringify(ExperimentalNaidanRpcRegistrySchemaDto.parse(registry));
+    const text = JSON.stringify(ExperimentalNaidanRpcRegistryDtoSchema.parse(registry));
     const directory = await this.getExperimentalDir({ create: true });
     if (!directory) {
       throw new Error('Experimental storage directory is unavailable.');
@@ -160,7 +160,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
       throw error;
     }
-    return ExperimentalModelGraphRegistrySchemaDto.parse(JSON.parse(await (await handle.getFile()).text()));
+    return ExperimentalModelGraphRegistryDtoSchema.parse(JSON.parse(await (await handle.getFile()).text()));
   }
 
   async saveModelGraphRegistry({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void> {
@@ -178,7 +178,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
       return;
     }
-    const text = JSON.stringify(ExperimentalModelGraphRegistrySchemaDto.parse(registry));
+    const text = JSON.stringify(ExperimentalModelGraphRegistryDtoSchema.parse(registry));
     const directory = await this.getExperimentalDir({ create: true });
     if (!directory) {
       throw new Error('Experimental storage directory is unavailable.');
@@ -251,7 +251,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       return null;
     }
     return chatContentToDomain({
-      dto: ChatContentSchemaDto.parse(JSON.parse(rawContent)),
+      dto: ChatContentDtoSchema.parse(JSON.parse(rawContent)),
     });
   }
 
@@ -271,7 +271,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     try {
       const fileHandle = await this.root!.getFileHandle('migration-state.json');
       const file = await fileHandle.getFile();
-      return MigrationStateSchemaDto.parse(JSON.parse(await file.text()));
+      return MigrationStateDtoSchema.parse(JSON.parse(await file.text()));
     } catch {
       return { completedMigrations: [] };
     }
@@ -516,7 +516,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
     // Invalid or unreadable metadata is not an empty index to overwrite.
     const file = await fileHandle.getFile();
-    return BinaryShardIndexSchemaDto.parse(JSON.parse(await file.text()));
+    return BinaryShardIndexDtoSchema.parse(JSON.parse(await file.text()));
   }
 
   private async saveShardIndex({ shard, index }: { shard: string, index: BinaryShardIndex }): Promise<void> {
@@ -573,7 +573,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       case 'file': {
         if (entry.name.endsWith('.json')) {
           const file = await (entry as FileSystemFileHandle).getFile();
-          dtos.push(ChatMetaSchemaDto.parse(JSON.parse(await file.text())));
+          dtos.push(ChatMetaDtoSchema.parse(JSON.parse(await file.text())));
         }
         break;
       }
@@ -598,7 +598,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       case 'file': {
         if (entry.name.endsWith('.json')) {
           const file = await (entry as FileSystemFileHandle).getFile();
-          dtos.push(ChatGroupSchemaDto.parse(JSON.parse(await file.text())));
+          dtos.push(ChatGroupDtoSchema.parse(JSON.parse(await file.text())));
         }
         break;
       }
@@ -629,7 +629,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       throw error;
     }
     const file = await fileHandle.getFile();
-    return HierarchySchemaDto.parse(JSON.parse(await file.text()));
+    return HierarchyDtoSchema.parse(JSON.parse(await file.text()));
   }
 
   async saveHierarchy({ hierarchy }: { hierarchy: HierarchyDto }): Promise<void> {
@@ -644,7 +644,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
-    const serialized = JSON.stringify(ChatMetaSchemaDto.parse(dto));
+    const serialized = JSON.stringify(ChatMetaDtoSchema.parse(dto));
     const dir = await this.getDir({ name: 'chat-metas' });
     const fileHandle = await dir.getFileHandle(`${idToRaw({ id: meta.id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
@@ -654,7 +654,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async saveChatContent({ id, content }: { id: ChatId, content: ChatContent }): Promise<void> {
     const dto = chatContentToDto({ domain: content });
-    ChatContentSchemaDto.parse(dto);
+    ChatContentDtoSchema.parse(dto);
     const dir = await this.getDir({ name: 'chat-contents' });
     const fileHandle = await dir.getFileHandle(`${idToRaw({ id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
@@ -665,8 +665,8 @@ export class OPFSStorageProvider extends IStorageProvider {
   async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
     const rawMeta = await this.readChatRecord({ directory: 'chat-metas', id });
     const rawContent = await this.readChatRecord({ directory: 'chat-contents', id });
-    const meta = rawMeta === null ? null : ChatMetaSchemaDto.parse(JSON.parse(rawMeta));
-    const content = rawContent === null ? null : ChatContentSchemaDto.parse(JSON.parse(rawContent));
+    const meta = rawMeta === null ? null : ChatMetaDtoSchema.parse(JSON.parse(rawMeta));
+    const content = rawContent === null ? null : ChatContentDtoSchema.parse(JSON.parse(rawContent));
     if (meta === null || content === null) {
       return null;
     }
@@ -693,7 +693,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     if (rawMeta === null) {
       return null;
     }
-    const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(JSON.parse(rawMeta)) });
+    const meta = chatMetaToDomain({ dto: ChatMetaDtoSchema.parse(JSON.parse(rawMeta)) });
 
     // Resolve groupId from hierarchy
     const hierarchy = await this.loadHierarchy();
@@ -732,7 +732,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
-    const serialized = JSON.stringify(ChatGroupSchemaDto.parse(dto));
+    const serialized = JSON.stringify(ChatGroupDtoSchema.parse(dto));
     const dir = await this.getDir({ name: 'chat-groups' });
     const fileHandle = await dir.getFileHandle(`${idToRaw({ id: chatGroup.id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
@@ -753,7 +753,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
       throw error;
     }
-    const groupDto = ChatGroupSchemaDto.parse(JSON.parse(await (await handle.getFile()).text()));
+    const groupDto = ChatGroupDtoSchema.parse(JSON.parse(await (await handle.getFile()).text()));
     return chatGroupConfigurationToDomain({ dto: groupDto });
   }
 
@@ -770,7 +770,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
       throw error;
     }
-    const groupDto = ChatGroupSchemaDto.parse(JSON.parse(await (await handle.getFile()).text()));
+    const groupDto = ChatGroupDtoSchema.parse(JSON.parse(await (await handle.getFile()).text()));
     const { hierarchy, allMetas } = await promiseAllKeyed({
       hierarchy: this.loadHierarchy(),
       allMetas: this.listChatMetasRaw(),
@@ -980,7 +980,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async saveSettings({ settings }: { settings: Settings }): Promise<void> {
     const dto = settingsToDto({ domain: settings });
-    const serialized = JSON.stringify(SettingsSchemaDto.parse(dto));
+    const serialized = JSON.stringify(SettingsDtoSchema.parse(dto));
     await this.ensureRoot();
     const fileHandle = await this.root!.getFileHandle('settings.json', { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
@@ -993,7 +993,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     try {
       const fileHandle = await this.root!.getFileHandle('settings.json');
       const file = await fileHandle.getFile();
-      return settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(await file.text())) });
+      return settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(await file.text())) });
     } catch (error) {
       // Unavailable RPC bytes must not masquerade as absent settings.
       return null;
@@ -1204,7 +1204,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       throw error;
     }
     const file = await fileHandle.getFile();
-    return VolumeIndexSchemaDto.parse(JSON.parse(await file.text()));
+    return VolumeIndexDtoSchema.parse(JSON.parse(await file.text()));
   }
 
   private async withVolumeIndexLock({ shard, operation }: {

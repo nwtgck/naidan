@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import * as dtozod from '@/utils/dtozod';
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/dtozod/missingAsUndefined';
-import { optionalExperimentalFieldSchemaDto } from './experimental-field';
-import { EndpointSchemaDto } from '@/00-storage/00-dto/dto';
+import { optionalExperimentalFieldDtoSchema } from './experimental-field';
+import { EndpointDtoSchema } from '@/00-storage/00-dto/dto';
 
-const schema = optionalExperimentalFieldSchemaDto({
+const schema = optionalExperimentalFieldDtoSchema({
   schema: resolveMissingAsUndefined(dtozod.object({
     known: missingAsUndefined(dtozod.number()),
   })),
@@ -38,7 +38,7 @@ describe('intentional experimental field recovery', () => {
     ['future-array'],
     { known: undefined, future: false },
   ])('preserves nested unreadable evidence while parsing the enclosing object: %j', input => {
-    const outer = optionalExperimentalFieldSchemaDto({
+    const outer = optionalExperimentalFieldDtoSchema({
       schema: resolveMissingAsUndefined(dtozod.object({
         nested: missingAsUndefined(schema),
         readable: missingAsUndefined(dtozod.string()),
@@ -57,8 +57,8 @@ describe('intentional experimental field recovery', () => {
   });
 
   it('preserves unknown endpoint identity inside a recovered group', () => {
-    const outer = optionalExperimentalFieldSchemaDto({
-      schema: resolveMissingAsUndefined(dtozod.object({ endpoint: missingAsUndefined(EndpointSchemaDto) })),
+    const outer = optionalExperimentalFieldDtoSchema({
+      schema: resolveMissingAsUndefined(dtozod.object({ endpoint: missingAsUndefined(EndpointDtoSchema) })),
     });
     const endpoint = { type: 'experimental_type', experimental: { endpoint: { type: 'future_remote', ref: 'id' } } };
     const parsed = outer.parse({ endpoint })!;
@@ -70,10 +70,10 @@ describe('intentional experimental field recovery', () => {
   });
 
   it('preserves recovery metadata through arrays and multiple nested compatibility groups', () => {
-    const middle = optionalExperimentalFieldSchemaDto({
+    const middle = optionalExperimentalFieldDtoSchema({
       schema: resolveMissingAsUndefined(dtozod.object({ nested: missingAsUndefined(schema) })),
     });
-    const outer = optionalExperimentalFieldSchemaDto({
+    const outer = optionalExperimentalFieldDtoSchema({
       schema: resolveMissingAsUndefined(dtozod.object({ items: missingAsUndefined(dtozod.array(middle)) })),
     });
     const dangerous = JSON.parse('{"known":3,"__proto__":{"marker":true},"unreadable":{"forged":true}}');

@@ -2,18 +2,18 @@ import { z } from 'zod';
 import { resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the DTO dependency with the storage service API.
 import {
-  BinaryObjectSchemaDto,
-  ChatContentSchemaDto,
-  ChatGroupSchemaDtoV2,
-  ChatMetaSchemaDtoV2,
-  MessageBranchSchemaDtoV2,
+  BinaryObjectDtoSchema,
+  ChatContentDtoSchema,
+  ChatGroupDtoV2Schema,
+  ChatMetaDtoV2Schema,
+  MessageBranchDtoV2Schema,
 } from '@/00-storage/00-dto/dto';
 
 // Sysfs exposes the current representation. Legacy persistence readers remain
 // separate; transferring a chat does not rewrite its saved V1 record.
 export const naidanSysfsRemoteChatContentPayloadSchema = resolveMissingAsUndefined(z.object({
-  ...ChatContentSchemaDto.shape,
-  root: MessageBranchSchemaDtoV2,
+  ...ChatContentDtoSchema.shape,
+  root: MessageBranchDtoV2Schema,
 }));
 
 /**
@@ -41,9 +41,9 @@ type NaidanSysfsRemoteValue<T> =
       }
       : T;
 
-export type NaidanSysfsRemoteChatMetaValue = NaidanSysfsRemoteValue<z.output<typeof ChatMetaSchemaDtoV2>>;
+export type NaidanSysfsRemoteChatMetaValue = NaidanSysfsRemoteValue<z.output<typeof ChatMetaDtoV2Schema>>;
 export type NaidanSysfsRemoteChatContentValue = NaidanSysfsRemoteValue<z.output<typeof naidanSysfsRemoteChatContentPayloadSchema>>;
-export type NaidanSysfsRemoteChatGroupValue = NaidanSysfsRemoteValue<z.output<typeof ChatGroupSchemaDtoV2>>;
+export type NaidanSysfsRemoteChatGroupValue = NaidanSysfsRemoteValue<z.output<typeof ChatGroupDtoV2Schema>>;
 
 export const naidanSysfsRemoteChatSummarySchema = z.object({
   id: z.string().min(1),
@@ -59,7 +59,7 @@ export const naidanSysfsRemoteChatSidebarItemSchema = z.object({
 });
 
 export const naidanSysfsRemoteChatGroupPayloadSchema = z.object({
-  dto: ChatGroupSchemaDtoV2,
+  dto: ChatGroupDtoV2Schema,
   items: z.array(naidanSysfsRemoteChatSidebarItemSchema),
 });
 
@@ -73,7 +73,7 @@ export const naidanSysfsRemoteSidebarItemSchema = z.union([
 ]);
 
 export const naidanSysfsRemoteChatMetaPayloadSchema = z.object({
-  dto: ChatMetaSchemaDtoV2,
+  dto: ChatMetaDtoV2Schema,
   groupId: z.union([z.string().min(1), z.null(), z.undefined()]),
 });
 
@@ -83,7 +83,7 @@ export const naidanSysfsRemoteChatPayloadSchema = z.object({
 });
 
 export const naidanSysfsRemoteBinaryObjectSchema = resolveMissingAsUndefined(z.object({
-  ...BinaryObjectSchemaDto.shape,
+  ...BinaryObjectDtoSchema.shape,
   name: z.union([z.string(), z.null()]),
 }));
 

@@ -24,7 +24,7 @@ import type {
 } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import {
-  SettingsSchemaDto,
+  SettingsDtoSchema,
   type ChatDto,
   type MessageNodeDto,
   type MessageNodeDtoV2,
@@ -497,7 +497,7 @@ describe('Settings Mapping', () => {
       const dto = settingsToDto({ domain });
       expect(dto.experimental?.locale).toBe(locale);
 
-      const parsed = SettingsSchemaDto.parse(dto);
+      const parsed = SettingsDtoSchema.parse(dto);
       expect(parsed.experimental?.locale).toBe(locale);
       expect(settingsToDomain({ dto: parsed }).experimental?.locale).toBe(locale);
     },
@@ -560,7 +560,7 @@ describe('Settings Mapping', () => {
       experimental: undefined,
     };
 
-    const parsed = SettingsSchemaDto.parse(dto);
+    const parsed = SettingsDtoSchema.parse(dto);
     const domain = settingsToDomain({ dto: parsed });
 
     expect(domain.endpoint).toEqual({
@@ -592,7 +592,7 @@ describe('Settings Mapping', () => {
       experimental: undefined,
     };
 
-    const parsed = SettingsSchemaDto.parse(dto);
+    const parsed = SettingsDtoSchema.parse(dto);
     const domain = settingsToDomain({ dto: parsed });
 
     expect(domain.endpoint).toEqual({
@@ -645,7 +645,7 @@ describe('Settings Mapping', () => {
       experimental: undefined,
     };
 
-    const parsed = SettingsSchemaDto.parse(dto);
+    const parsed = SettingsDtoSchema.parse(dto);
     const domain = settingsToDomain({ dto: parsed });
 
     expect(domain.endpoint).toEqual({ type: 'browser_provided_lm' });
@@ -858,14 +858,14 @@ describe('Legacy Migration (Flat to Tree)', () => {
 describe('chat model source preference mapping', () => {
   it.each(['files', 'linked-folders', 'hugging-face', 'saved'] as const)('round-trips only the source-tab key: %s', tab => {
     const domain: Settings = { endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'user/model', storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { locale: 'ja', chatBrowserModelPickerTab: tab } };
-    const dto = SettingsSchemaDto.parse(settingsToDto({ domain }));
+    const dto = SettingsDtoSchema.parse(settingsToDto({ domain }));
     expect(dto.experimental?.chatBrowserModelPickerTab).toBe(tab);
     expect(settingsToDomain({ dto }).experimental).toMatchObject({ locale: 'ja', chatBrowserModelPickerTab: tab });
   });
 
   it('keeps old settings without this preference readable without choosing or persisting a model', () => {
     const domain: Settings = { endpoint: { type: 'openai', url: '' }, defaultModelId: undefined, storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { locale: 'ja' } };
-    const dto = SettingsSchemaDto.parse(settingsToDto({ domain }));
+    const dto = SettingsDtoSchema.parse(settingsToDto({ domain }));
     expect(settingsToDomain({ dto }).experimental?.chatBrowserModelPickerTab).toBeUndefined();
     expect(settingsToDomain({ dto }).defaultModelId).toBeUndefined();
   });
@@ -874,7 +874,7 @@ describe('chat model source preference mapping', () => {
 describe('model discovery tab preference mapping', () => {
   it.each(['candidates', 'hugging_face', 'local_files'] as const)('round-trips the discovery tab independently from the chat picker: %s', tab => {
     const domain: Settings = { endpoint: { type: 'openai', url: 'https://example.test/v1' }, defaultModelId: 'existing-model', storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { locale: 'ja', chatBrowserModelPickerTab: 'saved', modelDiscoveryTab: tab } };
-    const dto = SettingsSchemaDto.parse(settingsToDto({ domain }));
+    const dto = SettingsDtoSchema.parse(settingsToDto({ domain }));
     expect(dto.experimental?.modelDiscoveryTab).toBe(tab);
     expect(settingsToDomain({ dto }).experimental).toMatchObject({ locale: 'ja', chatBrowserModelPickerTab: 'saved', modelDiscoveryTab: tab });
     expect(settingsToDomain({ dto }).defaultModelId).toBe('existing-model');
@@ -882,7 +882,7 @@ describe('model discovery tab preference mapping', () => {
 
   it('keeps other experimental settings when a saved discovery tab is unsupported', () => {
     const domain: Settings = { endpoint: { type: 'openai', url: '' }, storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { locale: 'ja', chatBrowserModelPickerTab: 'saved' } };
-    const dto = SettingsSchemaDto.parse({ ...settingsToDto({ domain }), experimental: { ...settingsToDto({ domain }).experimental, modelDiscoveryTab: 'future-tab' } });
+    const dto = SettingsDtoSchema.parse({ ...settingsToDto({ domain }), experimental: { ...settingsToDto({ domain }).experimental, modelDiscoveryTab: 'future-tab' } });
     const experimental = settingsToDomain({ dto }).experimental;
     expect(experimental).toMatchObject({ locale: 'ja', chatBrowserModelPickerTab: 'saved', modelDiscoveryTab: undefined, unreadable: { modelDiscoveryTab: 'future-tab' } });
   });
@@ -891,7 +891,7 @@ describe('model discovery tab preference mapping', () => {
 describe('Hugging Face search preferences', () => {
   it.each(['enabled', 'disabled', undefined] as const)('preserves the explicit auto-search choice: %s', autoSearch => {
     const domain: Settings = { endpoint: { type: 'openai', url: '' }, storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { huggingFaceModelSearch: autoSearch === undefined ? undefined : { autoSearch } } };
-    const dto = SettingsSchemaDto.parse(settingsToDto({ domain }));
+    const dto = SettingsDtoSchema.parse(settingsToDto({ domain }));
     expect(dto.experimental?.huggingFaceModelSearch?.autoSearch).toBe(autoSearch);
     expect(settingsToDomain({ dto }).experimental?.huggingFaceModelSearch?.autoSearch).toBe(autoSearch);
   });
@@ -900,7 +900,7 @@ describe('Hugging Face search preferences', () => {
 describe('live conversation model preference mapping', () => {
   it('round-trips the live model independently from the existing chat default', () => {
     const domain: Settings = { endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'chat-model', storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { locale: 'ja', liveConversationModelId: 'live-model' } };
-    const dto = SettingsSchemaDto.parse(settingsToDto({ domain }));
+    const dto = SettingsDtoSchema.parse(settingsToDto({ domain }));
     const restored = settingsToDomain({ dto });
     expect(restored.experimental?.liveConversationModelId).toBe('live-model');
     expect(restored.defaultModelId).toBe('chat-model');

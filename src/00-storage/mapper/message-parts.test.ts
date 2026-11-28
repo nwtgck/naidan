@@ -1,10 +1,10 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { ChatContentSchemaDto, ChatSchemaDto, MessageNodeSchemaDto, MessageNodeSchemaDtoV2, type MessageNodeDtoV2 } from '@/00-storage/00-dto/dto';
+import { ChatContentDtoSchema, ChatDtoSchema, MessageNodeDtoSchema, MessageNodeDtoV2Schema, type MessageNodeDtoV2 } from '@/00-storage/00-dto/dto';
 import { chatContentToDomain, chatContentToDto, chatToDomain, messageNodeToDomain, messageNodeToDto } from './mappers';
 import type { MessageNode } from '@/01-models/types';
 import { createChatMessageSnapshot } from '@/01-models/chat-message';
 
-const legacy = ({ role }: { role: 'user' | 'assistant' | 'system' | 'tool' }) => MessageNodeSchemaDto.parse({
+const legacy = ({ role }: { role: 'user' | 'assistant' | 'system' | 'tool' }) => MessageNodeDtoSchema.parse({
   id: role,
   role,
   timestamp: 10,
@@ -13,7 +13,7 @@ const legacy = ({ role }: { role: 'user' | 'assistant' | 'system' | 'tool' }) =>
 });
 
 const roundTrip = ({ node }: { node: MessageNode }) => messageNodeToDomain({
-  dto: MessageNodeSchemaDto.parse(JSON.parse(JSON.stringify(messageNodeToDto({ domain: node })))),
+  dto: MessageNodeDtoSchema.parse(JSON.parse(JSON.stringify(messageNodeToDto({ domain: node })))),
 });
 
 describe('versioned message mapping', () => {
@@ -39,12 +39,12 @@ describe('versioned message mapping', () => {
       currentLeafId: 'visible',
     };
     const before = JSON.stringify(raw);
-    const content = chatContentToDomain({ dto: ChatContentSchemaDto.parse(raw) });
+    const content = chatContentToDomain({ dto: ChatContentDtoSchema.parse(raw) });
     const saved = chatContentToDto({ domain: content });
     expect(JSON.stringify(raw)).toBe(before);
     const visit = ({ nodes }: { nodes: typeof saved.root.items }) => {
       for (const node of nodes) {
-        const modern = MessageNodeSchemaDtoV2.parse(node);
+        const modern = MessageNodeDtoV2Schema.parse(node);
         expect(Object.hasOwn(node, 'content')).toBe(false);
         for (const part of modern.parts) {
           expect(part).not.toHaveProperty('id');
@@ -55,7 +55,7 @@ describe('versioned message mapping', () => {
     visit({ nodes: saved.root.items });
     expect(saved.root.items[0]?.replies.items).toHaveLength(2);
     expect(saved.currentLeafId).toBe('visible');
-    expect(chatContentToDto({ domain: chatContentToDomain({ dto: ChatContentSchemaDto.parse(JSON.parse(JSON.stringify(saved))) }) })).toEqual(saved);
+    expect(chatContentToDto({ domain: chatContentToDomain({ dto: ChatContentDtoSchema.parse(JSON.parse(JSON.stringify(saved))) }) })).toEqual(saved);
   });
 
   it('maps legacy content consistently without mutating the read record', () => {
@@ -66,7 +66,7 @@ describe('versioned message mapping', () => {
   });
 
   it('retains specified empty reasoning before empty text and completed calls', () => {
-    const dto = MessageNodeSchemaDto.parse({
+    const dto = MessageNodeDtoSchema.parse({
       id: 'a',
       role: 'assistant',
       thinking: '',
@@ -95,7 +95,7 @@ describe('versioned message mapping', () => {
 [Generation Aborted]
 `;
     const node = messageNodeToDomain({
-      dto: MessageNodeSchemaDto.parse({
+      dto: MessageNodeDtoSchema.parse({
         id: 'a',
         role: 'assistant',
         createdAt: 0,
@@ -113,7 +113,7 @@ describe('versioned message mapping', () => {
 
   it('preserves no part versus an explicit empty part', () => {
     for (const parts of [[], [{ type: 'text', text: '' }]]) {
-      const node = messageNodeToDomain({ dto: MessageNodeSchemaDto.parse({ id: 'a', role: 'assistant', createdAt: 1, parts, replies: { items: [] } }) });
+      const node = messageNodeToDomain({ dto: MessageNodeDtoSchema.parse({ id: 'a', role: 'assistant', createdAt: 1, parts, replies: { items: [] } }) });
       expect(roundTrip({ node }).parts).toEqual(node.parts);
       expect(node.parts.length).toBe(parts.length);
     }
@@ -121,7 +121,7 @@ describe('versioned message mapping', () => {
 
   it('retains cancellation separately from an already completed reasoning part', () => {
     const node = messageNodeToDomain({
-      dto: MessageNodeSchemaDto.parse({
+      dto: MessageNodeDtoSchema.parse({
         id: 'a',
         role: 'assistant',
         createdAt: 1,
@@ -136,7 +136,7 @@ describe('versioned message mapping', () => {
 
   it('keeps old attachment metadata in memory and writes only the V2 reference', () => {
     const node = messageNodeToDomain({
-      dto: MessageNodeSchemaDto.parse({
+      dto: MessageNodeDtoSchema.parse({
         id: 'u',
         role: 'user',
         timestamp: 4,
@@ -160,7 +160,7 @@ describe('versioned message mapping', () => {
       { toolCallId: 'd', status: 'success', content: { type: 'binary_object', id: 'blob' } },
       { toolCallId: 'e', status: 'error', error: { code: 'execution_failed', message: { type: 'binary_object', id: 'stderr' } } },
     ];
-    const node = messageNodeToDomain({ dto: MessageNodeSchemaDto.parse({ id: 't', role: 'tool', timestamp: 1, results, replies: { items: [] } }) });
+    const node = messageNodeToDomain({ dto: MessageNodeDtoSchema.parse({ id: 't', role: 'tool', timestamp: 1, results, replies: { items: [] } }) });
     expect(roundTrip({ node })).toEqual(node);
     expect(node.parts.map(part => part.type)).toEqual(results.map(() => 'tool_result'));
   });
@@ -173,11 +173,11 @@ describe('versioned message mapping', () => {
       updatedAt: 1,
       messages: [{ id: 'u', role: 'user', content: 'Hi', timestamp: 1 }, { id: 'a', role: 'assistant', content: 'Hello', thinking: 'R', timestamp: 2 }],
     };
-    const chat = chatToDomain({ dto: ChatSchemaDto.parse(raw) });
+    const chat = chatToDomain({ dto: ChatDtoSchema.parse(raw) });
     expect(chat.root.items[0]?.parts).toMatchObject([{ type: 'text', text: 'Hi' }]);
     expect(chat.root.items[0]?.replies.items[0]?.parts).toMatchObject([{ type: 'reasoning', text: 'R' }, { type: 'text', text: 'Hello' }]);
     for (const messages of [[null], [{ id: 'a', role: 'assistant', content: 9, timestamp: 1 }]]) {
-      expect(() => chatToDomain({ dto: ChatSchemaDto.parse({ ...raw, messages }) })).toThrow();
+      expect(() => chatToDomain({ dto: ChatDtoSchema.parse({ ...raw, messages }) })).toThrow();
     }
   });
 
@@ -212,7 +212,7 @@ describe('versioned message mapping', () => {
       { id: 'u', role: 'user', timestamp: 0, content: '', replies: { items: [] } },
     ];
     for (const record of records) {
-      const node = messageNodeToDomain({ dto: MessageNodeSchemaDto.parse(record) });
+      const node = messageNodeToDomain({ dto: MessageNodeDtoSchema.parse(record) });
       expect(createChatMessageSnapshot({ node: roundTrip({ node }) })).toEqual(createChatMessageSnapshot({ node }));
     }
   });
@@ -254,7 +254,7 @@ describe('versioned message mapping', () => {
       { id: 'system', role: 'system', createdAt: 0, parts: [{ type: 'text', text: 'System' }] },
     ];
     for (const record of records) {
-      const dto = MessageNodeSchemaDtoV2.parse({ ...record, replies: { items: [] } });
+      const dto = MessageNodeDtoV2Schema.parse({ ...record, replies: { items: [] } });
       const domain = messageNodeToDomain({ dto });
       const saved = messageNodeToDto({ domain });
       expect(saved).toEqual(dto);

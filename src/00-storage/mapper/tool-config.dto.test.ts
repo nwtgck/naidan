@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ChatGroupSchemaDto,
-  ChatMetaSchemaDto,
-  SettingsSchemaDto,
+  ChatGroupDtoSchema,
+  ChatMetaDtoSchema,
+  SettingsDtoSchema,
 } from '@/00-storage/00-dto/dto';
 import {
   chatGroupToDomain,
@@ -29,7 +29,7 @@ const toolConfigs = [
 
 describe('experimental tool config DTO', () => {
   it.each([undefined, {}])('enables persistence when the saved setting is absent: %j', experimental => {
-    const dto = SettingsSchemaDto.parse({
+    const dto = SettingsDtoSchema.parse({
       ...DEFAULT_SETTINGS,
       endpoint: { type: 'openai', url: 'http://localhost' },
       storageType: 'local',
@@ -39,7 +39,7 @@ describe('experimental tool config DTO', () => {
   });
 
   it.each(['enabled', 'disabled'] as const)('preserves explicit %s persistence and tool values through reloads', persistence => {
-    const dto = SettingsSchemaDto.parse({
+    const dto = SettingsDtoSchema.parse({
       ...DEFAULT_SETTINGS,
       endpoint: { type: 'openai', url: 'http://localhost' },
       storageType: 'local',
@@ -47,7 +47,7 @@ describe('experimental tool config DTO', () => {
     });
     const domain = settingsToDomain({ dto });
     const saved = settingsToDto({ domain });
-    const reloaded = settingsToDomain({ dto: SettingsSchemaDto.parse(saved) });
+    const reloaded = settingsToDomain({ dto: SettingsDtoSchema.parse(saved) });
     expect(saved.experimental?.toolConfigPersistence).toBe(persistence === 'disabled' ? 'disabled' : undefined);
     expect(reloaded.experimental?.toolConfigPersistence).toBe(persistence);
     expect(reloaded.experimental?.toolConfigs).toEqual(toolConfigs);
@@ -71,7 +71,7 @@ describe('experimental tool config DTO', () => {
   });
 
   it('persists required status values under chat meta experimental storage', () => {
-    const dto = ChatMetaSchemaDto.parse({
+    const dto = ChatMetaDtoSchema.parse({
       id: 'chat-1',
       title: 'Chat 1',
       updatedAt: 2,
@@ -85,7 +85,7 @@ describe('experimental tool config DTO', () => {
   });
 
   it('does not accept legacy tool config entries without status', () => {
-    const dto = ChatMetaSchemaDto.parse({
+    const dto = ChatMetaDtoSchema.parse({
       id: 'chat-1',
       title: 'Chat 1',
       updatedAt: 2,
@@ -100,7 +100,7 @@ describe('experimental tool config DTO', () => {
   });
 
   it('round-trips chat group tool overrides', () => {
-    const dto = ChatGroupSchemaDto.parse({
+    const dto = ChatGroupDtoSchema.parse({
       id: 'group-1',
       name: 'Group 1',
       isCollapsed: false,
@@ -115,7 +115,7 @@ describe('experimental tool config DTO', () => {
   });
 
   it('round-trips global tool configs in settings', () => {
-    const dto = SettingsSchemaDto.parse({
+    const dto = SettingsDtoSchema.parse({
       endpoint: { type: 'openai', url: 'http://localhost', httpHeaders: undefined },
       titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',

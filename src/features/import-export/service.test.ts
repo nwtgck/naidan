@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ImportExportService, type IImportExportStorage } from './service';
 import JSZip from 'jszip';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the DTO dependency with the storage service API.
-import { ChatSchemaDto } from '@/00-storage/00-dto/dto';
+import { ChatDtoSchema } from '@/00-storage/00-dto/dto';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the DTO dependency with the storage service API.
 import type { SettingsDto, ChatMetaDto, ChatGroupDto, MigrationChunkDto } from '@/00-storage/00-dto/dto';
 import type { ExportOptions, ImportConfig } from './types';
@@ -422,7 +422,7 @@ describe('ImportExportService', () => {
           }
           yield {
             type: 'chat' as const,
-            data: ChatSchemaDto.parse({
+            data: ChatDtoSchema.parse({
               ...createValidChatMetaDto({ id: UUID_C1, currentLeafId: UUID_M3 }),
               root: {
                 items: [{
@@ -468,7 +468,7 @@ describe('ImportExportService', () => {
           };
           yield {
             type: 'chat' as const,
-            data: ChatSchemaDto.parse({
+            data: ChatDtoSchema.parse({
               ...createValidChatMetaDto({ id: UUID_C2, title: 'Other Chat', currentLeafId: UUID_M5 }),
               root: {
                 items: [{
@@ -573,7 +573,7 @@ ${JSON.stringify({
 
           yield {
             type: 'chat',
-            data: ChatSchemaDto.parse({
+            data: ChatDtoSchema.parse({
               ...createValidChatMetaDto({ id: UUID_C1, currentLeafId: UUID_M2 }),
               root: {
                 experimental: {},
@@ -671,7 +671,7 @@ ${JSON.stringify({
         contentStream: (async function* (): AsyncGenerator<MigrationChunkDto> {
           yield {
             type: 'chat',
-            data: ChatSchemaDto.parse({
+            data: ChatDtoSchema.parse({
               ...createValidChatMetaDto({ id: UUID_C1, currentLeafId: undefined }),
               root: {
                 items: [

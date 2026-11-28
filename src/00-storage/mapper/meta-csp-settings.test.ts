@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SettingsSchemaDto } from '@/00-storage/00-dto/dto';
+import { SettingsDtoSchema } from '@/00-storage/00-dto/dto';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import { settingsToDomain, settingsToDto } from './mappers';
 
@@ -16,7 +16,7 @@ function roundTrip({ value }: { value: string | undefined }) {
     experimental: { locale: 'ja', naidanRpc: 'enabled', metaCspForDevelopmentNotForSecurity: value },
   };
   const saved = settingsToDto({ domain: initial });
-  const dto = SettingsSchemaDto.parse(JSON.parse(JSON.stringify(saved)));
+  const dto = SettingsDtoSchema.parse(JSON.parse(JSON.stringify(saved)));
   return { saved, dto, domain: settingsToDomain({ dto }) };
 }
 
@@ -35,7 +35,7 @@ describe('development-only CSP settings mapping', () => {
 
   it('keeps legacy settings without experimental readable without creating a saved policy', () => {
     const { experimental: _experimental, ...legacy } = settingsToDto({ domain: base });
-    const dto = SettingsSchemaDto.parse(legacy);
+    const dto = SettingsDtoSchema.parse(legacy);
     const domain = settingsToDomain({ dto });
     expect(dto.experimental).toBeUndefined();
     expect(domain.experimental?.metaCspForDevelopmentNotForSecurity).toBeUndefined();
@@ -44,7 +44,7 @@ describe('development-only CSP settings mapping', () => {
   });
 
   it('keeps a legacy partial experimental block readable when metaCsp is absent', () => {
-    const dto = SettingsSchemaDto.parse({ ...settingsToDto({ domain: base }), experimental: { locale: 'ja', naidanRpc: 'enabled' } });
+    const dto = SettingsDtoSchema.parse({ ...settingsToDto({ domain: base }), experimental: { locale: 'ja', naidanRpc: 'enabled' } });
     const domain = settingsToDomain({ dto });
     expect(dto.experimental?.metaCsp).toBeUndefined();
     expect(domain.experimental?.metaCspForDevelopmentNotForSecurity).toBeUndefined();
@@ -61,7 +61,7 @@ describe('development-only CSP settings mapping', () => {
     };
     const saved = settingsToDto({ domain: cleared });
     const serialized = JSON.stringify(saved);
-    const dto = SettingsSchemaDto.parse(JSON.parse(serialized));
+    const dto = SettingsDtoSchema.parse(JSON.parse(serialized));
     const restored = settingsToDomain({ dto });
     expect(saved.experimental?.metaCsp).toBeUndefined();
     expect(serialized).not.toContain('metaCsp');
@@ -75,14 +75,14 @@ describe('development-only CSP settings mapping', () => {
   it('omits the entire experimental block after saving, loading, and clearing its only saved value', () => {
     const initial: Settings = { ...base, experimental: { metaCspForDevelopmentNotForSecurity: policy } };
     const stored = settingsToDto({ domain: initial });
-    const loaded = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(stored))) });
+    const loaded = settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(JSON.stringify(stored))) });
     expect(loaded.experimental?.sidebarSendMessageReorder).toBe('disabled');
     const cleared: Settings = { ...loaded, experimental: { ...loaded.experimental, metaCspForDevelopmentNotForSecurity: undefined } };
     const saved = settingsToDto({ domain: cleared });
     expect(saved.experimental).toBeUndefined();
     expect(JSON.parse(JSON.stringify(saved))).not.toHaveProperty('experimental');
 
-    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(saved))) });
+    const restored = settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(JSON.stringify(saved))) });
     expect(restored.experimental?.metaCspForDevelopmentNotForSecurity).toBeUndefined();
     expect(restored.experimental).toMatchObject({
       sidebarSendMessageReorder: 'disabled',
@@ -107,7 +107,7 @@ describe('development-only CSP settings mapping', () => {
     { browserImageGeneration: { width: 512 } },
   ] satisfies NonNullable<Settings['experimental']>[])('retains other explicitly saved experimental preferences after clearing the policy: %j', remaining => {
     const initial: Settings = { ...base, experimental: { ...remaining, metaCspForDevelopmentNotForSecurity: policy } };
-    const loaded = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(settingsToDto({ domain: initial })))) });
+    const loaded = settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(JSON.stringify(settingsToDto({ domain: initial })))) });
     const cleared: Settings = { ...loaded, experimental: { ...loaded.experimental, metaCspForDevelopmentNotForSecurity: undefined } };
     const saved = settingsToDto({ domain: cleared });
     const expected = settingsToDto({ domain: { ...base, experimental: remaining } });
@@ -119,12 +119,12 @@ describe('development-only CSP settings mapping', () => {
   it.each([undefined, 'disabled'] as const)('keeps the sidebar default %s absent on disk and disabled after reload', sidebarSendMessageReorder => {
     const saved = settingsToDto({ domain: { ...base, experimental: { sidebarSendMessageReorder } } });
     expect(saved.experimental).toBeUndefined();
-    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(saved))) });
+    const restored = settingsToDomain({ dto: SettingsDtoSchema.parse(JSON.parse(JSON.stringify(saved))) });
     expect(restored.experimental?.sidebarSendMessageReorder).toBe('disabled');
   });
 
   it('keeps legacy persisted sidebar disabled readable and compacts it on the next save', () => {
-    const legacy = SettingsSchemaDto.parse({ ...settingsToDto({ domain: base }), experimental: { sidebarSendMessageReorder: 'disabled' } });
+    const legacy = SettingsDtoSchema.parse({ ...settingsToDto({ domain: base }), experimental: { sidebarSendMessageReorder: 'disabled' } });
     const loaded = settingsToDomain({ dto: legacy });
     expect(loaded.experimental?.sidebarSendMessageReorder).toBe('disabled');
     expect(settingsToDto({ domain: loaded }).experimental).toBeUndefined();
@@ -137,7 +137,7 @@ describe('development-only CSP settings mapping', () => {
   });
 
   it.each([null, false, 42, [], { policy }])('isolates an unreadable saved policy %j and preserves other settings', metaCsp => {
-    const dto = SettingsSchemaDto.parse({
+    const dto = SettingsDtoSchema.parse({
       ...settingsToDto({ domain: base }),
       experimental: { locale: 'ja', naidanRpc: 'enabled', globalSearch: { scope: 'current_thread' }, metaCsp },
     });
@@ -155,7 +155,7 @@ describe('development-only CSP settings mapping', () => {
 
   it('preserves readable metaCsp when an unrelated future experimental field is unreadable', () => {
     const futureOption = { mode: 'future' };
-    const dto = SettingsSchemaDto.parse({
+    const dto = SettingsDtoSchema.parse({
       ...settingsToDto({ domain: base }),
       experimental: { locale: 'ja', metaCsp: policy, futureOption },
     });

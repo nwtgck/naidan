@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * Recipe-specific LM parameters schema.
- * Copied from LmParametersSchemaDto to ensure recipes remain independent of DTO changes.
+ * Copied from LmParametersDtoSchema to ensure recipes remain independent of DTO changes.
  */
 export const RecipeLmParametersSchema = z.object({
   temperature: z.number().optional(),
@@ -18,7 +18,7 @@ export const RecipeLmParametersSchema = z.object({
 
 /**
  * Recipe-specific system prompt schema.
- * Copied from SystemPromptSchemaDto to ensure recipes remain independent of DTO changes.
+ * Copied from SystemPromptDtoSchema to ensure recipes remain independent of DTO changes.
  */
 export const RecipeSystemPromptSchema = z.discriminatedUnion('behavior', [
   z.object({

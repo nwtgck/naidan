@@ -1,7 +1,7 @@
 import type { ZodError } from 'zod';
 import type { StorageType } from '@/01-models/types';
 import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
-import { StorageTypeSchemaDto } from '@/00-storage/00-dto/dto';
+import { StorageTypeDtoSchema } from '@/00-storage/00-dto/dto';
 
 function parseStorageType({
   rawStorageType,
@@ -10,7 +10,7 @@ function parseStorageType({
 }):
   | { status: 'valid', savedStorageType: StorageType }
   | { status: 'invalid', savedStorageTypeValidationError: ZodError } {
-  const parsedStorageType = StorageTypeSchemaDto.safeParse(rawStorageType);
+  const parsedStorageType = StorageTypeDtoSchema.safeParse(rawStorageType);
   if (parsedStorageType.success) {
     return {
       status: 'valid',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SettingsSchemaDto } from '@/00-storage/00-dto/dto';
+import { SettingsDtoSchema } from '@/00-storage/00-dto/dto';
 import { DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS, DEFAULT_SETTINGS, type BrowserImageGenerationSettings, type Settings } from '@/01-models/types';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { settingsToDomain, settingsToDto } from './mappers';
@@ -13,7 +13,7 @@ describe('browser image generation settings', () => {
       preferences.bf16WeightType = bf16WeightType;
     }
     const stored = JSON.parse(JSON.stringify(settingsToDto({ domain: { ...base, experimental: { browserImageGeneration: preferences } } })));
-    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(stored) });
+    const restored = settingsToDomain({ dto: SettingsDtoSchema.parse(stored) });
     expect(restored.experimental?.browserImageGeneration?.bf16WeightType).toBe(bf16WeightType);
     expect(restored.experimental?.browserImageGeneration?.width).toBe(512);
     if (bf16WeightType === undefined) {
@@ -25,7 +25,7 @@ describe('browser image generation settings', () => {
 
   it('keeps absent preferences absent while exposing the current editor defaults separately', () => {
     const saved = settingsToDto({ domain: base });
-    const read = settingsToDomain({ dto: SettingsSchemaDto.parse(saved) });
+    const read = settingsToDomain({ dto: SettingsDtoSchema.parse(saved) });
     expect(read.experimental?.browserImageGeneration).toBeUndefined();
     expect(JSON.stringify(saved)).not.toContain('browserImageGeneration');
     expect(DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS).toMatchObject({
@@ -92,7 +92,7 @@ describe('browser image generation settings', () => {
     });
     expect(raw.experimental.browserImageGeneration.modelSelection.components[1].choice).toEqual({ kind: 'none' });
     expect(raw.experimental.hostModelDirectories).toEqual([{ id: 'linked-models', name: 'models' }]);
-    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(raw) });
+    const restored = settingsToDomain({ dto: SettingsDtoSchema.parse(raw) });
     expect(restored.experimental?.browserImageGeneration).toEqual(preferences);
     expect(restored.experimental?.hostModelDirectories).toEqual([{ id: directoryId, name: 'models' }]);
   });
@@ -107,7 +107,7 @@ describe('browser image generation settings', () => {
     { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'opfs', path: 'models/../escape.gguf' } }, components: [], loras: [] } },
     { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'host', directoryId: 'linked-models', path: '/absolute.gguf' } }, components: [], loras: [] } },
   ])('keeps structurally valid preferences without claiming they can execute: %j', preferences => {
-    const dto = SettingsSchemaDto.parse({
+    const dto = SettingsDtoSchema.parse({
       ...settingsToDto({ domain: base }),
       experimental: { locale: 'ja', browserImageGeneration: preferences },
     });
@@ -116,7 +116,7 @@ describe('browser image generation settings', () => {
     expect(read.experimental?.browserImageGeneration).toMatchObject(preferences);
     expect(read.experimental?.unreadable).toBeUndefined();
     const saved = JSON.parse(JSON.stringify(settingsToDto({ domain: read })));
-    expect(settingsToDomain({ dto: SettingsSchemaDto.parse(saved) }).experimental?.browserImageGeneration).toMatchObject(preferences);
+    expect(settingsToDomain({ dto: SettingsDtoSchema.parse(saved) }).experimental?.browserImageGeneration).toMatchObject(preferences);
   });
 
   it.each([
@@ -127,7 +127,7 @@ describe('browser image generation settings', () => {
     { modelDownloadDestination: { kind: 'host' } },
     { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'opfs', path: 42 } }, components: [], loras: [] } },
   ])('isolates a structurally invalid browser image group without failing the whole Settings DTO: %j', invalid => {
-    const dto = SettingsSchemaDto.parse({
+    const dto = SettingsDtoSchema.parse({
       ...settingsToDto({ domain: base }),
       experimental: {
         locale: 'ja',
@@ -143,7 +143,7 @@ describe('browser image generation settings', () => {
   });
 
   it('materializes missing nested fields as undefined without inventing a model selection', () => {
-    const dto = SettingsSchemaDto.parse({
+    const dto = SettingsDtoSchema.parse({
       ...settingsToDto({ domain: base }),
       experimental: {
         browserImageGeneration: { width: 256, preview: { interval: 2 }, imageDownload: { format: 'jpeg' } },
@@ -170,6 +170,6 @@ it('roundtrips temporary primary, component and adapter locations without requir
     },
   };
   const stored = JSON.parse(JSON.stringify(settingsToDto({ domain: { ...base, experimental: { browserImageGeneration: preferences } } })));
-  expect(settingsToDomain({ dto: SettingsSchemaDto.parse(stored) }).experimental?.browserImageGeneration).toMatchObject(preferences);
+  expect(settingsToDomain({ dto: SettingsDtoSchema.parse(stored) }).experimental?.browserImageGeneration).toMatchObject(preferences);
   expect(JSON.stringify(stored)).not.toContain('revision');
 });
